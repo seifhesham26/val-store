@@ -1,0 +1,11 @@
+export { createProductModule, type ProductModule } from "./product.container";
+export { CreateProductUseCase } from "./use-cases/create-product.use-case";
+export { ListProductsUseCase } from "./use-cases/list-products.use-case";
+export { GetProductUseCase } from "./use-cases/get-product.use-case";
+export { DeleteProductUseCase } from "./use-cases/delete-product.use-case";
+export { ToggleProductStatusUseCase } from "./use-cases/toggle-product-status.use-case";
+export { UpdateProductUseCase } from "./use-cases/update-product.use-case";
+export { AddProductVariantUseCase } from "./use-cases/add-product-variant.use-case";
+export { UpdateVariantStockUseCase } from "./use-cases/update-variant-stock.use-case";
+export { AddProductImageUseCase } from "./use-cases/add-product-image.use-case";
+export { RemoveProductImageUseCase } from "./use-cases/remove-product-image.use-case";
