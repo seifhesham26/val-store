@@ -19,7 +19,7 @@ export default function AdminLayout({
         storageKey="admin-theme"
         enableSystem={false}
       >
-        <div className="flex h-screen bg-background text-foreground">
+        <div className="fixed inset-0 flex bg-background text-foreground">
           {/* Sidebar */}
           <AdminSidebar />
 

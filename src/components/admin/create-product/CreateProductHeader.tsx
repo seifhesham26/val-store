@@ -7,7 +7,7 @@ import Link from "next/link";
 export function CreateProductHeader() {
   return (
     <div className="flex items-center gap-4">
-      <Link href="/products">
+      <Link href="/admin/products">
         <Button variant="ghost" size="icon">
           <ArrowLeft className="h-4 w-4" />
         </Button>

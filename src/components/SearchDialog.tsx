@@ -110,7 +110,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                     onClick={() => handleSelect(product.slug)}
                     className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-white/8 transition-colors text-left"
                   >
-                    <div className="relative h-12 w-12 bg-white/[0.08] rounded-md overflow-hidden shrink-0">
+                    <div className="relative h-12 w-12 bg-white/8 rounded-md overflow-hidden shrink-0">
                       {product.primaryImage ? (
                         <Image
                           src={product.primaryImage}

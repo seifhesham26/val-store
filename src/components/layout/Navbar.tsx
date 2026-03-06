@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -18,6 +18,16 @@ import { useCartStore } from "@/lib/stores/cart-store";
 import { UserNotificationsBell } from "@/components/UserNotificationsBell";
 import { SearchDialog, useSearchShortcut } from "@/components/SearchDialog";
 
+// Detect client-side rendering without useEffect+setState (React-endorsed)
+const emptySubscribe = () => () => {};
+function useIsClient() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+}
+
 const navLinks = [
   { label: "Shop", href: "/collections/all" },
   { label: "New", href: "/collections/new" },
@@ -28,12 +38,14 @@ const navLinks = [
 export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const isClient = useIsClient();
   const { data: user, isLoading } = trpc.public.user.getSession.useQuery();
   const { openCart, getItemCount } = useCartStore();
 
   const isLoggedIn = !!user;
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
-  const itemCount = getItemCount();
+  // Defer to 0 during SSR to prevent hydration mismatch from Zustand localStorage rehydration
+  const itemCount = isClient ? getItemCount() : 0;
   const { data: wishlistCountData } = trpc.public.wishlist.getCount.useQuery(
     undefined,
     {
@@ -42,7 +54,7 @@ export function Navbar() {
     }
   );
 
-  const wishlistCount = wishlistCountData?.count ?? 0;
+  const wishlistCount = isClient ? (wishlistCountData?.count ?? 0) : 0;
 
   // Cmd/Ctrl+K shortcut for search
   useSearchShortcut(() => setIsSearchOpen(true));
@@ -120,11 +132,12 @@ export function Navbar() {
                 aria-label="Wishlist"
               >
                 <Heart className="h-5 w-5" />
-                {wishlistCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-val-accent text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                    {wishlistCount > 99 ? "99+" : wishlistCount}
-                  </span>
-                )}
+                <span
+                  className={`absolute -top-2 -right-2 bg-val-accent text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center ${wishlistCount > 0 ? "" : "hidden"}`}
+                  suppressHydrationWarning
+                >
+                  {wishlistCount > 99 ? "99+" : wishlistCount}
+                </span>
               </Link>
 
               {/* Notifications */}
@@ -137,11 +150,12 @@ export function Navbar() {
                 aria-label="Open cart"
               >
                 <ShoppingCart className="h-5 w-5" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-val-accent text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                    {itemCount > 99 ? "99+" : itemCount}
-                  </span>
-                )}
+                <span
+                  className={`absolute -top-2 -right-2 bg-val-accent text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center ${itemCount > 0 ? "" : "hidden"}`}
+                  suppressHydrationWarning
+                >
+                  {itemCount > 99 ? "99+" : itemCount}
+                </span>
               </button>
 
               {/* Admin Button */}
@@ -164,11 +178,12 @@ export function Navbar() {
                 aria-label="Open cart"
               >
                 <ShoppingCart className="h-5 w-5" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-val-accent text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                    {itemCount > 99 ? "99+" : itemCount}
-                  </span>
-                )}
+                <span
+                  className={`absolute -top-2 -right-2 bg-val-accent text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center ${itemCount > 0 ? "" : "hidden"}`}
+                  suppressHydrationWarning
+                >
+                  {itemCount > 99 ? "99+" : itemCount}
+                </span>
               </button>
               <button
                 className="text-gray-300 hover:text-val-accent transition-colors"

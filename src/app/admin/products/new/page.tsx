@@ -1,27 +1,28 @@
-import { CreateProductHeader } from "@/components/admin/create-product/CreateProductHeader";
-import { BasicInfoSection } from "@/components/admin/create-product/BasicInfoSection";
-import { PricingSection } from "@/components/admin/create-product/PricingSection";
-import { VariantsSection } from "@/components/admin/create-product/VariantsSection";
-import { AdditionalDetailsSection } from "@/components/admin/create-product/AdditionalDetailsSection";
-import { ProductSidebar } from "@/components/admin/create-product/ProductSidebar";
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { CreateProductForm } from "@/components/admin/products/CreateProductForm";
 
 export default function NewProductPage() {
   return (
     <div className="space-y-6">
-      <CreateProductHeader />
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          <BasicInfoSection />
-          <PricingSection />
-          <VariantsSection />
-          <AdditionalDetailsSection />
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/admin/products">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Create Product</h1>
+          <p className="text-muted-foreground">
+            Add a new product to your catalog
+          </p>
         </div>
-
-        {/* Sidebar */}
-        <ProductSidebar />
       </div>
+
+      <CreateProductForm />
     </div>
   );
 }
