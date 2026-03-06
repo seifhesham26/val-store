@@ -198,9 +198,16 @@ export function ProductReviews({ productId }: { productId: string }) {
 
       {/* Reviews List */}
       {reviews.length === 0 ? (
-        <p className="text-muted-foreground py-8 text-center">
-          No reviews yet. Be the first to review this product!
-        </p>
+        <div className="flex flex-col items-center justify-center py-12 px-4 border rounded-xl bg-muted/10 text-center space-y-3">
+          <div className="h-14 w-14 rounded-full bg-muted/30 flex items-center justify-center mb-2">
+            <Star className="h-7 w-7 text-muted-foreground stroke-[1.5]" />
+          </div>
+          <h3 className="font-medium text-lg text-white">No reviews yet</h3>
+          <p className="text-muted-foreground text-sm max-w-sm">
+            Be the first to review this product and share your thoughts with
+            other customers!
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
           {reviews.map((review) => (

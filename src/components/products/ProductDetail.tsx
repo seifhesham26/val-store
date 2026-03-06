@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WishlistButton } from "@/components/products/WishlistButton";
 
+import Image from "next/image";
+
 interface ProductDetailProps {
   product: {
     id: string;
@@ -26,6 +28,7 @@ interface ProductDetailProps {
     details?: string[];
     sizes: string[];
     colors?: { name: string; hex: string }[];
+    images: string[];
     isNew?: boolean;
     isOnSale?: boolean;
     inStock?: boolean;
@@ -38,6 +41,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
     product.colors?.[0]?.name || null
   );
   const [quantity, setQuantity] = useState(1);
+  const [selectedImage, setSelectedImage] = useState<string>(
+    product.images?.[0] || ""
+  );
 
   const handleAddToCart = () => {
     if (!selectedSize) {
@@ -71,9 +77,19 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {/* Image Gallery */}
           <div className="space-y-4">
             {/* Main Image */}
-            <div className="relative aspect-3/4 bg-val-steel overflow-hidden">
-              {/* Placeholder gradient */}
-              <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
+            <div className="relative aspect-3/4 bg-val-steel overflow-hidden border border-white/10 rounded-lg">
+              {selectedImage ? (
+                <Image
+                  src={selectedImage}
+                  alt={product.name}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  className="object-cover"
+                  priority
+                />
+              ) : (
+                <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
+              )}
 
               {/* Badges */}
               <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
@@ -98,15 +114,30 @@ export function ProductDetail({ product }: ProductDetailProps) {
               </div>
             </div>
 
-            {/* Thumbnail Gallery Placeholder */}
-            <div className="grid grid-cols-4 gap-2">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="aspect-square bg-linear-to-br from-gray-700 to-gray-800 cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
-                />
-              ))}
-            </div>
+            {/* Thumbnail Gallery */}
+            {product.images && product.images.length > 1 && (
+              <div className="grid grid-cols-4 gap-2">
+                {product.images.map((img, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedImage(img)}
+                    className={`relative aspect-square overflow-hidden rounded-md border-2 transition-all ${
+                      selectedImage === img
+                        ? "border-white"
+                        : "border-transparent opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    <Image
+                      src={img}
+                      alt={`${product.name} thumbnail ${i + 1}`}
+                      fill
+                      sizes="(max-width: 768px) 25vw, 12vw"
+                      className="object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Product Info */}
