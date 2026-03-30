@@ -5,10 +5,10 @@
  * Validates product existence and handles display ordering.
  */
 
-import { ProductImageRepositoryInterface } from "@/domain/interfaces/repositories/product-image.repository.interface";
-import { ProductRepositoryInterface } from "@/domain/interfaces/repositories/product.repository.interface";
-import { ProductImageEntity } from "@/domain/entities/product-image.entity";
-import { ProductNotFoundException } from "@/domain/exceptions/product-not-found.exception";
+import { ProductImageRepositoryInterface } from "@/domain/products/interfaces/repositories/product-image.repository.interface";
+import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import { ProductImageEntity } from "@/domain/products/entities/product-image.entity";
+import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
 
 export interface AddProductImageInput {
   productId: string;

@@ -1,7 +1,7 @@
-import { ProductEntity } from "@/domain/entities/product.entity";
-import { ProductRepositoryInterface } from "@/domain/interfaces/repositories/product.repository.interface";
-import { DuplicateSKUException } from "@/domain/exceptions/duplicate-sku.exception";
-import { InvalidPriceException } from "@/domain/exceptions/invalid-price.exception";
+import { ProductEntity } from "@/domain/products/entities/product.entity";
+import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import { DuplicateSKUException } from "@/domain/products/exceptions/duplicate-sku.exception";
+import { InvalidPriceException } from "@/domain/products/exceptions/invalid-price.exception";
 
 /**
  * Create Product Use Case

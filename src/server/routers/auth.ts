@@ -9,7 +9,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { user } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { PhoneValueObject } from "@/domain/value-objects/phone.value-object";
+import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
 
 export const authRouter = router({
   /**

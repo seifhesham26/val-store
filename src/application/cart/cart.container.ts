@@ -2,7 +2,7 @@
  * Cart Domain Container
  */
 
-import { DrizzleCartRepository } from "@/infrastructure/database/repositories/cart.repository";
+import { DrizzleCartRepository } from "@/infrastructure/database/repositories/cart/cart.repository";
 import { AddToCartUseCase } from "./use-cases/add-to-cart.use-case";
 import { GetCartUseCase } from "./use-cases/get-cart.use-case";
 import { UpdateCartItemUseCase } from "./use-cases/update-cart-item.use-case";

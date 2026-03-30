@@ -4,7 +4,7 @@
  * Handles stock adjustment with logging. Ensures atomic updates.
  */
 
-import { InventoryRepositoryInterface } from "@/domain/interfaces/repositories/inventory.repository.interface";
+import { InventoryRepositoryInterface } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
 import { inventoryChangeTypeEnum } from "@/db/schema";
 
 type InventoryChangeType = (typeof inventoryChangeTypeEnum.enumValues)[number];

@@ -4,7 +4,7 @@
  * Validates a coupon code and calculates the discount amount.
  */
 
-import { CouponRepositoryInterface } from "@/domain/interfaces/repositories/coupon.repository.interface";
+import { CouponRepositoryInterface } from "@/domain/coupons/interfaces/repositories/coupon.repository.interface";
 import { Coupon } from "@/db/schema";
 
 export interface ValidateCouponResult {

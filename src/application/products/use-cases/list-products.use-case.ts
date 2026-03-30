@@ -1,5 +1,5 @@
-import { ProductEntity } from "@/domain/entities/product.entity";
-import { ProductRepositoryInterface } from "@/domain/interfaces/repositories/product.repository.interface";
+import { ProductEntity } from "@/domain/products/entities/product.entity";
+import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
 
 /**
  * List Products Use Case

@@ -7,7 +7,7 @@
 import {
   DashboardRepositoryInterface,
   RecentOrder,
-} from "@/domain/interfaces/repositories/dashboard.repository.interface";
+} from "@/domain/dashboard/interfaces/repositories/dashboard.repository.interface";
 
 export interface GetRecentOrdersInput {
   limit?: number;

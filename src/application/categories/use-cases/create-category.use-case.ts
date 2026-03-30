@@ -1,6 +1,6 @@
-import { CategoryEntity } from "@/domain/entities/category.entity";
-import { CategoryRepositoryInterface } from "@/domain/interfaces/repositories/category.repository.interface";
-import { CategorySlug } from "@/domain/value-objects/category-slug.value-object";
+import { CategoryEntity } from "@/domain/categories/entities/category.entity";
+import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
+import { CategorySlug } from "@/domain/categories/value-objects/category-slug.value-object";
 
 /**
  * Create Category Use Case

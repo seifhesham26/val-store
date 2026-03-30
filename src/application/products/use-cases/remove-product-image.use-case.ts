@@ -5,7 +5,7 @@
  * Handles primary image re-assignment when removing the primary image.
  */
 
-import { ProductImageRepositoryInterface } from "@/domain/interfaces/repositories/product-image.repository.interface";
+import { ProductImageRepositoryInterface } from "@/domain/products/interfaces/repositories/product-image.repository.interface";
 
 export interface RemoveProductImageInput {
   imageId: string;

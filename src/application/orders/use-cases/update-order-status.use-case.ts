@@ -1,5 +1,5 @@
-import { OrderRepositoryInterface } from "@/domain/interfaces/repositories/order.repository.interface";
-import { OrderStatus } from "@/domain/value-objects/order-status.value-object";
+import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
+import { OrderStatus } from "@/domain/orders/value-objects/order-status.value-object";
 
 /**
  * Update Order Status Use Case

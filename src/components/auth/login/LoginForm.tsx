@@ -9,7 +9,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { vanillaTrpc } from "@/lib/trpc";
-import { PhoneValueObject } from "@/domain/value-objects/phone.value-object";
+import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
 
 export function LoginForm() {
   const router = useRouter();

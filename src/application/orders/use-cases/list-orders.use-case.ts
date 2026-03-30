@@ -1,5 +1,5 @@
-import { OrderEntity } from "@/domain/entities/order.entity";
-import { OrderRepositoryInterface } from "@/domain/interfaces/repositories/order.repository.interface";
+import { OrderEntity } from "@/domain/orders/entities/order.entity";
+import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 
 /**
  * List Orders Use Case

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import Link from "next/link";
 import type { ExtendedSignUpEmail } from "@/types/auth";
-import { PhoneValueObject } from "@/domain/value-objects/phone.value-object";
+import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";

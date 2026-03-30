@@ -4,7 +4,7 @@
  * Provides singleton instances of order repository and use cases.
  */
 
-import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/order.repository";
+import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/orders/order.repository";
 import { ListOrdersUseCase } from "./use-cases/list-orders.use-case";
 import { GetOrderUseCase } from "./use-cases/get-order.use-case";
 import { UpdateOrderStatusUseCase } from "./use-cases/update-order-status.use-case";

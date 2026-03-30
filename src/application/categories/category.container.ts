@@ -4,7 +4,7 @@
  * Provides singleton instances of category repository and use cases.
  */
 
-import { DrizzleCategoryRepository } from "@/infrastructure/database/repositories/category.repository";
+import { DrizzleCategoryRepository } from "@/infrastructure/database/repositories/categories/category.repository";
 import { ListCategoriesUseCase } from "./use-cases/list-categories.use-case";
 import { CreateCategoryUseCase } from "./use-cases/create-category.use-case";
 import { DeleteCategoryUseCase } from "./use-cases/delete-category.use-case";

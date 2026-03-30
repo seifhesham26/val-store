@@ -4,7 +4,7 @@
  * Updates the quantity of a cart item.
  */
 
-import { CartRepositoryInterface } from "@/domain/interfaces/repositories/cart.repository.interface";
+import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
 
 export interface UpdateCartItemInput {
   cartItemId: string;

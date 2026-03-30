@@ -1,5 +1,5 @@
-import { ProductRepositoryInterface } from "@/domain/interfaces/repositories/product.repository.interface";
-import { ProductNotFoundException } from "@/domain/exceptions/product-not-found.exception";
+import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
 
 /**
  * Delete Product Use Case

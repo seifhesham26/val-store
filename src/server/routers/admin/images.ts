@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
-import { ProductImageEntity } from "@/domain/entities/product-image.entity";
+import { ProductImageEntity } from "@/domain/products/entities/product-image.entity";
 
 // Validation schemas
 const addImageSchema = z.object({

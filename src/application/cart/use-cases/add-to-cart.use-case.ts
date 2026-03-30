@@ -5,8 +5,8 @@
  * If the product already exists, increases the quantity.
  */
 
-import { CartRepositoryInterface } from "@/domain/interfaces/repositories/cart.repository.interface";
-import { CartItemEntity } from "@/domain/entities/cart-item.entity";
+import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
+import { CartItemEntity } from "@/domain/cart/entities/cart-item.entity";
 
 export interface AddToCartInput {
   userId: string;

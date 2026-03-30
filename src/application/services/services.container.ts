@@ -5,7 +5,7 @@
  */
 
 import { ResendEmailService } from "@/infrastructure/services/resend-email.service";
-import { DrizzleSiteConfigRepository } from "@/infrastructure/database/repositories/site-config.repository";
+import { DrizzleSiteConfigRepository } from "@/infrastructure/database/repositories/site/site-config.repository";
 
 export function createServicesModule() {
   let emailService: ResendEmailService | undefined;

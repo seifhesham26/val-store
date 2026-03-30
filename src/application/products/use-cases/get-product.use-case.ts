@@ -1,6 +1,6 @@
-import { ProductEntity } from "@/domain/entities/product.entity";
-import { ProductRepositoryInterface } from "@/domain/interfaces/repositories/product.repository.interface";
-import { ProductNotFoundException } from "@/domain/exceptions/product-not-found.exception";
+import { ProductEntity } from "@/domain/products/entities/product.entity";
+import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
 
 /**
  * Get Product Use Case

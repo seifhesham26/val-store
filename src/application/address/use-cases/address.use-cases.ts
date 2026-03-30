@@ -2,7 +2,7 @@
  * Address Use Cases
  */
 
-import { AddressRepositoryInterface } from "@/domain/interfaces/repositories/address.repository.interface";
+import { AddressRepositoryInterface } from "@/domain/address/interfaces/repositories/address.repository.interface";
 import { NewAddress, Address } from "@/db/schema";
 
 export class GetUserAddressesUseCase {

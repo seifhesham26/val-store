@@ -5,9 +5,9 @@
  * Covers: products, product variants, product images.
  */
 
-import { DrizzleProductRepository } from "@/infrastructure/database/repositories/product.repository";
-import { DrizzleProductVariantRepository } from "@/infrastructure/database/repositories/product-variant.repository";
-import { DrizzleProductImageRepository } from "@/infrastructure/database/repositories/product-image.repository";
+import { DrizzleProductRepository } from "@/infrastructure/database/repositories/products/product.repository";
+import { DrizzleProductVariantRepository } from "@/infrastructure/database/repositories/products/product-variant.repository";
+import { DrizzleProductImageRepository } from "@/infrastructure/database/repositories/products/product-image.repository";
 import { CreateProductUseCase } from "./use-cases/create-product.use-case";
 import { ListProductsUseCase } from "./use-cases/list-products.use-case";
 import { GetProductUseCase } from "./use-cases/get-product.use-case";

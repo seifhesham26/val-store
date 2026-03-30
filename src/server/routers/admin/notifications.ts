@@ -6,7 +6,7 @@
 
 import { router, adminProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
-import { DrizzleNotificationsRepository } from "@/infrastructure/database/repositories/notifications.repository";
+import { DrizzleNotificationsRepository } from "@/infrastructure/database/repositories/notifications/notifications.repository";
 
 const notificationsRepo = new DrizzleNotificationsRepository();
 

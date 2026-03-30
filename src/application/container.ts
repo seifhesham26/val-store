@@ -15,6 +15,8 @@ import { createWishlistModule } from "./wishlist";
 import { createAddressModule } from "./address";
 import { createCustomerModule } from "./customers";
 import { createServicesModule } from "./services";
+import { createCouponModule } from "./coupons";
+import { createInventoryModule } from "./inventory";
 
 function createContainer() {
   const products = createProductModule();
@@ -30,6 +32,8 @@ function createContainer() {
   const address = createAddressModule();
   const customers = createCustomerModule();
   const services = createServicesModule();
+  const couponsModule = createCouponModule();
+  const inventory = createInventoryModule();
 
   return {
     // Products
@@ -52,6 +56,10 @@ function createContainer() {
     ...customers,
     // Services
     ...services,
+    // Coupons
+    ...couponsModule,
+    // Inventory
+    ...inventory,
   };
 }
 

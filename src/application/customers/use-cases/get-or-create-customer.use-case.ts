@@ -5,8 +5,8 @@
  * This is the main entry point for linking users to customers.
  */
 
-import { Customer } from "@/domain/entities/customer.entity";
-import { CustomerRepositoryInterface } from "@/domain/interfaces/repositories/customer.repository.interface";
+import { Customer } from "@/domain/customers/entities/customer.entity";
+import { CustomerRepositoryInterface } from "@/domain/customers/interfaces/repositories/customer.repository.interface";
 
 export interface GetOrCreateCustomerInput {
   phone: string;

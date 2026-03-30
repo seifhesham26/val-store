@@ -5,9 +5,9 @@
  * Validates category exists before updating.
  */
 
-import { CategoryRepositoryInterface } from "@/domain/interfaces/repositories/category.repository.interface";
-import { CategoryEntity } from "@/domain/entities/category.entity";
-import { CategoryNotFoundException } from "@/domain/exceptions/category-not-found.exception";
+import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
+import { CategoryEntity } from "@/domain/categories/entities/category.entity";
+import { CategoryNotFoundException } from "@/domain/categories/exceptions/category-not-found.exception";
 
 export interface UpdateCategoryInput {
   id: string;

@@ -5,10 +5,10 @@
  * Validates SKU uniqueness and product existence.
  */
 
-import { ProductVariantRepositoryInterface } from "@/domain/interfaces/repositories/product-variant.repository.interface";
-import { ProductRepositoryInterface } from "@/domain/interfaces/repositories/product.repository.interface";
-import { ProductVariantEntity } from "@/domain/entities/product-variant.entity";
-import { ProductNotFoundException } from "@/domain/exceptions/product-not-found.exception";
+import { ProductVariantRepositoryInterface } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
+import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
+import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
 
 export interface AddProductVariantInput {
   productId: string;

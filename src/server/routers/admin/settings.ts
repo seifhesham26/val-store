@@ -16,7 +16,7 @@ import {
   brandStoryContentSchema,
   newsletterContentSchema,
   instagramContentSchema,
-} from "@/domain/value-objects/content-schemas";
+} from "@/domain/site/value-objects/content-schemas";
 
 // ============================================
 // VALIDATION SCHEMAS

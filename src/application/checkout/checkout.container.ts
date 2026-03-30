@@ -5,8 +5,8 @@
  * These are passed in via a factory function to avoid circular deps.
  */
 
-import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/order.repository";
-import { DrizzleCartRepository } from "@/infrastructure/database/repositories/cart.repository";
+import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/orders/order.repository";
+import { DrizzleCartRepository } from "@/infrastructure/database/repositories/cart/cart.repository";
 import { CreateCheckoutSessionUseCase } from "./use-cases/create-checkout-session.use-case";
 import { CreateOrderUseCase } from "./use-cases/create-order.use-case";
 

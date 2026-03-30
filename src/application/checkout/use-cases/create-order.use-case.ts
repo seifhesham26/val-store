@@ -1,10 +1,10 @@
-import { CartRepositoryInterface } from "@/domain/interfaces/repositories/cart.repository.interface";
-import { OrderRepositoryInterface } from "@/domain/interfaces/repositories/order.repository.interface";
+import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
+import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import {
   OrderEntity,
   type OrderItem,
   type OrderStatus,
-} from "@/domain/entities/order.entity";
+} from "@/domain/orders/entities/order.entity";
 
 export interface CreateOrderInput {
   userId: string;

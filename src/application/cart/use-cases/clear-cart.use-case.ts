@@ -4,7 +4,7 @@
  * Removes all items from the user's cart.
  */
 
-import { CartRepositoryInterface } from "@/domain/interfaces/repositories/cart.repository.interface";
+import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
 
 export interface ClearCartOutput {
   success: boolean;

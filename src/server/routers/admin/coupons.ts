@@ -6,7 +6,7 @@
 
 import { router, adminProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
-import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupon.repository";
+import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupons/coupon.repository";
 import { TRPCError } from "@trpc/server";
 
 const couponRepo = new DrizzleCouponRepository();

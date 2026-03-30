@@ -2,7 +2,7 @@
  * Customer Domain Container
  */
 
-import { DrizzleCustomerRepository } from "@/infrastructure/database/repositories/customer.repository";
+import { DrizzleCustomerRepository } from "@/infrastructure/database/repositories/customers/customer.repository";
 import { GetOrCreateCustomerUseCase } from "./use-cases/get-or-create-customer.use-case";
 
 export function createCustomerModule() {

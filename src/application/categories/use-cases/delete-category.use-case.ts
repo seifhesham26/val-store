@@ -1,5 +1,5 @@
-import { CategoryRepositoryInterface } from "@/domain/interfaces/repositories/category.repository.interface";
-import { CategoryNotFoundException } from "@/domain/exceptions/category-not-found.exception";
+import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
+import { CategoryNotFoundException } from "@/domain/categories/exceptions/category-not-found.exception";
 
 /**
  * Delete Category Use Case

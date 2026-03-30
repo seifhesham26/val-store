@@ -1,5 +1,5 @@
-import { CategoryEntity } from "@/domain/entities/category.entity";
-import { CategoryRepositoryInterface } from "@/domain/interfaces/repositories/category.repository.interface";
+import { CategoryEntity } from "@/domain/categories/entities/category.entity";
+import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
 
 /**
  * List Categories Use Case

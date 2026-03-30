@@ -1,6 +1,6 @@
-import { OrderEntity } from "@/domain/entities/order.entity";
-import { OrderRepositoryInterface } from "@/domain/interfaces/repositories/order.repository.interface";
-import { OrderNotFoundException } from "@/domain/exceptions/order-not-found.exception";
+import { OrderEntity } from "@/domain/orders/entities/order.entity";
+import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
+import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 
 /**
  * Get Order Use Case

@@ -2,7 +2,7 @@
  * Address Domain Container
  */
 
-import { DrizzleAddressRepository } from "@/infrastructure/database/repositories/address.repository";
+import { DrizzleAddressRepository } from "@/infrastructure/database/repositories/address/address.repository";
 import {
   GetUserAddressesUseCase,
   CreateAddressUseCase,

@@ -7,7 +7,7 @@
 import {
   DashboardRepositoryInterface,
   AnalyticsData,
-} from "@/domain/interfaces/repositories/dashboard.repository.interface";
+} from "@/domain/dashboard/interfaces/repositories/dashboard.repository.interface";
 
 export class GetAnalyticsUseCase {
   constructor(

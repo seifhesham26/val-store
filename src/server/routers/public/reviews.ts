@@ -6,7 +6,7 @@
 
 import { router, publicProcedure, protectedProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
-import { DrizzleReviewRepository } from "@/infrastructure/database/repositories/review.repository";
+import { DrizzleReviewRepository } from "@/infrastructure/database/repositories/reviews/review.repository";
 import { TRPCError } from "@trpc/server";
 
 const reviewRepo = new DrizzleReviewRepository();

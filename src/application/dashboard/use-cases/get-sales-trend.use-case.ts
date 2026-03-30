@@ -7,7 +7,7 @@
 import {
   DashboardRepositoryInterface,
   SalesTrendItem,
-} from "@/domain/interfaces/repositories/dashboard.repository.interface";
+} from "@/domain/dashboard/interfaces/repositories/dashboard.repository.interface";
 
 export class GetSalesTrendUseCase {
   constructor(

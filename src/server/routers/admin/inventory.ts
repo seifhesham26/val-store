@@ -6,7 +6,7 @@
 
 import { router, adminProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
-import { DrizzleInventoryRepository } from "@/infrastructure/database/repositories/inventory.repository";
+import { DrizzleInventoryRepository } from "@/infrastructure/database/repositories/inventory/inventory.repository";
 import { AdjustStockUseCase } from "@/application/inventory/use-cases/adjust-stock.use-case";
 import { TRPCError } from "@trpc/server";
 import { inventoryChangeTypeEnum } from "@/db/schema";

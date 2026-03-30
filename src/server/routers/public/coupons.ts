@@ -6,7 +6,7 @@
 
 import { router, protectedProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
-import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupon.repository";
+import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupons/coupon.repository";
 import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-coupon.use-case";
 
 const couponRepo = new DrizzleCouponRepository();

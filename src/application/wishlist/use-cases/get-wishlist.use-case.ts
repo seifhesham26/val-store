@@ -2,7 +2,7 @@
  * Get Wishlist Use Case
  */
 
-import { WishlistRepositoryInterface } from "@/domain/interfaces/repositories/wishlist.repository.interface";
+import { WishlistRepositoryInterface } from "@/domain/wishlist/interfaces/repositories/wishlist.repository.interface";
 
 export class GetWishlistUseCase {
   constructor(

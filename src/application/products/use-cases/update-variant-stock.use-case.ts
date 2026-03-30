@@ -5,7 +5,7 @@
  * Supports both absolute updates and delta adjustments.
  */
 
-import { ProductVariantRepositoryInterface } from "@/domain/interfaces/repositories/product-variant.repository.interface";
+import { ProductVariantRepositoryInterface } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
 
 export interface UpdateVariantStockInput {
   variantId: string;

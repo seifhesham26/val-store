@@ -5,7 +5,7 @@
  * Order is created on successful payment via webhook.
  */
 
-import { CartRepositoryInterface } from "@/domain/interfaces/repositories/cart.repository.interface";
+import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { CreateOrderUseCase } from "./create-order.use-case";
 import { db } from "@/db";

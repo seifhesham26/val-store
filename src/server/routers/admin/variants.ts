@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
-import { ProductVariantEntity } from "@/domain/entities/product-variant.entity";
+import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
 
 // Validation schemas
 const addVariantSchema = z.object({
