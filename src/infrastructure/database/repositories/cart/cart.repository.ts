@@ -6,7 +6,12 @@
  */
 
 import { db } from "@/db";
-import { cartItems, products, productVariants } from "@/db/schema";
+import {
+  cartItems,
+  products,
+  productVariants,
+  productImages,
+} from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
 import { CartItemEntity } from "@/domain/cart/entities/cart-item.entity";
@@ -21,10 +26,18 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         cartItem: cartItems,
         product: products,
         variant: productVariants,
+        image: productImages,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
       .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
+      .leftJoin(
+        productImages,
+        and(
+          eq(cartItems.productId, productImages.productId),
+          eq(productImages.isPrimary, true)
+        )
+      )
       .where(eq(cartItems.id, cartItemId))
       .limit(1);
 
@@ -44,10 +57,18 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         cartItem: cartItems,
         product: products,
         variant: productVariants,
+        image: productImages,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
       .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
+      .leftJoin(
+        productImages,
+        and(
+          eq(cartItems.productId, productImages.productId),
+          eq(productImages.isPrimary, true)
+        )
+      )
       .where(eq(cartItems.userId, userId));
 
     return results.filter((r) => r.product).map((r) => this.mapToEntity(r));
@@ -65,10 +86,18 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         cartItem: cartItems,
         product: products,
         variant: productVariants,
+        image: productImages,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
       .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
+      .leftJoin(
+        productImages,
+        and(
+          eq(cartItems.productId, productImages.productId),
+          eq(productImages.isPrimary, true)
+        )
+      )
       .where(
         and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
       )
@@ -192,8 +221,9 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
     cartItem: typeof cartItems.$inferSelect;
     product: typeof products.$inferSelect | null;
     variant: typeof productVariants.$inferSelect | null;
+    image?: typeof productImages.$inferSelect | null;
   }): CartItemEntity {
-    const { cartItem, product, variant } = result;
+    const { cartItem, product, variant, image } = result;
 
     // Calculate stock from variant or default to 0
     const maxStock = variant?.stockQuantity ?? 0;
@@ -209,7 +239,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       cartItem.productId,
       product?.name ?? "Unknown Product",
       price,
-      null, // productImage - would need to join with productImages table
+      image?.imageUrl ?? null,
       cartItem.quantity,
       maxStock,
       new Date(cartItem.createdAt),

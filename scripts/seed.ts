@@ -136,7 +136,7 @@ async function seed() {
       },
       {
         name: "New Arrivals",
-        slug: "new-arrivals",
+        slug: "new",
         description: "Latest products",
         displayOrder: 4,
       },

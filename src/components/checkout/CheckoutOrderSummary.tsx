@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ShoppingBag } from "lucide-react";
+import { Loader2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -57,17 +57,17 @@ export function CheckoutOrderSummary({
   }
 
   return (
-    <Card>
+    <Card className="bg-[#111] border-white/10 shadow-2xl rounded-xl overflow-hidden">
       <CardHeader>
-        <CardTitle>Order Summary</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-white">Order Summary</CardTitle>
+        <CardDescription className="text-gray-400">
           {itemCount} item{itemCount !== 1 ? "s" : ""} in your cart
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {items.map((item) => (
-          <div key={item.id} className="flex gap-3">
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border">
+          <div key={item.id} className="flex gap-4">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#1a1a1a]">
               {item.productImage ? (
                 <Image
                   src={item.productImage}
@@ -82,22 +82,24 @@ export function CheckoutOrderSummary({
               )}
             </div>
             <div className="flex flex-1 flex-col justify-center">
-              <p className="font-medium text-sm line-clamp-1">
+              <p className="font-medium text-sm line-clamp-1 text-white">
                 {item.productName}
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-gray-400 mt-1">
                 Qty: {item.quantity} × ${item.productPrice.toFixed(2)}
               </p>
             </div>
-            <div className="flex items-center font-medium">
+            <div className="flex items-center font-bold text-white">
               ${(item.quantity * item.productPrice).toFixed(2)}
             </div>
           </div>
         ))}
 
         {/* Coupon Input */}
-        <div className="border-t pt-4">
-          <Label className="text-sm font-medium">Coupon Code</Label>
+        <div className="border-t border-white/10 pt-4 mt-2">
+          <Label className="text-sm font-medium text-white mb-2 block">
+            Coupon Code
+          </Label>
           {appliedCoupon ? (
             <div className="flex items-center justify-between mt-2 p-2 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
               <div className="flex items-center gap-2">
@@ -122,20 +124,25 @@ export function CheckoutOrderSummary({
               </Button>
             </div>
           ) : (
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={couponCode}
                 onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                 placeholder="Enter code"
-                className="flex-1 px-3 py-2 border rounded-md text-sm uppercase"
+                className="flex-1 px-3 py-2 border border-white/10 bg-[#1a1a1a] text-white rounded-md text-sm uppercase placeholder:text-gray-500 focus:outline-hidden focus:border-val-accent focus:ring-1 focus:ring-val-accent"
               />
               <Button
                 variant="outline"
                 onClick={onApplyCoupon}
                 disabled={!couponCode.trim() || isValidating}
+                className="border-white/20"
               >
-                {isValidating ? "..." : "Apply"}
+                {isValidating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Apply"
+                )}
               </Button>
             </div>
           )}
@@ -144,10 +151,10 @@ export function CheckoutOrderSummary({
           )}
         </div>
 
-        <div className="border-t pt-4 space-y-2">
+        <div className="border-t border-white/10 pt-4 space-y-3 mt-4">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span>${subtotal.toFixed(2)}</span>
+            <span className="text-gray-400">Subtotal</span>
+            <span className="text-white">${subtotal.toFixed(2)}</span>
           </div>
           {appliedCoupon && (
             <div className="flex justify-between text-sm text-green-600">
@@ -156,12 +163,12 @@ export function CheckoutOrderSummary({
             </div>
           )}
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Shipping</span>
-            <span className="text-green-600">Free</span>
+            <span className="text-gray-400">Shipping</span>
+            <span className="text-green-500 font-medium">Free</span>
           </div>
-          <div className="flex justify-between font-semibold text-lg pt-2 border-t">
+          <div className="flex justify-between font-bold text-xl pt-4 border-t border-white/10 mt-4">
             <span>Total</span>
-            <span>${total.toFixed(2)}</span>
+            <span className="text-white">${total.toFixed(2)}</span>
           </div>
         </div>
       </CardContent>

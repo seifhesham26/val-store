@@ -71,6 +71,7 @@ export function CollectionSection({
                 product.salePrice < product.basePrice
               }
               isFeatured={product.isFeatured}
+              variants={product.variants}
             />
           ))}
         </div>

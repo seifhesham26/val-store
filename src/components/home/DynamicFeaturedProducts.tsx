@@ -84,6 +84,7 @@ export function DynamicFeaturedProducts({
                 product.salePrice !== null &&
                 product.salePrice < product.basePrice
               }
+              variants={product.variants}
             />
           ))}
         </div>

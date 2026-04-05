@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/lib/auth-client";
 import { trpc } from "@/lib/trpc";
 import { useCartStore, type CartItem } from "@/lib/stores/cart-store";
@@ -20,7 +20,7 @@ export function CartProvider({ children }: CartProviderProps) {
   const { data: session } = useSession();
   const isAuthenticated = !!session?.user;
 
-  const { setItems, setLoading, setSyncing } = useCartStore();
+  const { setItems, setLoading } = useCartStore();
 
   // Fetch cart from server for authenticated users
   const { data: serverCart, isLoading } = trpc.public.cart.get.useQuery(
@@ -65,6 +65,9 @@ export function useCart() {
   const utils = trpc.useUtils();
 
   const store = useCartStore();
+  const updateTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+    {}
+  );
 
   // Server mutations
   const addMutation = trpc.public.cart.add.useMutation({
@@ -112,18 +115,25 @@ export function useCart() {
 
   // Update quantity
   const updateQuantity = useCallback(
-    async (cartItemId: string, quantity: number) => {
+    (cartItemId: string, quantity: number) => {
+      // 1. Instantly update the local Zustand store for snappy UI
+      store.updateQuantity(cartItemId, quantity);
+
       if (isAuthenticated) {
-        store.setSyncing(true);
-        try {
-          // Optimistically update local state
-          store.updateQuantity(cartItemId, quantity);
-          await updateMutation.mutateAsync({ cartItemId, quantity });
-        } finally {
-          store.setSyncing(false);
+        // Clear previous timer for this cart item
+        if (updateTimersRef.current[cartItemId]) {
+          clearTimeout(updateTimersRef.current[cartItemId]);
         }
-      } else {
-        store.updateQuantity(cartItemId, quantity);
+
+        // 2. Schedule the actual server mutation
+        updateTimersRef.current[cartItemId] = setTimeout(async () => {
+          store.setSyncing(true);
+          try {
+            await updateMutation.mutateAsync({ cartItemId, quantity });
+          } finally {
+            store.setSyncing(false);
+          }
+        }, 1000); // 1000ms debounce
       }
     },
     [isAuthenticated, updateMutation, store]

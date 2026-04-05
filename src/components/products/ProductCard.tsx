@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WishlistButton } from "@/components/products/WishlistButton";
+import {
+  QuickAddSliderBar,
+  type QuickAddVariant,
+} from "@/components/products/QuickAddSliderBar";
 
 export interface ProductCardProps {
   id: string;
@@ -15,6 +20,7 @@ export interface ProductCardProps {
   isNew?: boolean;
   isOnSale?: boolean;
   isFeatured?: boolean;
+  variants?: QuickAddVariant[];
 }
 
 export function ProductCard({
@@ -26,13 +32,14 @@ export function ProductCard({
   primaryImage,
   isNew = false,
   isOnSale = false,
+  variants = [],
 }: ProductCardProps) {
   const formattedPrice = price.toFixed(2);
   const formattedSalePrice = salePrice?.toFixed(2);
 
   return (
     <div className="group relative">
-      {/* Image Container */}
+      {/* Image Container — wrapped in a link */}
       <Link href={`/products/${slug}`} className="block">
         <div className="relative aspect-3/4 overflow-hidden bg-val-steel">
           {/* Product Image or gradient fallback */}
@@ -70,15 +77,17 @@ export function ProductCard({
               className="bg-black/50 hover:bg-val-accent text-white"
             />
           </div>
-
-          {/* Quick Add Button */}
-          <div className="absolute bottom-0 inset-x-0 p-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 z-10">
-            <Button className="w-full bg-white text-black hover:bg-val-silver text-sm py-2">
-              Quick Add
-            </Button>
-          </div>
         </div>
       </Link>
+
+      {/* Quick Add Slider — outside the link to avoid nested interactive elements */}
+      <div className="absolute bottom-0 inset-x-0 p-2 pt-8 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 z-10 bg-linear-to-t from-black/90 via-black/60 to-transparent">
+        <QuickAddSliderBar
+          productId={id}
+          productName={name}
+          variants={variants}
+        />
+      </div>
 
       {/* Product Info */}
       <div className="mt-3">

@@ -54,11 +54,7 @@ export function CartPopulated() {
 
           {/* Continue Shopping */}
           <div className="mt-6">
-            <Button
-              variant="outline"
-              asChild
-              className="border-white/10 text-gray-300 hover:bg-white/[0.04] hover:text-white"
-            >
+            <Button variant="outline" asChild>
               <Link href="/collections/all">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Continue Shopping

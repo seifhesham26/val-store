@@ -122,43 +122,64 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
   };
 
   return (
-    <div className="container mx-auto px-4 py-10">
-      <div className="max-w-2xl space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Checkout</h1>
-          <p className="text-muted-foreground">
-            Review your order and select delivery options.
+    <div className="min-h-screen pt-12 pb-24 bg-[#0a0a0a]">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <div className="mb-8 border-b border-white/10 pb-6">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2">
+            Checkout
+          </h1>
+          <p className="text-gray-400">
+            Review your order clearly and select your preferred delivery and
+            payment options.
           </p>
         </div>
 
-        <CheckoutOrderSummary
-          couponCode={couponCode}
-          setCouponCode={setCouponCode}
-          appliedCoupon={appliedCoupon}
-          onApplyCoupon={handleApplyCoupon}
-          onRemoveCoupon={handleRemoveCoupon}
-          isValidating={validateCoupon.isPending}
-          couponError={couponError}
-        />
+        <div className="lg:grid lg:grid-cols-12 lg:gap-x-12 lg:items-start">
+          {/* Left Column: Address and Payment */}
+          <div className="lg:col-span-7 space-y-8">
+            <CheckoutAddressSelection
+              addresses={addresses}
+              selectedAddressId={effectiveSelectedAddressId}
+              onAddressChange={setSelectedAddressId}
+            />
 
-        <CheckoutAddressSelection
-          addresses={addresses}
-          selectedAddressId={effectiveSelectedAddressId}
-          onAddressChange={setSelectedAddressId}
-        />
+            <CheckoutPaymentMethod
+              paymentMethod={paymentMethod}
+              onPaymentMethodChange={setPaymentMethod}
+            />
 
-        <CheckoutPaymentMethod
-          paymentMethod={paymentMethod}
-          onPaymentMethodChange={setPaymentMethod}
-        />
+            <div className="flex flex-col sm:flex-row gap-4 pt-6 mt-8 border-t border-white/10">
+              <Button
+                variant="outline"
+                onClick={() => router.push("/cart")}
+                className="h-14 sm:w-auto px-8 border-white/2 hover:bg-white/10 hover:text-white"
+              >
+                Return to Cart
+              </Button>
+              <Button
+                onClick={placeOrder}
+                disabled={isPlacingOrder}
+                className="h-14 flex-1 bg-val-accent text-white hover:bg-val-accent/90 text-lg font-medium"
+              >
+                {isPlacingOrder ? "Processing..." : "Complete Order"}
+              </Button>
+            </div>
+          </div>
 
-        <div className="flex gap-3">
-          <Button onClick={placeOrder} disabled={isPlacingOrder}>
-            Place Order
-          </Button>
-          <Button variant="outline" onClick={() => router.push("/cart")}>
-            Back to Cart
-          </Button>
+          {/* Right Column: Order Summary sticky */}
+          <div className="lg:col-span-5 mt-10 lg:mt-0">
+            <div className="sticky top-24 lg:top-32 w-full">
+              <CheckoutOrderSummary
+                couponCode={couponCode}
+                setCouponCode={setCouponCode}
+                appliedCoupon={appliedCoupon}
+                onApplyCoupon={handleApplyCoupon}
+                onRemoveCoupon={handleRemoveCoupon}
+                isValidating={validateCoupon.isPending}
+                couponError={couponError}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -25,10 +25,12 @@ export function CheckoutAddressSelection({
   onAddressChange: (val: string) => void;
 }) {
   return (
-    <Card>
+    <Card className="bg-[#111] border-white/10 shadow-2xl rounded-xl overflow-hidden">
       <CardHeader>
-        <CardTitle>Delivery Address</CardTitle>
-        <CardDescription>Default address is preselected.</CardDescription>
+        <CardTitle className="text-white">Delivery Address</CardTitle>
+        <CardDescription className="text-gray-400">
+          Default address is preselected.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <RadioGroup
@@ -39,7 +41,12 @@ export function CheckoutAddressSelection({
           {addresses.map((a) => (
             <div
               key={a.id}
-              className="flex items-start gap-3 rounded-md border p-3"
+              className={`flex items-start gap-3 rounded-lg border p-4 transition-all duration-200 cursor-pointer ${
+                selectedAddressId === a.id
+                  ? "border-val-accent bg-val-accent/5"
+                  : "border-white/10 hover:border-white/30 hover:bg-[#1a1a1a]"
+              }`}
+              onClick={() => onAddressChange(a.id)}
             >
               <RadioGroupItem
                 value={a.id}
@@ -47,10 +54,13 @@ export function CheckoutAddressSelection({
                 className="mt-1"
               />
               <div className="flex-1">
-                <Label htmlFor={`addr-${a.id}`} className="font-medium">
+                <Label
+                  htmlFor={`addr-${a.id}`}
+                  className="font-medium text-white"
+                >
                   {a.name} {a.isDefault ? "(Default)" : ""}
                 </Label>
-                <div className="text-sm text-muted-foreground">
+                <div className="text-sm text-gray-400 mt-1">
                   <div>{a.street}</div>
                   <div>
                     {a.city}
@@ -65,7 +75,7 @@ export function CheckoutAddressSelection({
           ))}
         </RadioGroup>
 
-        <div className="mt-4">
+        <div className="mt-6">
           <Button variant="outline" asChild>
             <Link href="/account/addresses">Manage addresses</Link>
           </Button>

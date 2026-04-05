@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signUp } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,8 @@ interface SignupFormData {
 
 export function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
   const [formData, setFormData] = useState<SignupFormData>({
     email: "",
     password: "",
@@ -105,9 +107,9 @@ export function SignupForm() {
         return;
       }
 
-      // Success - redirect to home page
+      // Success - redirect to intended page
       toast.success("Account created successfully!");
-      router.push(`/`);
+      router.push(redirectUrl);
     } catch {
       toast.error("An unexpected error occurred");
     } finally {
@@ -262,7 +264,7 @@ export function SignupForm() {
       <div className="mt-4 text-center text-sm text-gray-400">
         Already have an account?{" "}
         <Link
-          href="/login"
+          href={`/login${searchParams.toString() ? `?${searchParams.toString()}` : ""}`}
           className="text-val-accent hover:text-val-accent-light transition-colors"
         >
           Sign in

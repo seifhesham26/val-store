@@ -54,14 +54,18 @@ export const publicProductsRouter = router({
       const total = allProducts.length;
       const totalPages = Math.ceil(total / limit);
 
-      // Get primary images for the page products
+      // Get primary images and variants for the page products
       const imageRepo = container.getProductImageRepository();
+      const variantRepo = container.getProductVariantRepository();
       const pageProducts = allProducts.slice(offset, offset + limit);
 
-      // Return only public-safe data with images
+      // Return only public-safe data with images and variants
       const products = await Promise.all(
         pageProducts.map(async (p) => {
-          const images = await imageRepo.findByProduct(p.id);
+          const [images, variants] = await Promise.all([
+            imageRepo.findByProduct(p.id),
+            variantRepo.findByProduct(p.id),
+          ]);
           const primaryImage = images.find((img) => img.isPrimary) || images[0];
           return {
             id: p.id,
@@ -74,6 +78,14 @@ export const publicProductsRouter = router({
             gender: p.gender,
             isFeatured: p.isFeatured,
             primaryImage: primaryImage?.imageUrl ?? null,
+            variants: variants
+              .filter((v) => v.isAvailable)
+              .map((v) => ({
+                id: v.id,
+                size: v.size,
+                color: v.color,
+                inStock: v.stockQuantity > 0,
+              })),
           };
         })
       );
@@ -153,9 +165,14 @@ export const publicProductsRouter = router({
         isFeatured: true,
       });
 
+      const variantRepo = container.getProductVariantRepository();
+
       return Promise.all(
         products.slice(0, input.limit).map(async (p) => {
-          const images = await imageRepo.findByProduct(p.id);
+          const [images, variants] = await Promise.all([
+            imageRepo.findByProduct(p.id),
+            variantRepo.findByProduct(p.id),
+          ]);
           const primaryImage = images.find((img) => img.isPrimary) || images[0];
           return {
             id: p.id,
@@ -164,6 +181,14 @@ export const publicProductsRouter = router({
             basePrice: p.basePrice,
             salePrice: p.salePrice,
             primaryImage: primaryImage?.imageUrl ?? null,
+            variants: variants
+              .filter((v) => v.isAvailable)
+              .map((v) => ({
+                id: v.id,
+                size: v.size,
+                color: v.color,
+                inStock: v.stockQuantity > 0,
+              })),
           };
         })
       );
@@ -200,10 +225,14 @@ export const publicProductsRouter = router({
       const totalPages = Math.ceil(total / limit);
 
       const imageRepo = container.getProductImageRepository();
+      const variantRepo = container.getProductVariantRepository();
 
       const products = await Promise.all(
         allResults.slice(offset, offset + limit).map(async (p) => {
-          const images = await imageRepo.findByProduct(p.id);
+          const [images, variants] = await Promise.all([
+            imageRepo.findByProduct(p.id),
+            variantRepo.findByProduct(p.id),
+          ]);
           const primaryImage = images.find((img) => img.isPrimary) || images[0];
           return {
             id: p.id,
@@ -212,6 +241,14 @@ export const publicProductsRouter = router({
             basePrice: p.basePrice,
             salePrice: p.salePrice,
             primaryImage: primaryImage?.imageUrl ?? null,
+            variants: variants
+              .filter((v) => v.isAvailable)
+              .map((v) => ({
+                id: v.id,
+                size: v.size,
+                color: v.color,
+                inStock: v.stockQuantity > 0,
+              })),
           };
         })
       );

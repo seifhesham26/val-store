@@ -10,7 +10,11 @@ import {
   Truck,
   RefreshCw,
   Shield,
+  Loader2,
+  LogIn,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useCart } from "@/components/providers/cart-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WishlistButton } from "@/components/products/WishlistButton";
@@ -45,18 +49,40 @@ export function ProductDetail({ product }: ProductDetailProps) {
     product.images?.[0] || ""
   );
 
-  const handleAddToCart = () => {
+  const [isAdding, setIsAdding] = useState(false);
+  const { addItem, openCart, isAuthenticated } = useCart();
+
+  const handleAddToCart = async () => {
     if (!selectedSize) {
-      alert("Please select a size");
+      toast.error("Please select a size");
       return;
     }
-    // TODO: Integrate with cart
-    console.log("Adding to cart:", {
-      product,
-      selectedSize,
-      selectedColor,
-      quantity,
-    });
+
+    if (!isAuthenticated) {
+      toast.info("Please sign in to add items to your cart", {
+        action: {
+          label: "Sign In",
+          onClick: () => {
+            window.location.href = `/login?redirect=${encodeURIComponent(
+              window?.location?.pathname || "/"
+            )}`;
+          },
+        },
+      });
+      return;
+    }
+
+    setIsAdding(true);
+    try {
+      await addItem(product.id, quantity);
+      toast.success(`${product.name} added to cart`);
+      openCart();
+    } catch (error) {
+      console.error("Failed to add to cart:", error);
+      toast.error("Failed to add to cart. Please try again.");
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   return (
@@ -254,13 +280,38 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
             {/* Add to Cart */}
             <div className="flex gap-4 mb-8">
-              <Button
-                onClick={handleAddToCart}
-                className="flex-1 bg-white text-black hover:bg-val-silver py-6 text-lg font-medium"
-                disabled={!product.inStock}
-              >
-                {product.inStock ? "Add to Cart" : "Out of Stock"}
-              </Button>
+              {!isAuthenticated ? (
+                <Button
+                  className="flex-1 bg-val-accent hover:bg-val-accent/90 text-white py-6 text-lg font-medium"
+                  asChild
+                >
+                  <Link
+                    href={`/login?redirect=${encodeURIComponent(
+                      window?.location?.pathname || "/"
+                    )}`}
+                  >
+                    <LogIn className="h-5 w-5 mr-2" />
+                    Sign In to Buy
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleAddToCart}
+                  className="flex-1 bg-white text-black hover:bg-val-silver py-6 text-lg font-medium"
+                  disabled={!product.inStock || isAdding}
+                >
+                  {isAdding ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      Adding...
+                    </>
+                  ) : product.inStock ? (
+                    "Add to Cart"
+                  ) : (
+                    "Out of Stock"
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* Trust Badges */}

@@ -1,18 +1,21 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle, Package, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCartStore } from "@/lib/stores/cart-store";
+import { useCart } from "@/components/providers/cart-provider";
+import { useSession } from "@/lib/auth-client";
 import { trpc } from "@/lib/trpc";
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session_id");
   const orderId = searchParams.get("order_id");
-  const clearCart = useCartStore((state) => state.clearCart);
+  const { clearCart } = useCart();
+  const { isPending } = useSession();
+  const hasCleared = useRef(false);
 
   const orderNumberByIdQuery = trpc.public.orders.getOrderNumberById.useQuery(
     { orderId: orderId ?? "" },
@@ -32,8 +35,11 @@ function CheckoutSuccessContent() {
 
   // Clear local cart on success
   useEffect(() => {
-    clearCart();
-  }, [clearCart]);
+    if (!isPending && !hasCleared.current) {
+      clearCart();
+      hasCleared.current = true;
+    }
+  }, [clearCart, isPending]);
 
   return (
     <div className="container mx-auto px-4 py-16">
@@ -57,12 +63,12 @@ function CheckoutSuccessContent() {
           </p>
         ) : null}
 
-        <div className="mb-8 rounded-lg bg-muted p-6">
+        <div className="mb-8 rounded-lg bg-[#111] border border-white/10 p-6 text-white">
           <div className="mb-2 flex items-center justify-center gap-2">
-            <Package className="h-5 w-5" />
-            <span className="font-medium">What happens next?</span>
+            <Package className="h-5 w-5 text-val-accent" />
+            <span className="font-medium text-white">What happens next?</span>
           </div>
-          <ul className="space-y-2 text-left text-sm text-muted-foreground">
+          <ul className="space-y-2 text-left text-sm text-gray-400">
             <li>• You&apos;ll receive an order confirmation email</li>
             <li>• We&apos;ll prepare your items for shipping</li>
             <li>• You&apos;ll get tracking info when shipped</li>

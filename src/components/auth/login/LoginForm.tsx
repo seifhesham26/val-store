@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,8 @@ import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-o
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
   const [identifier, setIdentifier] = useState(""); // Email or phone
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -71,8 +73,8 @@ export function LoginForm() {
         return;
       }
 
-      // Success - redirect to home
-      router.push("/");
+      // Success - redirect to intended page
+      router.push(redirectUrl);
       router.refresh();
     } catch {
       setError("An unexpected error occurred");
@@ -112,7 +114,7 @@ export function LoginForm() {
           value={identifier}
           onChange={handleIdentifierChange}
           required
-          className="bg-white/[0.06] border-white/10 text-white placeholder:text-gray-500"
+          className="bg-white/6 border-white/10 text-white placeholder:text-gray-500"
         />
       </div>
 
@@ -147,7 +149,7 @@ export function LoginForm() {
       <div className="mt-4 text-center text-sm text-gray-400">
         Don&apos;t have an account?{" "}
         <Link
-          href="/signup"
+          href={`/signup${searchParams.toString() ? `?${searchParams.toString()}` : ""}`}
           className="text-val-accent hover:text-val-accent-light transition-colors"
         >
           Sign up

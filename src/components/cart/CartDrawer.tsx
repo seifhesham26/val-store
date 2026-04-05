@@ -120,7 +120,7 @@ export function CartDrawer() {
                 {/* View Cart Button */}
                 <Button
                   variant="outline"
-                  className="w-full border-white/10 text-gray-300 hover:bg-white/[0.04] hover:text-white"
+                  className="w-full border-white/10 hover:bg-white/4 hover:text-white"
                   asChild
                 >
                   <Link href="/cart" onClick={closeCart}>

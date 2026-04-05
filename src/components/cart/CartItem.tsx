@@ -51,6 +51,7 @@ export function CartItem({
             alt={item.productName}
             fill
             className="object-cover"
+            unoptimized
           />
         ) : (
           <div className="flex h-full items-center justify-center text-gray-500">
@@ -80,7 +81,7 @@ export function CartItem({
               onClick={handleDecrease}
               disabled={disabled || !canDecrease}
             >
-              <Minus className="h-3 w-3" />
+              <Minus className="h-3 w-3 text-white" />
             </Button>
 
             <span className="w-8 text-center text-sm font-medium text-white">
@@ -94,7 +95,7 @@ export function CartItem({
               onClick={handleIncrease}
               disabled={disabled || !canIncrease}
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="h-3 w-3 text-white" />
             </Button>
           </div>
 
