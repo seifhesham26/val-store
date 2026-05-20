@@ -1,172 +1,94 @@
 /**
- * Rate Limiter
+ * Rate Limiter (Upstash Redis)
  *
- * Simple in-memory rate limiting for auth endpoints.
- * In production, use Redis for distributed rate limiting.
+ * Distributed rate limiting using Upstash Redis.
+ * Works correctly in serverless environments (Vercel) where
+ * in-memory state is not shared across function invocations.
  *
- * Features:
- * - Configurable attempts per window
- * - Automatic cleanup of expired entries
- * - IP-based or user-based limiting
+ * Falls back to allowing all requests if Upstash is not configured
+ * (for local development without Redis).
  */
 
-interface RateLimitEntry {
-  attempts: number;
-  firstAttempt: number;
-}
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
-interface RateLimiterConfig {
-  maxAttempts: number;
-  windowMs: number;
-}
-
-// Default configs for different scenarios
-export const RATE_LIMIT_CONFIGS = {
-  // Auth endpoints: 5 attempts per 15 minutes
-  auth: { maxAttempts: 5, windowMs: 15 * 60 * 1000 },
-
-  // General API: 100 requests per minute
-  api: { maxAttempts: 100, windowMs: 60 * 1000 },
-
-  // Password reset: 3 attempts per hour
-  passwordReset: { maxAttempts: 3, windowMs: 60 * 60 * 1000 },
-} as const;
-
-export class RateLimiter {
-  private store: Map<string, RateLimitEntry> = new Map();
-  private readonly config: RateLimiterConfig;
-  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
-
-  constructor(config: RateLimiterConfig) {
-    this.config = config;
-    this.startCleanup();
-  }
-
-  /**
-   * Check if a key (IP, user ID, etc.) is rate limited
-   * Returns true if the request should be blocked
-   */
-  isLimited(key: string): boolean {
-    const now = Date.now();
-    const entry = this.store.get(key);
-
-    if (!entry) {
-      return false;
-    }
-
-    // Check if window has expired
-    if (now - entry.firstAttempt > this.config.windowMs) {
-      this.store.delete(key);
-      return false;
-    }
-
-    return entry.attempts >= this.config.maxAttempts;
-  }
-
-  /**
-   * Record an attempt for a key
-   * Call this BEFORE processing the request
-   */
-  recordAttempt(key: string): {
-    allowed: boolean;
-    remaining: number;
-    resetIn: number;
-  } {
-    const now = Date.now();
-    const entry = this.store.get(key);
-
-    if (!entry || now - entry.firstAttempt > this.config.windowMs) {
-      // Start new window
-      this.store.set(key, { attempts: 1, firstAttempt: now });
-      return {
-        allowed: true,
-        remaining: this.config.maxAttempts - 1,
-        resetIn: this.config.windowMs,
-      };
-    }
-
-    // Existing window
-    entry.attempts++;
-    this.store.set(key, entry);
-
-    const remaining = Math.max(0, this.config.maxAttempts - entry.attempts);
-    const resetIn = this.config.windowMs - (now - entry.firstAttempt);
-
-    return {
-      allowed: entry.attempts <= this.config.maxAttempts,
-      remaining,
-      resetIn,
-    };
-  }
-
-  /**
-   * Reset rate limit for a key (e.g., after successful login)
-   */
-  reset(key: string): void {
-    this.store.delete(key);
-  }
-
-  /**
-   * Get info about a key's rate limit status
-   */
-  getStatus(
-    key: string
-  ): { attempts: number; remaining: number; resetIn: number } | null {
-    const entry = this.store.get(key);
-
-    if (!entry) {
-      return null;
-    }
-
-    const now = Date.now();
-    const resetIn = Math.max(
-      0,
-      this.config.windowMs - (now - entry.firstAttempt)
-    );
-    const remaining = Math.max(0, this.config.maxAttempts - entry.attempts);
-
-    return {
-      attempts: entry.attempts,
-      remaining,
-      resetIn,
-    };
-  }
-
-  /**
-   * Start automatic cleanup of expired entries
-   */
-  private startCleanup(): void {
-    // Clean up every minute
-    this.cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      for (const [key, entry] of this.store.entries()) {
-        if (now - entry.firstAttempt > this.config.windowMs) {
-          this.store.delete(key);
-        }
-      }
-    }, 60 * 1000);
-  }
-
-  /**
-   * Stop the cleanup interval (for testing/shutdown)
-   */
-  stop(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
-    }
-  }
-}
-
-// Singleton instances for common use cases
-export const authRateLimiter = new RateLimiter(RATE_LIMIT_CONFIGS.auth);
-export const apiRateLimiter = new RateLimiter(RATE_LIMIT_CONFIGS.api);
-export const passwordResetRateLimiter = new RateLimiter(
-  RATE_LIMIT_CONFIGS.passwordReset
+/**
+ * Whether Upstash Redis is configured.
+ * When false, rate limiting is disabled (all requests allowed).
+ */
+const isConfigured = !!(
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
 );
 
 /**
- * Helper to get client IP from request headers
+ * Create a Redis client if configured, otherwise null.
+ */
+const redis = isConfigured
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    })
+  : null;
+
+/**
+ * Auth rate limiter: 5 attempts per 15-minute sliding window.
+ * Protects login, signup, and phone-lookup endpoints from brute-force.
+ */
+export const authRateLimiter = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, "15 m"),
+      prefix: "ratelimit:auth",
+    })
+  : null;
+
+/**
+ * Password reset rate limiter: 3 attempts per hour.
+ * Prevents inbox spamming and Resend quota abuse.
+ */
+export const passwordResetRateLimiter = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(3, "1 h"),
+      prefix: "ratelimit:password-reset",
+    })
+  : null;
+
+/**
+ * General API rate limiter: 100 requests per minute.
+ * Optional safeguard for public endpoints.
+ */
+export const apiRateLimiter = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(100, "1 m"),
+      prefix: "ratelimit:api",
+    })
+  : null;
+
+/**
+ * Check rate limit for a given identifier.
+ * Returns { allowed, remaining, resetIn } or allows all if Upstash is not configured.
+ */
+export async function checkRateLimit(
+  limiter: Ratelimit | null,
+  identifier: string
+): Promise<{ allowed: boolean; remaining: number; resetInMs: number }> {
+  if (!limiter) {
+    // Upstash not configured — allow all (development mode)
+    return { allowed: true, remaining: Infinity, resetInMs: 0 };
+  }
+
+  const result = await limiter.limit(identifier);
+  return {
+    allowed: result.success,
+    remaining: result.remaining,
+    resetInMs: result.reset - Date.now(),
+  };
+}
+
+/**
+ * Helper to get client IP from request headers.
  */
 export function getClientIp(headers: Headers): string {
   // Check common proxy headers

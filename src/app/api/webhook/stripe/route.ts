@@ -45,13 +45,6 @@ export async function POST(request: NextRequest) {
       const customerEmail = session.customer_email;
       const metadata = session.metadata;
 
-      console.log("Checkout completed:", {
-        sessionId: session.id,
-        email: customerEmail,
-        orderId: metadata?.orderId,
-        paymentStatus: session.payment_status,
-      });
-
       // Persist payment + order status
       if (metadata?.orderId && session.payment_status === "paid") {
         try {
@@ -73,8 +66,6 @@ export async function POST(request: NextRequest) {
               updatedAt: new Date(),
             })
             .where(eq(payments.orderId, metadata.orderId));
-
-          console.log("Order marked paid:", metadata.orderId);
         } catch (error) {
           console.error("Failed to update order/payment:", error);
         }
@@ -102,8 +93,6 @@ export async function POST(request: NextRequest) {
             total,
             shippingAddress: "Address will be confirmed separately",
           });
-
-          console.log("Order confirmation email sent to:", customerEmail);
         } catch (error) {
           console.error("Failed to send order confirmation email:", error);
         }
@@ -115,7 +104,6 @@ export async function POST(request: NextRequest) {
           await db
             .delete(cartItems)
             .where(eq(cartItems.userId, metadata.userId));
-          console.log("Cart cleared for user:", metadata.userId);
         } catch (error) {
           console.error("Failed to clear cart:", error);
         }
@@ -125,19 +113,17 @@ export async function POST(request: NextRequest) {
     }
 
     case "payment_intent.succeeded": {
-      const paymentIntent = event.data.object;
-      console.log("Payment succeeded:", paymentIntent.id);
+      const _paymentIntent = event.data.object;
       break;
     }
 
     case "payment_intent.payment_failed": {
-      const paymentIntent = event.data.object;
-      console.error("Payment failed:", paymentIntent.id);
+      const _paymentIntent = event.data.object;
       break;
     }
 
     default:
-      console.log(`Unhandled event type: ${event.type}`);
+    // Unhandled event type — no action needed
   }
 
   return NextResponse.json({ received: true });

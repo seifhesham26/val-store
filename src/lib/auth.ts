@@ -13,8 +13,6 @@ export const auth = betterAuth({
   // Email verification configuration
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
-      console.log("[Auth] Sending verification email to:", user.email);
-      console.log("[Auth] Verification URL:", url);
       try {
         const emailService = container.getEmailService();
         await emailService.sendVerificationEmail(
@@ -22,7 +20,6 @@ export const auth = betterAuth({
           url,
           user.name || undefined
         );
-        console.log("[Auth] Verification email sent successfully");
       } catch (error) {
         console.error("[Auth] Failed to send verification email:", error);
       }
@@ -36,7 +33,6 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false, // Disabled so users can sign up without email verification
     sendResetPassword: async ({ user, url }) => {
-      console.log("[Auth] Sending password reset email to:", user.email);
       try {
         const emailService = container.getEmailService();
         await emailService.sendPasswordResetEmail(
@@ -44,7 +40,6 @@ export const auth = betterAuth({
           url,
           user.name || undefined
         );
-        console.log("[Auth] Password reset email sent successfully");
       } catch (error) {
         console.error("[Auth] Failed to send password reset email:", error);
       }

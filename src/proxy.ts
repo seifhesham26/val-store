@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Next.js Middleware for Route Protection
+ * Next.js Proxy for Route Protection
  *
  * Provides first-line defense for admin routes.
  * This runs at the edge before the page even loads.
@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Public routes: /, /collections/*, /products/* (customer-facing)
  * Protected routes: /admin/* (admin only)
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Admin routes require authentication
@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Configure which routes the middleware applies to
+// Configure which routes the proxy applies to
 export const config = {
   matcher: [
     // Admin routes only - EXCLUDE api routes to prevent deadlock

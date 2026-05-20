@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,10 +18,6 @@ export const metadata: Metadata = {
   description: "Your premier destination for quality clothing",
 };
 
-/**
- * TEMPORARY: Simplified root layout for debugging
- * Removed: TRPCProvider, AnnouncementBar, Navbar, Toaster
- */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,6 +29,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
       >
         {children}
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   );

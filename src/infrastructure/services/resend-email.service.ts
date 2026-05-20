@@ -23,7 +23,7 @@ export class ResendEmailService implements EmailServiceInterface {
   constructor() {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      console.warn("RESEND_API_KEY not set - emails will not be sent");
+      throw new Error("RESEND_API_KEY is not set — email service unavailable");
     }
     this.resend = new Resend(apiKey);
     this.fromEmail =
@@ -43,17 +43,11 @@ export class ResendEmailService implements EmailServiceInterface {
       });
 
       if (error) {
-        console.error(
-          "Email send error object:",
-          JSON.stringify(error, null, 2)
-        );
-        console.error("Email send error:", error.name, error.message);
         return { id: "", success: false };
       }
 
       return { id: data?.id || "", success: true };
-    } catch (err) {
-      console.error("Email send exception:", err);
+    } catch {
       return { id: "", success: false };
     }
   }
