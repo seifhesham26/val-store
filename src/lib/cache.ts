@@ -84,24 +84,20 @@ export const getCachedFeaturedProducts = unstable_cache(
     const imageRepo = container.getProductImageRepository();
     const products = await repo.findFeatured(limit);
 
-    // Fetch primary images for all products
-    const productsWithImages = await Promise.all(
-      products.map(async (p) => {
-        const images = await imageRepo.findByProduct(p.id);
-        const primaryImage = images.find((img) => img.isPrimary) || images[0];
-        return {
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          basePrice: p.basePrice,
-          salePrice: p.salePrice,
-          isFeatured: p.isFeatured,
-          primaryImage: primaryImage?.imageUrl ?? null,
-        };
-      })
+    // Batch-fetch primary images (1 query instead of N)
+    const imageMap = await imageRepo.findPrimaryByProducts(
+      products.map((p) => p.id)
     );
 
-    return productsWithImages;
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      basePrice: p.basePrice,
+      salePrice: p.salePrice,
+      isFeatured: p.isFeatured,
+      primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+    }));
   },
   [CACHE_TAGS.FEATURED_PRODUCTS],
   { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.FEATURED_PRODUCTS] }
@@ -202,58 +198,60 @@ export const getCachedProductBySlug = unstable_cache(
 
 /**
  * Get all active products with caching (for collections page)
+ * Uses DB-level LIMIT instead of fetching all then slicing
  */
 export const getCachedAllProducts = unstable_cache(
   async (limit: number = 50) => {
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
-    const products = await repo.findAll({ isActive: true });
+    const products = await repo.findAll({ isActive: true, limit });
 
-    return Promise.all(
-      products.slice(0, limit).map(async (p) => {
-        const images = await imageRepo.findByProduct(p.id);
-        const primaryImage = images.find((img) => img.isPrimary) || images[0];
-        return {
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          basePrice: p.basePrice,
-          salePrice: p.salePrice,
-          isFeatured: p.isFeatured,
-          primaryImage: primaryImage?.imageUrl ?? null,
-        };
-      })
+    // Batch-fetch primary images (1 query instead of N)
+    const imageMap = await imageRepo.findPrimaryByProducts(
+      products.map((p) => p.id)
     );
+
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      basePrice: p.basePrice,
+      salePrice: p.salePrice,
+      isFeatured: p.isFeatured,
+      primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+    }));
   },
   ["all-products"],
   { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
- * Get related products (random products excluding current)
+ * Get related products (excluding current product)
+ * Uses DB-level WHERE + LIMIT instead of fetching all then filtering in JS
  */
 export const getCachedRelatedProducts = unstable_cache(
   async (excludeId: string, limit: number = 4) => {
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
-    const products = await repo.findAll({ isActive: true });
+    const products = await repo.findAll({
+      isActive: true,
+      excludeId,
+      limit,
+    });
 
-    const filtered = products.filter((p) => p.id !== excludeId).slice(0, limit);
-
-    return Promise.all(
-      filtered.map(async (p) => {
-        const images = await imageRepo.findByProduct(p.id);
-        const primaryImage = images.find((img) => img.isPrimary) || images[0];
-        return {
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          basePrice: p.basePrice,
-          salePrice: p.salePrice,
-          primaryImage: primaryImage?.imageUrl ?? null,
-        };
-      })
+    // Batch-fetch primary images (1 query instead of N)
+    const imageMap = await imageRepo.findPrimaryByProducts(
+      products.map((p) => p.id)
     );
+
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      basePrice: p.basePrice,
+      salePrice: p.salePrice,
+      primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+    }));
   },
   ["related-products"],
   { revalidate: DEFAULT_REVALIDATE }

@@ -58,4 +58,12 @@ export interface ProductImageRepositoryInterface {
    * Get count of images for a product
    */
   countByProduct(productId: string): Promise<number>;
+
+  /**
+   * Batch-fetch primary images for multiple products (avoids N+1)
+   * Returns a Map of productId → primary ProductImageEntity
+   */
+  findPrimaryByProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductImageEntity>>;
 }

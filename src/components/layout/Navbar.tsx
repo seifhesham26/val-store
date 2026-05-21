@@ -16,7 +16,10 @@ import { MobileMenu } from "./MobileMenu";
 import { trpc } from "@/lib/trpc";
 import { useCartStore } from "@/lib/stores/cart-store";
 import { UserNotificationsBell } from "@/components/UserNotificationsBell";
-import { SearchDialog, useSearchShortcut } from "@/components/SearchDialog";
+import {
+  SearchDialog,
+  useSearchShortcut,
+} from "@/components/search/SearchDialog";
 
 // Detect client-side rendering without useEffect+setState (React-endorsed)
 const emptySubscribe = () => () => {};

@@ -6,7 +6,7 @@
 
 import { db } from "@/db";
 import { productImages } from "@/db/schema";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc, sql, inArray } from "drizzle-orm";
 import { ProductImageRepositoryInterface } from "@/domain/products/interfaces/repositories/product-image.repository.interface";
 import { ProductImageEntity } from "@/domain/products/entities/product-image.entity";
 
@@ -155,6 +155,40 @@ export class DrizzleProductImageRepository implements ProductImageRepositoryInte
       .where(eq(productImages.productId, productId));
 
     return Number(result[0]?.count ?? 0);
+  }
+
+  /**
+   * Batch-fetch primary images for multiple products in a single query.
+   * Returns Map<productId, primaryImageEntity>
+   */
+  async findPrimaryByProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductImageEntity>> {
+    if (productIds.length === 0) return new Map();
+
+    const images = await db.query.productImages.findMany({
+      where: inArray(productImages.productId, productIds),
+      orderBy: [asc(productImages.displayOrder)],
+    });
+
+    // Group by productId, pick primary (or first) per product
+    const result = new Map<string, ProductImageEntity>();
+    const byProduct = new Map<string, typeof images>();
+
+    for (const img of images) {
+      const list = byProduct.get(img.productId) ?? [];
+      list.push(img);
+      byProduct.set(img.productId, list);
+    }
+
+    for (const [productId, imgs] of byProduct) {
+      const primary = imgs.find((i) => i.isPrimary) ?? imgs[0];
+      if (primary) {
+        result.set(productId, this.mapToEntity(primary));
+      }
+    }
+
+    return result;
   }
 
   /**

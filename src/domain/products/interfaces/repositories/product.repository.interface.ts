@@ -14,6 +14,10 @@ export interface ProductFilters {
   minPrice?: number;
   maxPrice?: number;
   inStock?: boolean;
+  /** Max number of results to return */
+  limit?: number;
+  /** Exclude a specific product ID from results */
+  excludeId?: string;
 }
 
 export interface ProductRepositoryInterface {

@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { products } from "@/db/schema";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, ne, desc, sql } from "drizzle-orm";
 import {
   ProductRepositoryInterface,
   ProductFilters,
@@ -66,6 +66,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
         images: true,
       },
       orderBy: [desc(products.createdAt)],
+      limit: filters?.limit,
     });
 
     return productsList.map((p) => this.mapToEntity(p));
@@ -287,6 +288,10 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
 
     if (filters?.maxPrice !== undefined) {
       conditions.push(lte(products.basePrice, filters.maxPrice.toString()));
+    }
+
+    if (filters?.excludeId) {
+      conditions.push(ne(products.id, filters.excludeId));
     }
 
     return conditions;
