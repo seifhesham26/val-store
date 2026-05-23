@@ -31,23 +31,17 @@ export function WishlistGrid({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map(({ product }) => {
-          if (!product) return null;
-          const p = product as unknown as Product & {
-            imageUrl: string;
-            imageAlt: string;
-          };
-
+        {items.map((item) => {
           return (
             <div
-              key={product.id}
+              key={item.productId}
               className="bg-zinc-900 border border-white/10 rounded-lg overflow-hidden flex flex-col group"
             >
               <div className="relative aspect-square bg-white/[0.04]">
-                {p.imageUrl ? (
+                {item.productImage ? (
                   <Image
-                    src={p.imageUrl}
-                    alt={p.imageAlt ?? product.name}
+                    src={item.productImage}
+                    alt={item.productImageAlt ?? item.productName}
                     fill
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                     className="object-cover"
@@ -61,22 +55,25 @@ export function WishlistGrid({
 
               <div className="p-4 flex-1 flex flex-col">
                 <Link
-                  href={`/products/${product.slug}`}
+                  href={`/products/${item.productSlug}`}
                   className="hover:text-val-accent transition-colors"
                 >
                   <h3 className="text-sm font-medium text-white line-clamp-1">
-                    {product.name}
+                    {item.productName}
                   </h3>
                 </Link>
                 <p className="text-white font-semibold mt-1">
-                  ${Number(product.salePrice || product.basePrice).toFixed(2)}
+                  $
+                  {Number(item.productSalePrice ?? item.productPrice).toFixed(
+                    2
+                  )}
                 </p>
 
                 <div className="flex gap-2 mt-auto pt-4">
                   <Button
                     className="flex-1 bg-val-accent hover:bg-val-accent/90 text-black font-medium text-sm"
                     size="sm"
-                    onClick={() => onMoveToCart(product)}
+                    onClick={() => onMoveToCart({ id: item.productId })}
                   >
                     <ShoppingCart className="mr-2 h-4 w-4" />
                     Move to Cart
@@ -84,7 +81,7 @@ export function WishlistGrid({
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => onRemove(product.id)}
+                    onClick={() => onRemove(item.productId)}
                     className="border-white/10 text-red-400 hover:text-red-300 hover:bg-red-500/10 hover:border-red-500/20 h-9 w-9"
                   >
                     <Trash2 className="h-4 w-4" />

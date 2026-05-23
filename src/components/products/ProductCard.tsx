@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { WishlistButton } from "@/components/products/WishlistButton";
+import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import {
   QuickAddSliderBar,
   type QuickAddVariant,

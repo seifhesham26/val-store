@@ -4,7 +4,7 @@
  * Defines the contract for Wishlist data operations.
  */
 
-import { Wishlist, Product } from "@/db/schema";
+import { WishlistItemEntity } from "@/domain/wishlist/entities/wishlist-item.entity";
 
 export interface WishlistRepositoryInterface {
   /**
@@ -20,7 +20,7 @@ export interface WishlistRepositoryInterface {
   /**
    * Get user's wishlist with product details
    */
-  findByUserId(userId: string): Promise<(Wishlist & { product: Product })[]>;
+  findByUserId(userId: string): Promise<WishlistItemEntity[]>;
 
   /**
    * Check if a product is in user's wishlist

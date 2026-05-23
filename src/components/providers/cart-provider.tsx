@@ -11,6 +11,7 @@ import { useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/lib/auth-client";
 import { trpc } from "@/lib/trpc";
 import { useCartStore, type CartItem } from "@/lib/stores/cart-store";
+import { toast } from "sonner";
 
 interface CartProviderProps {
   children: React.ReactNode;
@@ -105,9 +106,17 @@ export function useCart() {
           store.setSyncing(false);
         }
       } else {
-        // For guests, we'd need product info - this would require a separate fetch
-        // For now, just open cart to prompt login
-        store.openCart();
+        // For guests, show a toast with a redirect to login
+        toast.info("Please sign in to add items to your cart", {
+          action: {
+            label: "Sign In",
+            onClick: () => {
+              window.location.href = `/login?redirect=${encodeURIComponent(
+                window?.location?.pathname || "/"
+              )}`;
+            },
+          },
+        });
       }
     },
     [isAuthenticated, addMutation, store]

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { WishlistButton } from "@/components/products/WishlistButton";
+import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import { Share2 } from "lucide-react";
 
 interface ProductImageGalleryProps {
