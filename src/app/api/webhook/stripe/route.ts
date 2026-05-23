@@ -31,7 +31,12 @@ export async function POST(request: NextRequest) {
     event = stripeService.constructWebhookEvent(body, signature);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("Webhook signature verification failed:", message);
+    console.error(
+      JSON.stringify({
+        error: "Webhook signature verification failed",
+        message,
+      })
+    );
     return NextResponse.json(
       { error: `Webhook Error: ${message}` },
       { status: 400 }
@@ -67,7 +72,12 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(payments.orderId, metadata.orderId));
         } catch (error) {
-          console.error("Failed to update order/payment:", error);
+          console.error(
+            JSON.stringify({
+              error: "Failed to update order/payment",
+              details: error instanceof Error ? error.message : String(error),
+            })
+          );
         }
       }
 
@@ -94,7 +104,12 @@ export async function POST(request: NextRequest) {
             shippingAddress: "Address will be confirmed separately",
           });
         } catch (error) {
-          console.error("Failed to send order confirmation email:", error);
+          console.error(
+            JSON.stringify({
+              error: "Failed to send order confirmation email",
+              details: error instanceof Error ? error.message : String(error),
+            })
+          );
         }
       }
 
@@ -105,7 +120,12 @@ export async function POST(request: NextRequest) {
             .delete(cartItems)
             .where(eq(cartItems.userId, metadata.userId));
         } catch (error) {
-          console.error("Failed to clear cart:", error);
+          console.error(
+            JSON.stringify({
+              error: "Failed to clear cart",
+              details: error instanceof Error ? error.message : String(error),
+            })
+          );
         }
       }
 
