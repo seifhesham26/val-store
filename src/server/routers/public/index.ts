@@ -20,6 +20,7 @@ import { profileRouter } from "./profile";
 import { publicCouponsRouter } from "./coupons";
 import { publicReviewsRouter } from "./reviews";
 import { publicNotificationsRouter } from "./notifications";
+import { newsletterRouter } from "./newsletter";
 
 export const publicRouter = router({
   products: publicProductsRouter,
@@ -35,4 +36,5 @@ export const publicRouter = router({
   coupons: publicCouponsRouter,
   reviews: publicReviewsRouter,
   notifications: publicNotificationsRouter,
+  newsletter: newsletterRouter,
 });

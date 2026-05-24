@@ -5,7 +5,6 @@ import { NewArrivals } from "@/components/home/NewArrivals";
 import { PromoBanner } from "@/components/home/PromoBanner";
 import { BrandStory } from "@/components/home/BrandStory";
 import { NewsletterSection } from "@/components/home/NewsletterSection";
-import { InstagramFeed } from "@/components/home/InstagramFeed";
 import { TrustIndicators } from "@/components/home/TrustIndicators";
 
 export default function Home() {
@@ -18,7 +17,6 @@ export default function Home() {
       <NewArrivals />
       <PromoBanner />
       <NewsletterSection />
-      <InstagramFeed />
       <TrustIndicators />
     </main>
   );

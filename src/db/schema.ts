@@ -856,6 +856,28 @@ export type FeaturedItem = typeof featuredItems.$inferSelect;
 export type NewFeaturedItem = typeof featuredItems.$inferInsert;
 
 // ============================================
+// NEWSLETTER SUBSCRIBERS TABLE
+// ============================================
+
+export const newsletterSubscribers = pgTable(
+  "newsletter_subscribers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: varchar("email", { length: 255 }).notNull().unique(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    emailIdx: uniqueIndex("idx_newsletter_email").on(table.email),
+    isActiveIdx: index("idx_newsletter_is_active").on(table.isActive),
+  })
+);
+
+export type NewsletterSubscriber = typeof newsletterSubscribers.$inferSelect;
+export type NewNewsletterSubscriber = typeof newsletterSubscribers.$inferInsert;
+
+// ============================================
 // RELATIONS (for self-referencing and complex joins)
 // ============================================
 

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
 interface NewsletterSectionProps {
   title?: string;
@@ -13,21 +15,18 @@ export function NewsletterSection({
   subtitle = "Be the first to know about new drops and exclusive offers",
 }: NewsletterSectionProps) {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
+  const subscribeMutation = trpc.public.newsletter.subscribe.useMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
-    setStatus("loading");
-
-    // TODO: Implement actual newsletter subscription
-    // For now, simulate a successful subscription
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setStatus("success");
-    setEmail("");
+    try {
+      await subscribeMutation.mutateAsync({ email });
+      setEmail("");
+    } catch (error) {
+      toast.error("Failed to subscribe. Please try again.");
+    }
   };
 
   return (
@@ -40,7 +39,7 @@ export function NewsletterSection({
           {subtitle}
         </p>
 
-        {status === "success" ? (
+        {subscribeMutation.isSuccess ? (
           <p className="text-val-accent-light text-lg">
             Thanks for subscribing! Check your inbox soon.
           </p>
@@ -59,10 +58,10 @@ export function NewsletterSection({
             />
             <Button
               type="submit"
-              disabled={status === "loading"}
+              disabled={subscribeMutation.isPending}
               className="bg-white text-black hover:bg-val-silver px-6 py-3 font-medium"
             >
-              {status === "loading" ? "Subscribing..." : "Subscribe"}
+              {subscribeMutation.isPending ? "Subscribing..." : "Subscribe"}
             </Button>
           </form>
         )}
