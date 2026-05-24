@@ -20,8 +20,8 @@ import { createProductSchema, type CreateProductValues } from "./create/schema";
 import { BasicInfoSection } from "./create/BasicInfoSection";
 import { PricingSection } from "./create/PricingSection";
 import { SidebarActions } from "./create/SidebarActions";
-import { ImageUploadSection } from "@/components/admin/create-product/ImageUploadSection";
-import { VariantsSection } from "@/components/admin/create-product/VariantsSection";
+import { ImageUploadSection } from "@/components/admin/products/create/ImageUploadSection";
+import { VariantsSection } from "@/components/admin/products/create/VariantsSection";
 
 type PendingImage = {
   imageUrl: string;

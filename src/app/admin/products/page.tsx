@@ -4,11 +4,13 @@ import { useState, useRef, useCallback } from "react";
 import {
   ProductsListHeader,
   type ProductFilters,
-} from "@/components/admin/products-list/ProductsListHeader";
+} from "@/components/admin/products/list/ProductsListHeader";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   ProductsTable,
   type ProductsTableHandle,
-} from "@/components/admin/products-list/ProductsTable";
+} from "@/components/admin/products/list/ProductsTable";
 import { toast } from "sonner";
 
 export default function ProductsPage() {

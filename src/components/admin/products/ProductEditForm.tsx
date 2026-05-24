@@ -35,8 +35,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { ImageUploadSection } from "@/components/admin/create-product/ImageUploadSection";
-import { VariantsSection } from "@/components/admin/create-product/VariantsSection";
+import { ImageUploadSection } from "@/components/admin/products/create/ImageUploadSection";
+import { VariantsSection } from "@/components/admin/products/create/VariantsSection";
 
 // Validation schema
 const productFormSchema = z.object({
