@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 
 /**
  * Next.js Proxy for Route Protection
@@ -17,12 +18,13 @@ export async function proxy(request: NextRequest) {
 
   // Admin routes require authentication
   if (pathname.startsWith("/admin")) {
-    // Check for Better Auth session cookie (avoids HTTP call that can deadlock)
-    // Better Auth uses "better-auth.session_token" as the session cookie name
-    const sessionCookie = request.cookies.get("better-auth.session_token");
+    // Check for Better Auth session cookie (avoids HTTP call that can deadlock).
+    // Use Better Auth's helper so the cookie name matches regardless of the
+    // secure prefix (e.g. "__Secure-better-auth.session_token" over HTTPS).
+    const sessionCookie = getSessionCookie(request);
 
     // No session cookie = redirect to login
-    if (!sessionCookie?.value) {
+    if (!sessionCookie) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("redirect", pathname);
       loginUrl.searchParams.set("error", "unauthorized");
