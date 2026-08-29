@@ -31,6 +31,14 @@ export interface ProductVariantRepositoryInterface {
   findByProduct(productId: string): Promise<ProductVariantEntity[]>;
 
   /**
+   * Batch-load variants for several products at once.
+   * Avoids an N+1 when a grid needs every card's variant options.
+   */
+  findByProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductVariantEntity[]>>;
+
+  /**
    * Find variants with filters
    */
   findMany(filter: VariantFilter): Promise<ProductVariantEntity[]>;

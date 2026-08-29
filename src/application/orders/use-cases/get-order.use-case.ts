@@ -1,6 +1,7 @@
 import {
   OrderEntity,
   type OrderAddress,
+  type OrderItem,
 } from "@/domain/orders/entities/order.entity";
 import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
@@ -17,12 +18,7 @@ export interface GetOrderOutput {
   id: string;
   userId: string;
   status: string;
-  items: {
-    productId: string;
-    productName: string;
-    quantity: number;
-    price: number;
-  }[];
+  items: OrderItem[];
   subtotal: number;
   tax: number;
   shippingCost: number;

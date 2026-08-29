@@ -60,6 +60,7 @@ export function transformRelatedProducts(
     price: p.basePrice,
     salePrice: p.salePrice ?? undefined,
     primaryImage: p.primaryImage ?? undefined,
+    variants: p.variants,
     isOnSale: p.salePrice !== null && p.salePrice < p.basePrice,
   }));
 }

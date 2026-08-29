@@ -121,6 +121,9 @@ This is the biggest change. Issue #8 (cart dropped the variant) had to be fixed 
 - [ ] **Expected: two separate lines** — M and L — not one line with quantity 2. This is the core of the fix.
 - [ ] Add the same size M again. **Expected:** the M line goes to quantity 2; still two lines total.
 - [ ] Use the hover **Quick Add** wheels on a product card. Pick a size/colour, Add. **Expected:** that exact variant lands in the cart with the right label.
+- [ ] Do the same from the **homepage "Best Sellers"** section and from **"You May Also Like"** at the bottom of a product page. **Expected:** both show the size/colour wheels, not a plain "Quick Add" button, and the cart records the variant. _(These two grids weren't loading variants — items added there skipped stock tracking entirely. Found during the post-fix review.)_
+- [ ] Open an order in **Admin → Orders**. **Expected:** each line shows the variant under the product name, so you know which size to ship.
+- [ ] Same on **Account → Orders → an order**.
 
 ### 6b. Stock limits are real
 
@@ -128,7 +131,9 @@ Previously `maxStock` was always 0 because no variant was ever recorded.
 
 - [ ] In **Admin → Inventory**, set one variant's stock to exactly **2**.
 - [ ] On the storefront add that variant to your cart, then press **+** in the cart drawer repeatedly. **Expected:** you can reach 2 and the **+ button then disables**.
-- [ ] Select a variant whose stock is **0** on the product page. **Expected:** the Add to Cart button reads **Sold Out** and is disabled — the button now reflects the _selected_ variant, not the product overall.
+- [ ] Select a variant whose stock is **0** on the product page. **Expected:** the Add to Cart button reads **Out of Stock** and is disabled — the button now reflects the _selected_ variant, not the product overall.
+- [ ] Load a product page fresh, **before picking a size**. **Expected:** the button reads **Add to Cart** and is enabled; clicking it says "Please select a size". It must **not** say "Out of Stock" — that was a regression introduced by the variant work and fixed during review.
+- [ ] Pick a size/colour combination that doesn't exist (if your data has one). **Expected:** clicking gives "That combination is not available".
 
 ### 6c. Stock actually decrements on purchase
 
@@ -143,6 +148,7 @@ Previously `maxStock` was always 0 because no variant was ever recorded.
 - [ ] Add **2** of it to your cart (add it, then increase quantity — or set stock to 1 _after_ adding 2).
 - [ ] Try to check out. **Expected:** the order is refused with a message like _"Not enough stock for <product> (Black / M). Only 1 left."_ and **no order is created** — check Admin → Orders.
 - [ ] **Expected:** stock is still 1, and no `sale` row was added to the inventory log. The whole thing rolls back together.
+- [ ] **Expected:** if a coupon was applied, it is **not** consumed either — the coupon usage rolls back with the order.
 
 ### 6e. Cancelling restores stock
 

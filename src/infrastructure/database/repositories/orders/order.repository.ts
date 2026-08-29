@@ -180,8 +180,16 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       // Locking each variant row (FOR UPDATE) serialises concurrent checkouts
       // for the same variant, so two customers cannot both pass the stock check
       // and oversell the last unit.
-      for (const item of order.items) {
-        if (!item.variantId) continue; // Product has no variants — nothing to track
+      //
+      // Items are locked in a fixed (variant id) order. Two carts containing the
+      // same two variants would otherwise be able to grab them in opposite
+      // orders and deadlock each other.
+      const stockedItems = order.items
+        .filter((item) => item.variantId !== null)
+        .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
+
+      for (const item of stockedItems) {
+        if (!item.variantId) continue; // Narrowing for TypeScript; filtered above
 
         const [variant] = await tx
           .select({

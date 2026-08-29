@@ -20,7 +20,13 @@ export interface ProductCardProps {
   isNew?: boolean;
   isOnSale?: boolean;
   isFeatured?: boolean;
-  variants?: QuickAddVariant[];
+  /**
+   * Required on purpose. A card rendered without its variants falls back to a
+   * plain "Quick Add" that adds no variant, which silently skips stock
+   * tracking at checkout. Making this mandatory turns that omission into a
+   * compile error — pass [] only when the product genuinely has no variants.
+   */
+  variants: QuickAddVariant[];
 }
 
 export function ProductCard({
@@ -32,7 +38,7 @@ export function ProductCard({
   primaryImage,
   isNew = false,
   isOnSale = false,
-  variants = [],
+  variants,
 }: ProductCardProps) {
   const formattedPrice = price.toFixed(2);
   const formattedSalePrice = salePrice?.toFixed(2);

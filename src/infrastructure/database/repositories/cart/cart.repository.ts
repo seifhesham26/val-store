@@ -142,6 +142,29 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    * Add item to cart
    */
   async addItem(cartItem: CartItemEntity): Promise<CartItemEntity> {
+    // The variant id arrives from the client, so verify it actually belongs to
+    // this product before storing it. Without this a crafted request could pair
+    // product A with product B's variant, and checkout would then decrement the
+    // wrong product's stock.
+    if (cartItem.variantId) {
+      const [variant] = await db
+        .select({
+          productId: productVariants.productId,
+          isAvailable: productVariants.isAvailable,
+        })
+        .from(productVariants)
+        .where(eq(productVariants.id, cartItem.variantId))
+        .limit(1);
+
+      if (!variant || variant.productId !== cartItem.productId) {
+        throw new Error("Selected option is not available for this product");
+      }
+
+      if (!variant.isAvailable) {
+        throw new Error("Selected option is no longer available");
+      }
+    }
+
     // Check if item already exists
     const existing = await this.findByUserAndProduct(
       cartItem.userId,

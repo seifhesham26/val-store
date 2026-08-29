@@ -6,7 +6,7 @@
 
 import { db } from "@/db";
 import { productVariants } from "@/db/schema";
-import { eq, and, sql, gt } from "drizzle-orm";
+import { eq, and, sql, gt, inArray } from "drizzle-orm";
 import {
   ProductVariantRepositoryInterface,
   VariantFilter,
@@ -52,6 +52,25 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
   /**
    * Find variants with filters
    */
+  async findByProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductVariantEntity[]>> {
+    const result = new Map<string, ProductVariantEntity[]>();
+    if (productIds.length === 0) return result;
+
+    const variants = await db.query.productVariants.findMany({
+      where: inArray(productVariants.productId, productIds),
+    });
+
+    for (const variant of variants) {
+      const list = result.get(variant.productId) ?? [];
+      list.push(this.mapToEntity(variant));
+      result.set(variant.productId, list);
+    }
+
+    return result;
+  }
+
   async findMany(filter: VariantFilter): Promise<ProductVariantEntity[]> {
     const conditions = [];
 

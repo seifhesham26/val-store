@@ -59,11 +59,17 @@ export function ProductDetail({ product }: ProductDetailProps) {
         (!hasColors || v.color === selectedColor)
     ) ?? null;
 
-  // A product with no variants at all falls back to the product-level flag.
+  // Only claim "out of stock" once we actually know which variant is meant.
+  // Before a size is picked there is no resolved variant, and reporting that as
+  // out of stock would tell the customer a perfectly available product is
+  // unavailable. In that state the button stays enabled and the click handler
+  // below explains what is missing.
   const isSelectionInStock =
     product.variants.length === 0
       ? (product.inStock ?? false)
-      : (selectedVariant?.inStock ?? false);
+      : selectedVariant
+        ? selectedVariant.inStock
+        : true;
 
   const handleAddToCart = async () => {
     if (hasSizes && !selectedSize) {

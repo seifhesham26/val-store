@@ -25,6 +25,11 @@ export function ItemsCard({ order }: { order: OrderData }) {
             >
               <div className="space-y-1">
                 <p className="font-medium">{item.productName}</p>
+                {item.variantDetails && (
+                  <p className="text-sm font-medium text-primary">
+                    {item.variantDetails}
+                  </p>
+                )}
                 <p className="text-sm text-muted-foreground">
                   Qty: {item.quantity} × ${item.price.toFixed(2)}
                 </p>
