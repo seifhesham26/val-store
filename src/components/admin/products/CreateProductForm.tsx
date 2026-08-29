@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { Form } from "@/components/ui/form";
 import { createProductSchema, type CreateProductValues } from "./create/schema";
+import { AdditionalDetailsSection } from "./create/AdditionalDetailsSection";
 import { BasicInfoSection } from "./create/BasicInfoSection";
 import { PricingSection } from "./create/PricingSection";
 import { SidebarActions } from "./create/SidebarActions";
@@ -106,6 +107,11 @@ export function CreateProductForm() {
       salePrice: undefined,
       isActive: true,
       isFeatured: false,
+      gender: "unisex",
+      material: "",
+      careInstructions: "",
+      metaTitle: "",
+      metaDescription: "",
     },
   });
 
@@ -116,7 +122,14 @@ export function CreateProductForm() {
 
   // Handle form submission
   const onSubmit = (values: CreateProductValues) => {
-    createMutation.mutate(values);
+    createMutation.mutate({
+      ...values,
+      // Blank optional text fields are stored as null rather than "".
+      material: values.material.trim() || null,
+      careInstructions: values.careInstructions.trim() || null,
+      metaTitle: values.metaTitle.trim() || null,
+      metaDescription: values.metaDescription.trim() || null,
+    });
   };
 
   // Publish = submit with isActive: true
@@ -172,6 +185,8 @@ export function CreateProductForm() {
             />
 
             <PricingSection form={form} />
+
+            <AdditionalDetailsSection />
 
             <ImageUploadSection onImagesChange={setPendingImages} />
 

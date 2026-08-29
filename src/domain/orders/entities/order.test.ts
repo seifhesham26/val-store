@@ -24,6 +24,7 @@ const createTestOrder = (
     paidAt: Date | null;
     shippedAt: Date | null;
     deliveredAt: Date | null;
+    discount: number;
   }> = {}
 ) => {
   const defaults = {
@@ -33,7 +34,9 @@ const createTestOrder = (
     items: [
       {
         productId: "prod-1",
+        variantId: "variant-1",
         productName: "Test Product",
+        variantDetails: "Black / M",
         quantity: 2,
         price: 50,
       },
@@ -50,6 +53,7 @@ const createTestOrder = (
     deliveredAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    discount: 0,
   };
 
   const config = { ...defaults, ...overrides };
@@ -69,7 +73,8 @@ const createTestOrder = (
     config.shippedAt,
     config.deliveredAt,
     config.createdAt,
-    config.updatedAt
+    config.updatedAt,
+    config.discount
   );
 };
 
@@ -140,12 +145,56 @@ describe("OrderEntity", () => {
     });
   });
 
+  describe("validateTotal with a discount", () => {
+    it("subtracts the discount from the expected total", () => {
+      const order = createTestOrder({
+        subtotal: 100,
+        tax: 10,
+        shippingCost: 5,
+        discount: 20,
+        totalAmount: 95,
+      });
+      expect(() => order.validateTotal()).not.toThrow();
+    });
+
+    it("throws when the total ignores the discount", () => {
+      const order = createTestOrder({
+        subtotal: 100,
+        tax: 10,
+        shippingCost: 5,
+        discount: 20,
+        totalAmount: 115,
+      });
+      expect(() => order.validateTotal()).toThrow(/Order total mismatch/);
+    });
+
+    it("defaults the discount to zero when not supplied", () => {
+      const order = createTestOrder();
+      expect(order.discount).toBe(0);
+      expect(() => order.validateTotal()).not.toThrow();
+    });
+  });
+
   describe("getTotalItems", () => {
     it("returns sum of all item quantities", () => {
       const order = createTestOrder({
         items: [
-          { productId: "p1", productName: "A", quantity: 2, price: 10 },
-          { productId: "p2", productName: "B", quantity: 3, price: 20 },
+          {
+            productId: "p1",
+            variantId: null,
+            productName: "A",
+            variantDetails: null,
+            quantity: 2,
+            price: 10,
+          },
+          {
+            productId: "p2",
+            variantId: null,
+            productName: "B",
+            variantDetails: null,
+            quantity: 3,
+            price: 20,
+          },
         ],
       });
       expect(order.getTotalItems()).toBe(5);

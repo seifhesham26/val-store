@@ -85,6 +85,9 @@ export function CheckoutOrderSummary({
               <p className="font-medium text-sm line-clamp-1 text-white">
                 {item.productName}
               </p>
+              {item.variantLabel && (
+                <p className="text-xs text-gray-500">{item.variantLabel}</p>
+              )}
               <p className="text-sm text-gray-400 mt-1">
                 Qty: {item.quantity} × ${item.productPrice.toFixed(2)}
               </p>

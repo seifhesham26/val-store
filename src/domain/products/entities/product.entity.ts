@@ -23,13 +23,16 @@ export class ProductEntity {
     public readonly isFeatured: boolean,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    // Product detail fields
-    public readonly gender: Gender | null = null,
-    public readonly material: string | null = null,
-    public readonly careInstructions: string | null = null,
-    public readonly metaTitle: string | null = null,
-    public readonly metaDescription: string | null = null,
-    // Audit fields
+    // Product detail fields.
+    // Deliberately NOT defaulted: these are persisted columns, and a caller that
+    // forgets one would silently overwrite it with null on update. Requiring them
+    // turns that mistake into a compile error.
+    public readonly gender: Gender | null,
+    public readonly material: string | null,
+    public readonly careInstructions: string | null,
+    public readonly metaTitle: string | null,
+    public readonly metaDescription: string | null,
+    // Audit fields (not persisted yet — no columns for these)
     public readonly createdBy: string | null = null,
     public readonly updatedBy: string | null = null
   ) {}

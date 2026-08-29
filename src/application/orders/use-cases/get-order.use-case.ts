@@ -1,4 +1,7 @@
-import { OrderEntity } from "@/domain/orders/entities/order.entity";
+import {
+  OrderEntity,
+  type OrderAddress,
+} from "@/domain/orders/entities/order.entity";
 import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 
@@ -24,8 +27,11 @@ export interface GetOrderOutput {
   tax: number;
   shippingCost: number;
   totalAmount: number;
-  shippingAddress: string;
-  billingAddress: string;
+  discount: number;
+  shippingAddressId: string;
+  billingAddressId: string;
+  shippingAddress: OrderAddress | null;
+  billingAddress: OrderAddress | null;
   paymentMethod: string | null;
   isPaid: boolean;
   isShipped: boolean;
@@ -62,6 +68,9 @@ export class GetOrderUseCase {
       tax: order.tax,
       shippingCost: order.shippingCost,
       totalAmount: order.totalAmount,
+      discount: order.discount,
+      shippingAddressId: order.shippingAddressId,
+      billingAddressId: order.billingAddressId,
       shippingAddress: order.shippingAddress,
       billingAddress: order.billingAddress,
       paymentMethod: order.paymentMethod,

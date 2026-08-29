@@ -16,15 +16,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export const STATUS_OPTIONS = [
-  "pending",
-  "confirmed",
-  "processing",
-  "shipped",
-  "delivered",
-  "cancelled",
-  "refunded",
-] as const;
+import {
+  ORDER_STATUSES,
+  OrderStatus,
+} from "@/domain/orders/value-objects/order-status.value-object";
 
 interface UpdateStatusCardProps {
   order: OrderData;
@@ -46,7 +41,7 @@ export function UpdateStatusCard({
       <CardContent>
         <div className="flex items-center gap-4">
           <Select
-            defaultValue={order.status}
+            value={order.status}
             onValueChange={onStatusChange}
             disabled={isPending}
           >
@@ -54,17 +49,30 @@ export function UpdateStatusCard({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STATUS_OPTIONS.map((status) => (
-                <SelectItem key={status} value={status}>
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </SelectItem>
-              ))}
+              {ORDER_STATUSES.map((status) => {
+                // The current status stays selectable so the trigger renders it;
+                // anything the state machine forbids is disabled rather than
+                // hidden, so the whole flow stays visible.
+                const isCurrent = status === order.status;
+                return (
+                  <SelectItem
+                    key={status}
+                    value={status}
+                    disabled={
+                      !isCurrent &&
+                      !OrderStatus.canTransition(order.status, status)
+                    }
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
         </div>
         <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
-          {order.canCancel && (
+          {OrderStatus.canTransition(order.status, "cancelled") && (
             <Button
               variant="destructive"
               size="sm"
@@ -74,7 +82,7 @@ export function UpdateStatusCard({
               Cancel Order
             </Button>
           )}
-          {order.canRefund && (
+          {OrderStatus.canTransition(order.status, "refunded") && (
             <Button
               variant="outline"
               size="sm"

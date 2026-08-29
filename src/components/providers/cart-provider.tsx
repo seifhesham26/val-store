@@ -39,6 +39,8 @@ export function CartProvider({ children }: CartProviderProps) {
       const items: CartItem[] = serverCart.items.map((item) => ({
         id: item.id,
         productId: item.productId,
+        variantId: item.variantId,
+        variantLabel: item.variantLabel,
         productName: item.productName,
         productPrice: item.productPrice,
         productImage: item.productImage,
@@ -97,11 +99,15 @@ export function useCart() {
 
   // Add item - sync with server if authenticated
   const addItem = useCallback(
-    async (productId: string, quantity: number = 1) => {
+    async (
+      productId: string,
+      quantity: number = 1,
+      variantId: string | null = null
+    ) => {
       if (isAuthenticated) {
         store.setSyncing(true);
         try {
-          await addMutation.mutateAsync({ productId, quantity });
+          await addMutation.mutateAsync({ productId, quantity, variantId });
         } finally {
           store.setSyncing(false);
         }

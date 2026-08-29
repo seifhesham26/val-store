@@ -6,7 +6,10 @@
  */
 
 import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
-import { ProductEntity } from "@/domain/products/entities/product.entity";
+import {
+  ProductEntity,
+  Gender,
+} from "@/domain/products/entities/product.entity";
 import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
 
 export interface UpdateProductInput {
@@ -20,6 +23,11 @@ export interface UpdateProductInput {
     salePrice?: number | null;
     isActive?: boolean;
     isFeatured?: boolean;
+    gender?: Gender | null;
+    material?: string | null;
+    careInstructions?: string | null;
+    metaTitle?: string | null;
+    metaDescription?: string | null;
   };
 }
 
@@ -33,6 +41,11 @@ export interface UpdateProductOutput {
   salePrice: number | null;
   isActive: boolean;
   isFeatured: boolean;
+  gender: Gender | null;
+  material: string | null;
+  careInstructions: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
   updatedAt: Date;
 }
 
@@ -62,7 +75,24 @@ export class UpdateProductUseCase {
       input.data.isActive ?? existingProduct.isActive,
       input.data.isFeatured ?? existingProduct.isFeatured,
       existingProduct.createdAt,
-      new Date() // updatedAt
+      new Date(), // updatedAt
+      // Detail fields: `!== undefined` (not `??`) so an explicit null clears the
+      // value, while an omitted key preserves what is already stored.
+      input.data.gender !== undefined
+        ? input.data.gender
+        : existingProduct.gender,
+      input.data.material !== undefined
+        ? input.data.material
+        : existingProduct.material,
+      input.data.careInstructions !== undefined
+        ? input.data.careInstructions
+        : existingProduct.careInstructions,
+      input.data.metaTitle !== undefined
+        ? input.data.metaTitle
+        : existingProduct.metaTitle,
+      input.data.metaDescription !== undefined
+        ? input.data.metaDescription
+        : existingProduct.metaDescription
     );
 
     // Validate price logic
@@ -86,6 +116,11 @@ export class UpdateProductUseCase {
       salePrice: saved.salePrice,
       isActive: saved.isActive,
       isFeatured: saved.isFeatured,
+      gender: saved.gender,
+      material: saved.material,
+      careInstructions: saved.careInstructions,
+      metaTitle: saved.metaTitle,
+      metaDescription: saved.metaDescription,
       updatedAt: saved.updatedAt,
     };
   }

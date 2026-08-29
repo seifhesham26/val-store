@@ -17,7 +17,8 @@ import { PaymentCard } from "./detail/PaymentCard";
 import { TimelineCard } from "./detail/TimelineCard";
 import { ItemsCard } from "./detail/ItemsCard";
 import { AddressesCard } from "./detail/AddressesCard";
-import { UpdateStatusCard, STATUS_OPTIONS } from "./detail/UpdateStatusCard";
+import { UpdateStatusCard } from "./detail/UpdateStatusCard";
+import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
 
 interface OrderDetailProps {
   orderId: string;
@@ -44,7 +45,7 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
   const handleStatusChange = (newStatus: string) => {
     updateStatusMutation.mutate({
       id: orderId,
-      status: newStatus as (typeof STATUS_OPTIONS)[number],
+      status: newStatus as (typeof ORDER_STATUSES)[number],
     });
   };
 

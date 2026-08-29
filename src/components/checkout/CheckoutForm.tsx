@@ -105,9 +105,14 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
       return;
     }
 
+    // Only the code is sent — the server re-validates it and derives the
+    // discount itself, so the displayed total can never diverge from the charge.
+    const couponCodeToApply = appliedCoupon?.code;
+
     if (paymentMethod === "stripe") {
       const res = await createStripeSession.mutateAsync({
         shippingAddressId: effectiveSelectedAddressId,
+        couponCode: couponCodeToApply,
       });
       if (res?.url) {
         window.location.href = res.url;
@@ -117,6 +122,7 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
 
     const res = await createCodOrder.mutateAsync({
       shippingAddressId: effectiveSelectedAddressId,
+      couponCode: couponCodeToApply,
     });
     router.push(`/checkout/success?order_id=${res.orderId}`);
   };

@@ -1,6 +1,39 @@
 import { OrderData } from "./types";
 import { MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { OrderAddress } from "@/domain/orders/entities/order.entity";
+
+function AddressBlock({ address }: { address: OrderAddress | null }) {
+  if (!address) {
+    return <p className="text-sm text-muted-foreground">No address on file</p>;
+  }
+
+  return (
+    <address className="text-sm not-italic leading-relaxed">
+      <span className="font-medium">{address.fullName}</span>
+      <br />
+      {address.addressLine1}
+      <br />
+      {address.addressLine2 && (
+        <>
+          {address.addressLine2}
+          <br />
+        </>
+      )}
+      {[address.city, address.state].filter(Boolean).join(", ")}{" "}
+      {address.postalCode}
+      <br />
+      {address.country}
+      <br />
+      <a
+        href={`tel:${address.phone}`}
+        className="mt-1 inline-block text-muted-foreground hover:text-foreground"
+      >
+        {address.phone}
+      </a>
+    </address>
+  );
+}
 
 export function AddressesCard({ order }: { order: OrderData }) {
   return (
@@ -13,9 +46,7 @@ export function AddressesCard({ order }: { order: OrderData }) {
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-sm whitespace-pre-line">
-            {order.shippingAddress || "No shipping address provided"}
-          </p>
+          <AddressBlock address={order.shippingAddress} />
         </CardContent>
       </Card>
 
@@ -27,9 +58,7 @@ export function AddressesCard({ order }: { order: OrderData }) {
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-sm whitespace-pre-line">
-            {order.billingAddress || "No billing address provided"}
-          </p>
+          <AddressBlock address={order.billingAddress} />
         </CardContent>
       </Card>
     </div>

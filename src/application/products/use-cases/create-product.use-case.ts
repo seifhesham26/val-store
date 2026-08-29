@@ -1,4 +1,7 @@
-import { ProductEntity } from "@/domain/products/entities/product.entity";
+import {
+  ProductEntity,
+  Gender,
+} from "@/domain/products/entities/product.entity";
 import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { DuplicateSKUException } from "@/domain/products/exceptions/duplicate-sku.exception";
 import { InvalidPriceException } from "@/domain/products/exceptions/invalid-price.exception";
@@ -19,6 +22,11 @@ export interface CreateProductInput {
   salePrice?: number;
   isActive?: boolean;
   isFeatured?: boolean;
+  gender?: Gender | null;
+  material?: string | null;
+  careInstructions?: string | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
 }
 
 export interface CreateProductOutput {
@@ -55,7 +63,14 @@ export class CreateProductUseCase {
       input.isActive ?? true,
       input.isFeatured ?? false,
       new Date(),
-      new Date()
+      new Date(),
+      // Matches the `gender` column default so a new product is not created
+      // outside every gendered collection.
+      input.gender ?? "unisex",
+      input.material ?? null,
+      input.careInstructions ?? null,
+      input.metaTitle ?? null,
+      input.metaDescription ?? null
     );
 
     // 4. Save via repository

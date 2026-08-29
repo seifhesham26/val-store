@@ -23,6 +23,12 @@ interface ProductDetailProps {
     sizes: string[];
     colors?: { name: string; hex: string }[];
     images: string[];
+    variants: {
+      id: string;
+      size: string | null;
+      color: string | null;
+      inStock: boolean;
+    }[];
     isNew?: boolean;
     isOnSale?: boolean;
     inStock?: boolean;
@@ -42,9 +48,31 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const [isAdding, setIsAdding] = useState(false);
   const { addItem, openCart, isAuthenticated } = useCart();
 
+  const hasSizes = product.sizes.length > 0;
+  const hasColors = (product.colors?.length ?? 0) > 0;
+
+  // Resolve the chosen size/colour back to the concrete variant row.
+  const selectedVariant =
+    product.variants.find(
+      (v) =>
+        (!hasSizes || v.size === selectedSize) &&
+        (!hasColors || v.color === selectedColor)
+    ) ?? null;
+
+  // A product with no variants at all falls back to the product-level flag.
+  const isSelectionInStock =
+    product.variants.length === 0
+      ? (product.inStock ?? false)
+      : (selectedVariant?.inStock ?? false);
+
   const handleAddToCart = async () => {
-    if (!selectedSize) {
+    if (hasSizes && !selectedSize) {
       toast.error("Please select a size");
+      return;
+    }
+
+    if (product.variants.length > 0 && !selectedVariant) {
+      toast.error("That combination is not available");
       return;
     }
 
@@ -64,7 +92,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
     setIsAdding(true);
     try {
-      await addItem(product.id, quantity);
+      await addItem(product.id, quantity, selectedVariant?.id ?? null);
       toast.success(`${product.name} added to cart`);
       openCart();
     } catch (error) {
@@ -124,7 +152,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
             <ProductActions
               isAuthenticated={isAuthenticated}
               isAdding={isAdding}
-              inStock={product.inStock}
+              inStock={isSelectionInStock}
               onAddToCart={handleAddToCart}
               details={product.details}
             />

@@ -32,6 +32,14 @@ export function transformProductForDetail(product: CachedProduct) {
         [] as { name: string; hex: string }[]
       ),
     images: product.images.map((img) => img.imageUrl),
+    // Kept so the page can resolve the chosen size/colour back to a real
+    // variant id — without this the cart cannot record what was bought.
+    variants: product.variants.map((v) => ({
+      id: v.id,
+      size: v.size,
+      color: v.color,
+      inStock: v.inStock,
+    })),
     isOnSale:
       product.salePrice !== null && product.salePrice < product.basePrice,
     inStock: product.variants.some((v) => v.inStock),

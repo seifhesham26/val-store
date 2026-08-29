@@ -16,6 +16,7 @@ export interface CreateCheckoutSessionInput {
   userId: string;
   email: string;
   shippingAddressId: string;
+  couponCode?: string;
 }
 
 export interface CreateCheckoutSessionOutput {
@@ -32,7 +33,7 @@ export class CreateCheckoutSessionUseCase {
   async execute(
     input: CreateCheckoutSessionInput
   ): Promise<CreateCheckoutSessionOutput> {
-    const { userId, email, shippingAddressId } = input;
+    const { userId, email, shippingAddressId, couponCode } = input;
 
     // Ensure cart exists (CreateOrderUseCase also checks, but we want to avoid creating sessions for empty carts)
     const cartItems = await this.cartRepository.findByUserId(userId);
@@ -46,6 +47,7 @@ export class CreateCheckoutSessionUseCase {
       userId,
       shippingAddressId,
       paymentMethod: "stripe",
+      couponCode,
     });
 
     // Build success/cancel URLs
@@ -66,6 +68,9 @@ export class CreateCheckoutSessionUseCase {
       customerEmail: email,
       successUrl,
       cancelUrl,
+      // Taken from the persisted order, not from the request, so Stripe always
+      // charges exactly what the order says.
+      discountAmount: order.discount,
       metadata: {
         userId,
       },

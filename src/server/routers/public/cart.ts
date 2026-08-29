@@ -26,6 +26,7 @@ export const cartRouter = router({
       z.object({
         productId: z.string().uuid(),
         quantity: z.number().int().min(1).default(1),
+        variantId: z.string().uuid().nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -34,6 +35,7 @@ export const cartRouter = router({
         userId: ctx.user.id,
         productId: input.productId,
         quantity: input.quantity,
+        variantId: input.variantId ?? null,
       });
     }),
 

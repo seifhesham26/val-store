@@ -12,7 +12,7 @@ import {
   productVariants,
   productImages,
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
 import { CartItemEntity } from "@/domain/cart/entities/cart-item.entity";
 
@@ -27,6 +27,13 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         product: products,
         variant: productVariants,
         image: productImages,
+        // Fallback stock for products that have no variants at all, so an
+        // unvariated product is not treated as permanently out of stock.
+        productStock: sql<number>`(
+          SELECT COALESCE(SUM(pv.stock_quantity), 0)
+          FROM product_variants pv
+          WHERE pv.product_id = ${cartItems.productId}
+        )`,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
@@ -58,6 +65,13 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         product: products,
         variant: productVariants,
         image: productImages,
+        // Fallback stock for products that have no variants at all, so an
+        // unvariated product is not treated as permanently out of stock.
+        productStock: sql<number>`(
+          SELECT COALESCE(SUM(pv.stock_quantity), 0)
+          FROM product_variants pv
+          WHERE pv.product_id = ${cartItems.productId}
+        )`,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
@@ -79,7 +93,8 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    */
   async findByUserAndProduct(
     userId: string,
-    productId: string
+    productId: string,
+    variantId: string | null = null
   ): Promise<CartItemEntity | null> {
     const result = await db
       .select({
@@ -87,6 +102,13 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         product: products,
         variant: productVariants,
         image: productImages,
+        // Fallback stock for products that have no variants at all, so an
+        // unvariated product is not treated as permanently out of stock.
+        productStock: sql<number>`(
+          SELECT COALESCE(SUM(pv.stock_quantity), 0)
+          FROM product_variants pv
+          WHERE pv.product_id = ${cartItems.productId}
+        )`,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
@@ -99,7 +121,13 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         )
       )
       .where(
-        and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
+        and(
+          eq(cartItems.userId, userId),
+          eq(cartItems.productId, productId),
+          variantId === null
+            ? isNull(cartItems.variantId)
+            : eq(cartItems.variantId, variantId)
+        )
       )
       .limit(1);
 
@@ -117,7 +145,8 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
     // Check if item already exists
     const existing = await this.findByUserAndProduct(
       cartItem.userId,
-      cartItem.productId
+      cartItem.productId,
+      cartItem.variantId
     );
 
     if (existing) {
@@ -134,7 +163,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       .values({
         userId: cartItem.userId,
         productId: cartItem.productId,
-        variantId: null, // Can be set when variant selection is implemented
+        variantId: cartItem.variantId,
         quantity: cartItem.quantity,
       })
       .returning();
@@ -210,8 +239,14 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    * Check if product is in user's cart
    */
   async isProductInCart(userId: string, productId: string): Promise<boolean> {
-    const item = await this.findByUserAndProduct(userId, productId);
-    return item !== null;
+    const [row] = await db
+      .select({ id: cartItems.id })
+      .from(cartItems)
+      .where(
+        and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
+      )
+      .limit(1);
+    return !!row;
   }
 
   /**
@@ -222,11 +257,16 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
     product: typeof products.$inferSelect | null;
     variant: typeof productVariants.$inferSelect | null;
     image?: typeof productImages.$inferSelect | null;
+    productStock?: number | null;
   }): CartItemEntity {
-    const { cartItem, product, variant, image } = result;
+    const { cartItem, product, variant, image, productStock } = result;
 
-    // Calculate stock from variant or default to 0
-    const maxStock = variant?.stockQuantity ?? 0;
+    // Stock ceiling: the chosen variant's stock, or — for a product with no
+    // variants — the product's total stock. Previously this always resolved to
+    // 0 because variantId was never persisted.
+    const maxStock = variant
+      ? variant.stockQuantity
+      : Number(productStock ?? 0);
 
     // Get price - prefer sale price from product
     const price = product?.salePrice
@@ -243,7 +283,10 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       cartItem.quantity,
       maxStock,
       new Date(cartItem.createdAt),
-      new Date(cartItem.updatedAt)
+      new Date(cartItem.updatedAt),
+      cartItem.variantId,
+      variant?.size ?? null,
+      variant?.color ?? null
     );
   }
 }

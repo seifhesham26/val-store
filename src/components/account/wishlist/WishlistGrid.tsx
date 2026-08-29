@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { Heart, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { type Product } from "@/db/schema";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
 
@@ -12,15 +11,10 @@ type WishlistItem =
 
 interface WishlistGridProps {
   items: WishlistItem[];
-  onMoveToCart: (product: Pick<Product, "id">) => void;
   onRemove: (productId: string) => void;
 }
 
-export function WishlistGrid({
-  items,
-  onMoveToCart,
-  onRemove,
-}: WishlistGridProps) {
+export function WishlistGrid({ items, onRemove }: WishlistGridProps) {
   return (
     <div className="space-y-6">
       <div>
@@ -70,13 +64,18 @@ export function WishlistGrid({
                 </p>
 
                 <div className="flex gap-2 mt-auto pt-4">
+                  {/* A wishlist entry is a product, not a variant — the size
+                      and colour were never chosen. Send the customer to the
+                      product page to pick, rather than guessing for them. */}
                   <Button
+                    asChild
                     className="flex-1 bg-val-accent hover:bg-val-accent/90 text-black font-medium text-sm"
                     size="sm"
-                    onClick={() => onMoveToCart({ id: item.productId })}
                   >
-                    <ShoppingCart className="mr-2 h-4 w-4" />
-                    Move to Cart
+                    <Link href={`/products/${item.productSlug}`}>
+                      <ShoppingCart className="mr-2 h-4 w-4" />
+                      Choose Options
+                    </Link>
                   </Button>
                   <Button
                     variant="outline"

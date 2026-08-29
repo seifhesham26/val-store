@@ -6,6 +6,15 @@
 
 import Stripe from "stripe";
 
+/**
+ * Currency used for Stripe checkout.
+ *
+ * NOTE: this must stay in sync with the currency the order rows are written in
+ * (see DrizzleOrderRepository.create). Issue #17 tracks making both read from
+ * site_settings instead of being hardcoded.
+ */
+const CHECKOUT_CURRENCY = "egp";
+
 // Initialize Stripe with secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-12-15.clover",
@@ -38,6 +47,8 @@ export interface CreateCheckoutSessionInput {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  /** Discount to apply, in major units (e.g. 12.50). Omit or 0 for none. */
+  discountAmount?: number;
 }
 
 export interface CreateCheckoutSessionResult {
@@ -89,14 +100,30 @@ export class StripeService {
       successUrl,
       cancelUrl,
       metadata = {},
+      discountAmount = 0,
     } = input;
+
+    // Stripe rejects negative line items, so a coupon discount has to be applied
+    // as an actual Stripe coupon. Created per-session and used once.
+    const discountMinorUnits = Math.round(discountAmount * 100);
+    let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
+
+    if (discountMinorUnits > 0) {
+      const stripeCoupon = await stripe.coupons.create({
+        amount_off: discountMinorUnits,
+        currency: CHECKOUT_CURRENCY,
+        duration: "once",
+        name: `Order ${orderId} discount`,
+      });
+      discounts = [{ coupon: stripeCoupon.id }];
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems.map((item) => ({
         price_data: {
-          currency: "egp",
+          currency: CHECKOUT_CURRENCY,
           product_data: {
             name: item.productName,
             images: item.imageUrl ? [item.imageUrl] : [],
@@ -109,6 +136,7 @@ export class StripeService {
         quantity: item.quantity,
       })),
       customer_email: customerEmail,
+      discounts,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {

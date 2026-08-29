@@ -1,6 +1,7 @@
 import { container } from "@/application/container";
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
+import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
 
 /**
  * Orders Router - Thin Adapter
@@ -28,15 +29,8 @@ const getOrderSchema = z.object({
 
 const updateOrderStatusSchema = z.object({
   id: z.string().uuid(),
-  status: z.enum([
-    "pending",
-    "confirmed",
-    "processing",
-    "shipped",
-    "delivered",
-    "cancelled",
-    "refunded",
-  ]),
+  // Sourced from the domain so this can never drift from the DB enum again.
+  status: z.enum(ORDER_STATUSES),
 });
 
 export const ordersRouter = router({

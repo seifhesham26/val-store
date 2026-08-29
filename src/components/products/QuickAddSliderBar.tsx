@@ -85,7 +85,7 @@ export function QuickAddSliderBar({
 
     setIsAdding(true);
     try {
-      await addItem(productId, 1);
+      await addItem(productId, 1, matchingVariant?.id ?? null);
       setJustAdded(true);
       toast.success(`${productName} added to cart`);
       openCart();

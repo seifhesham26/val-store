@@ -66,6 +66,9 @@ export function CartItem({
           <h3 className="text-sm font-medium text-white line-clamp-2">
             {item.productName}
           </h3>
+          {item.variantLabel && (
+            <p className="mt-0.5 text-xs text-gray-500">{item.variantLabel}</p>
+          )}
           <p className="mt-1 text-sm text-gray-400">
             ${item.productPrice.toFixed(2)}
           </p>

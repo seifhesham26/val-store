@@ -10,6 +10,11 @@ export const createProductSchema = z.object({
   salePrice: z.number().positive().optional(),
   isActive: z.boolean(),
   isFeatured: z.boolean(),
+  gender: z.enum(["men", "women", "unisex", "kids"]),
+  material: z.string(),
+  careInstructions: z.string(),
+  metaTitle: z.string(),
+  metaDescription: z.string(),
 });
 
 export type CreateProductValues = z.infer<typeof createProductSchema>;
