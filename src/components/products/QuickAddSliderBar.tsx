@@ -90,8 +90,13 @@ export function QuickAddSliderBar({
       toast.success(`${productName} added to cart`);
       openCart();
       setTimeout(() => setJustAdded(false), 2000);
-    } catch {
-      toast.error("Failed to add to cart");
+    } catch (error) {
+      // Carries the real reason, e.g. "Only 2 left in stock".
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to add to cart"
+      );
     } finally {
       setIsAdding(false);
     }

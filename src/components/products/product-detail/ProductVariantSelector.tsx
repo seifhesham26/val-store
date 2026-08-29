@@ -11,6 +11,8 @@ interface ProductVariantSelectorProps {
   onSelectColor: (color: string) => void;
   onSelectSize: (size: string) => void;
   onChangeQuantity: (quantity: number) => void;
+  /** Stock ceiling for the chosen variant; null when nothing is chosen yet. */
+  maxQuantity?: number | null;
 }
 
 export function ProductVariantSelector({
@@ -22,6 +24,7 @@ export function ProductVariantSelector({
   onSelectColor,
   onSelectSize,
   onChangeQuantity,
+  maxQuantity = null,
 }: ProductVariantSelectorProps) {
   return (
     <>
@@ -92,13 +95,26 @@ export function ProductVariantSelector({
             </button>
             <span className="px-4 text-white font-medium">{quantity}</span>
             <button
-              onClick={() => onChangeQuantity(quantity + 1)}
-              className="p-3 text-white hover:bg-white/10 transition-colors"
+              onClick={() =>
+                onChangeQuantity(
+                  maxQuantity === null
+                    ? quantity + 1
+                    : Math.min(quantity + 1, maxQuantity)
+                )
+              }
+              disabled={maxQuantity !== null && quantity >= maxQuantity}
+              className="p-3 text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               aria-label="Increase quantity"
             >
               <Plus className="h-4 w-4" />
             </button>
           </div>
+
+          {maxQuantity !== null && maxQuantity > 0 && maxQuantity <= 5 && (
+            <span className="text-sm text-amber-400">
+              Only {maxQuantity} left
+            </span>
+          )}
         </div>
       </div>
     </>

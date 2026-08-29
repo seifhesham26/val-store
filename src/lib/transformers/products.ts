@@ -39,6 +39,7 @@ export function transformProductForDetail(product: CachedProduct) {
       size: v.size,
       color: v.color,
       inStock: v.inStock,
+      availableStock: v.availableStock,
     })),
     isOnSale:
       product.salePrice !== null && product.salePrice < product.basePrice,

@@ -172,12 +172,23 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       cartItem.variantId
     );
 
+    const requestedQuantity = existing
+      ? existing.quantity + cartItem.quantity
+      : cartItem.quantity;
+
+    // Enforce the stock ceiling on the way in, not just when the quantity is
+    // changed later. Previously only the cart drawer's +/- path checked stock,
+    // so "Add to cart" could put 50 of a 2-stock variant straight in the cart
+    // and the customer only found out at checkout.
+    await this.assertWithinStock(
+      cartItem.productId,
+      cartItem.variantId,
+      requestedQuantity
+    );
+
     if (existing) {
       // Update quantity instead
-      return this.updateQuantity(
-        existing.id,
-        existing.quantity + cartItem.quantity
-      );
+      return this.updateQuantity(existing.id, requestedQuantity);
     }
 
     // Insert new item
@@ -270,6 +281,45 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       )
       .limit(1);
     return !!row;
+  }
+
+  /**
+   * Throw if the requested quantity exceeds what is actually in stock.
+   *
+   * Uses the chosen variant's stock, falling back to the product's total stock
+   * for products that have no variants.
+   */
+  private async assertWithinStock(
+    productId: string,
+    variantId: string | null,
+    requestedQuantity: number
+  ): Promise<void> {
+    let available: number;
+
+    if (variantId) {
+      const [variant] = await db
+        .select({ stockQuantity: productVariants.stockQuantity })
+        .from(productVariants)
+        .where(eq(productVariants.id, variantId))
+        .limit(1);
+      available = variant?.stockQuantity ?? 0;
+    } else {
+      const [row] = await db
+        .select({
+          total: sql<number>`COALESCE(SUM(${productVariants.stockQuantity}), 0)`,
+        })
+        .from(productVariants)
+        .where(eq(productVariants.productId, productId));
+      available = Number(row?.total ?? 0);
+    }
+
+    if (requestedQuantity > available) {
+      throw new Error(
+        available === 0
+          ? "This item is out of stock"
+          : `Only ${available} left in stock`
+      );
+    }
   }
 
   /**

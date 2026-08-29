@@ -4,9 +4,23 @@ import { Instagram, Facebook, Twitter, Music2 } from "lucide-react"; // Music2 f
 import { container } from "@/application/container";
 
 export async function Footer() {
-  // Fetch site settings for social links and store name
-  const siteConfigRepo = container.getSiteConfigRepository();
-  const settings = await siteConfigRepo.getSiteSettings();
+  // Fetch site settings for social links and store name.
+  //
+  // Degrades to defaults on failure, matching the homepage server sections: the
+  // footer renders on every page, so a transient database error must not take
+  // the whole site down with it.
+  let settings: Awaited<
+    ReturnType<
+      ReturnType<typeof container.getSiteConfigRepository>["getSiteSettings"]
+    >
+  > = null;
+
+  try {
+    const siteConfigRepo = container.getSiteConfigRepository();
+    settings = await siteConfigRepo.getSiteSettings();
+  } catch (error) {
+    console.error("[Footer] Failed to fetch site settings:", error);
+  }
 
   const currentYear = new Date().getFullYear();
   const storeName = settings?.storeName || "Valkyrie";

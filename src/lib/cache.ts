@@ -202,6 +202,9 @@ export const getCachedProductBySlug = unstable_cache(
           color: v.color,
           priceAdjustment: v.priceAdjustment,
           inStock: v.stockQuantity > 0,
+          // Exposed so the product page can cap the quantity stepper at what
+          // can actually be fulfilled.
+          availableStock: v.stockQuantity,
         })),
     };
   },

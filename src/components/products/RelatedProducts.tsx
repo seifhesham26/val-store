@@ -25,7 +25,7 @@ export function RelatedProducts({
           <Link href="/collections/all">
             <Button
               variant="outline"
-              className="border-white/20 text-white hover:bg-white hover:text-black"
+              className="border-white/20 bg-transparent text-white hover:bg-white hover:text-black"
             >
               View All
             </Button>

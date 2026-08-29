@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 
 // ============================================
 // HERO SECTION
@@ -13,8 +14,8 @@ import { z } from "zod";
 export const heroContentSchema = z.object({
   title: z.string().min(1, "Title is required"),
   subtitle: z.string().optional().default(""),
-  backgroundImage: z.string().url("Must be a valid URL").optional(),
-  backgroundVideo: z.string().url("Must be a valid URL").optional(),
+  backgroundImage: urlOrAssetPath.optional(),
+  backgroundVideo: urlOrAssetPath.optional(),
   overlayOpacity: z.number().min(0).max(100).optional().default(40),
   ctaText: z.string().optional().default("Shop Now"),
   ctaLink: z.string().optional().default("/collections"),
@@ -60,7 +61,7 @@ export const promoBannerContentSchema = z.object({
   title: z.string().min(1, "Title is required"),
   subtitle: z.string().optional().default(""),
   description: z.string().optional().default(""),
-  image: z.string().url("Must be a valid URL").optional(),
+  image: urlOrAssetPath.optional(),
   imagePosition: z.enum(["left", "right"]).optional().default("right"),
   ctaText: z.string().optional().default("Shop Now"),
   ctaLink: z.string().optional().default("/collections/sale"),
@@ -78,7 +79,7 @@ export const brandStoryContentSchema = z.object({
   preheading: z.string().optional().default("Our Story"),
   title: z.string().min(1, "Title is required"),
   paragraphs: z.array(z.string()).min(1, "At least one paragraph required"),
-  image: z.string().url("Must be a valid URL").optional(),
+  image: urlOrAssetPath.optional(),
   imagePosition: z.enum(["left", "right"]).optional().default("left"),
   ctaText: z.string().optional().default("Learn More"),
   ctaLink: z.string().optional().default("/about"),
@@ -114,7 +115,7 @@ export type NewsletterContent = z.infer<typeof newsletterContentSchema>;
 export const instagramContentSchema = z.object({
   handle: z.string().optional().default("@valkyrie"),
   profileUrl: z.string().url("Must be a valid URL").optional(),
-  images: z.array(z.string().url()).optional().default([]),
+  images: z.array(urlOrAssetPath).optional().default([]),
 });
 
 export type InstagramContent = z.infer<typeof instagramContentSchema>;

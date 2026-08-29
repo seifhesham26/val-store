@@ -28,6 +28,7 @@ interface ProductDetailProps {
       size: string | null;
       color: string | null;
       inStock: boolean;
+      availableStock: number;
     }[];
     isNew?: boolean;
     isOnSale?: boolean;
@@ -71,6 +72,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
         ? selectedVariant.inStock
         : true;
 
+  // How many of the current selection can actually be ordered. Null while no
+  // concrete variant is resolved, so the stepper stays unconstrained until the
+  // customer has actually chosen something.
+  const maxQuantity = selectedVariant?.availableStock ?? null;
+
+  // Clamp on read rather than writing state during render: switching to a
+  // lower-stock variant must not leave a quantity that cannot be fulfilled.
+  const effectiveQuantity =
+    maxQuantity !== null && maxQuantity > 0
+      ? Math.min(quantity, maxQuantity)
+      : quantity;
+
   const handleAddToCart = async () => {
     if (hasSizes && !selectedSize) {
       toast.error("Please select a size");
@@ -98,12 +111,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
     setIsAdding(true);
     try {
-      await addItem(product.id, quantity, selectedVariant?.id ?? null);
+      await addItem(product.id, effectiveQuantity, selectedVariant?.id ?? null);
       toast.success(`${product.name} added to cart`);
       openCart();
     } catch (error) {
+      // Surface the server's reason — it carries the actual stock ceiling,
+      // e.g. "Only 2 left in stock".
       console.error("Failed to add to cart:", error);
-      toast.error("Failed to add to cart. Please try again.");
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to add to cart. Please try again."
+      );
     } finally {
       setIsAdding(false);
     }
@@ -149,10 +168,11 @@ export function ProductDetail({ product }: ProductDetailProps) {
               sizes={product.sizes}
               selectedColor={selectedColor}
               selectedSize={selectedSize}
-              quantity={quantity}
+              quantity={effectiveQuantity}
               onSelectColor={setSelectedColor}
               onSelectSize={setSelectedSize}
               onChangeQuantity={setQuantity}
+              maxQuantity={maxQuantity}
             />
 
             <ProductActions

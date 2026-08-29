@@ -147,7 +147,7 @@ export const publicProductsRouter = router({
             color: v.color,
             priceAdjustment: v.priceAdjustment,
             inStock: v.stockQuantity > 0,
-            // Note: actual stockQuantity is NOT exposed
+            availableStock: v.stockQuantity,
           })),
       };
     }),

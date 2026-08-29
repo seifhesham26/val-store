@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { adminProcedure } from "../../../trpc";
 import { container } from "@/application/container";
+import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -31,8 +32,10 @@ const emptyToNull = <T extends z.ZodType<string>>(schema: T) =>
 export const updateSiteSettingsSchema = z.object({
   storeName: z.string().min(1, "Store name is required").optional(),
   storeTagline: emptyToNull(z.string()),
-  logoUrl: emptyToNull(z.string().url("Must be a valid URL")),
-  faviconUrl: emptyToNull(z.string().url("Must be a valid URL")),
+  // Logo and favicon are usually local files under public/, so a bare path is
+  // valid here. The social links are genuinely external and stay strict.
+  logoUrl: emptyToNull(urlOrAssetPath),
+  faviconUrl: emptyToNull(urlOrAssetPath),
   contactEmail: emptyToNull(z.string().email("Must be a valid email address")),
   contactPhone: emptyToNull(z.string()),
   instagramUrl: emptyToNull(z.string().url("Must be a valid URL")),

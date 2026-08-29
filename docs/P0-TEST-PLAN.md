@@ -66,14 +66,19 @@ The bug: the card showed a raw UUID instead of an address.
 - ✅ **Expected:** Billing Address shows the same address (checkout still reuses the shipping address for billing — that's issue #37, a P3).
 - ✅ Open an order placed _before_ today's changes. **Expected:** it also renders properly, since the address is resolved by join at read time, not stored on the order.
 
+> **Note on seeded orders.** The seed script inserts orders with **no address
+> and no payment row**, so seeded orders legitimately show "No address on file"
+> and "N/A / Awaiting payment". That is correct, not a regression — real orders
+> placed through checkout carry both. I confirmed this directly in your data.
+
 ---
 
 ## 4. Store & Appearance settings save with blank fields
 
 The bug: a blank URL or email field failed validation, so a fresh install couldn't save at all.
 
-- [ ] **Admin → Settings → Store.** Clear **Contact Email** and **Contact Phone**, leave them empty, Save.
-- [ ] **Expected: "Store settings saved!"** (Before: a Zod validation error.)
+- ✅ **Admin → Settings → Store.** Clear **Contact Email** and **Contact Phone**, leave them empty, Save.
+- ✅ **Expected: "Store settings saved!"** (Before: a Zod validation error.)
 - [ ] **Admin → Settings → Appearance.** Leave **all** social URLs and the logo/favicon blank. Save. **Expected: saved successfully.**
 - [ ] Now type `not-a-url` into Instagram and save. **Expected: it still fails**, with "Must be a valid URL". Blank is allowed; invalid is not.
 - [ ] Type `hello` into Contact Email and save. **Expected:** fails with "Must be a valid email address".
@@ -86,8 +91,17 @@ The bug: a blank URL or email field failed validation, so a fresh install couldn
 
 **What changed:** the `drizzle/` folder contained migrations for an abandoned schema (a uuid `users` table, `password_reset_tokens`) and none of your ~20 real tables. I deleted them and regenerated a single accurate baseline: `drizzle/0000_long_ultragirl.sql` — 27 tables, 10 enums. The old files are backed up outside the repo if you ever want them.
 
-- [ ] `pnpm db:push` still works exactly as before for day-to-day schema changes.
-- [ ] Confirm the app still reads/writes normally (any page that loads products).
+- ✅ **Verified by me (read-only queries against your live DB):** the regenerated
+  baseline matches the live schema **exactly** — 27 tables in
+  `drizzle/0000_long_ultragirl.sql`, 27 tables in the database, no difference either way.
+  The abandoned `users` and `password_reset_tokens` tables from the old
+  migrations do not exist, confirming those migrations described a schema you
+  never had.
+- ✅ **Verified:** the app reads and writes normally — orders, payments,
+  addresses, inventory logs and site settings all queried successfully.
+- [ ] `pnpm db:push` still works for day-to-day schema changes. _(Not run by me:
+      push writes to your schema, and I will not alter your database without you
+      asking.)_
 
 **Before you deploy — one decision.** Your existing database already has these tables, so running `pnpm db:migrate` against it would try to `CREATE TABLE` things that exist and fail. Two options:
 
@@ -105,7 +119,11 @@ The bug: a blank URL or email field failed validation, so a fresh install couldn
 
 **Tell me which you want** and I'll finish the wiring — option 2 needs the exact hash, which I'd rather generate than have you copy by hand.
 
-- [ ] On a **scratch/empty** database, `pnpm db:migrate` builds the full schema cleanly. (Optional, but it's the real proof the baseline is correct. Don't run this against your working DB.)
+- [ ] On a **scratch/empty** database, `pnpm db:migrate` builds the full schema
+      cleanly. _(Not run by me — it needs a throwaway database, and running it
+      against your working one would try to `CREATE TABLE` things that already exist
+      and fail. The table-for-table diff above is strong evidence the baseline is
+      right; this step is the belt-and-braces proof.)_
 
 ---
 
@@ -115,15 +133,15 @@ This is the biggest change. Issue #8 (cart dropped the variant) had to be fixed 
 
 ### 6a. The cart records the variant
 
-- [ ] Open a product with several sizes. Pick **size M**, add to cart.
-- [ ] Open the cart drawer. **Expected:** the line shows the product name **with the variant underneath** (e.g. "Black / M").
-- [ ] Go back, pick **size L** of the _same_ product, add to cart.
-- [ ] **Expected: two separate lines** — M and L — not one line with quantity 2. This is the core of the fix.
-- [ ] Add the same size M again. **Expected:** the M line goes to quantity 2; still two lines total.
-- [ ] Use the hover **Quick Add** wheels on a product card. Pick a size/colour, Add. **Expected:** that exact variant lands in the cart with the right label.
-- [ ] Do the same from the **homepage "Best Sellers"** section and from **"You May Also Like"** at the bottom of a product page. **Expected:** both show the size/colour wheels, not a plain "Quick Add" button, and the cart records the variant. _(These two grids weren't loading variants — items added there skipped stock tracking entirely. Found during the post-fix review.)_
-- [ ] Open an order in **Admin → Orders**. **Expected:** each line shows the variant under the product name, so you know which size to ship.
-- [ ] Same on **Account → Orders → an order**.
+- ✅ Open a product with several sizes. Pick **size M**, add to cart.
+- ✅ Open the cart drawer. **Expected:** the line shows the product name **with the variant underneath** (e.g. "Black / M").
+- ✅ Go back, pick **size L** of the _same_ product, add to cart.
+- ✅ **Expected: two separate lines** — M and L — not one line with quantity 2. This is the core of the fix.
+- ✅ Add the same size M again. **Expected:** the M line goes to quantity 2; still two lines total.
+- ✅ Use the hover **Quick Add** wheels on a product card. Pick a size/colour, Add. **Expected:** that exact variant lands in the cart with the right label.
+- ✅ Do the same from the **homepage "Best Sellers"** section and from **"You May Also Like"** at the bottom of a product page. **Expected:** both show the size/colour wheels, not a plain "Quick Add" button, and the cart records the variant. _(These two grids weren't loading variants — items added there skipped stock tracking entirely. Found during the post-fix review.)_
+- ✅ Open an order in **Admin → Orders**. **Expected:** each line shows the variant under the product name, so you know which size to ship.
+- ✅ Same on **Account → Orders → an order**.
 
 ### 6b. Stock limits are real
 
@@ -136,6 +154,14 @@ Previously `maxStock` was always 0 because no variant was ever recorded.
 - [ ] Pick a size/colour combination that doesn't exist (if your data has one). **Expected:** clicking gives "That combination is not available".
 
 ### 6c. Stock actually decrements on purchase
+
+> ✅ **Already confirmed in your database.** Your last two orders wrote real
+> `sale` rows to the inventory log:
+> `sale -1 9->8 Order VLK-20260829-L4MC46`,
+> `sale -1 16->15 Order VLK-20260829-L4MC46`,
+> `sale -1 48->47 Order VLK-20260829-6BN00B`.
+> This fix is working on live data. The steps below are for re-checking after
+> further changes.
 
 - [ ] Note a variant's current stock in **Admin → Inventory** (say it's 10).
 - [ ] Buy 2 of it via **Cash on Delivery** (fastest path — see §7 for checkout).
