@@ -2,6 +2,7 @@ interface OrderSummaryCardProps {
   subtotal: number;
   shippingCost: number;
   tax: number;
+  discount?: number;
   total: number;
 }
 
@@ -9,6 +10,7 @@ export function OrderSummaryCard({
   subtotal,
   shippingCost,
   tax,
+  discount = 0,
   total,
 }: OrderSummaryCardProps) {
   return (
@@ -21,6 +23,12 @@ export function OrderSummaryCard({
           <span className="text-gray-500">Subtotal</span>
           <span className="text-white">${subtotal.toFixed(2)}</span>
         </div>
+        {discount > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Discount</span>
+            <span className="text-green-500">-${discount.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm">
           <span className="text-gray-500">Shipping</span>
           <span className="text-white">${shippingCost.toFixed(2)}</span>

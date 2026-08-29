@@ -89,6 +89,7 @@ export const ordersRouter = router({
         subtotal: order.subtotal,
         tax: order.tax,
         shippingCost: order.shippingCost,
+        discount: order.discount,
         total: order.totalAmount,
         shippingAddress: order.shippingAddress,
         createdAt: order.createdAt,

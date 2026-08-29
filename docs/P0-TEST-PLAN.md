@@ -178,6 +178,7 @@ Set up in **Admin → Coupons**: create `TEST20`, percentage, value `20`, active
 - [ ] Place the order with **Cash on Delivery**.
 - [ ] **Admin → Orders → that order.** **Expected: the stored total is 80.00, not 100.00.** This is the fix — previously the order saved as 100.
 - [ ] **Admin → Coupons.** **Expected:** `TEST20` usage count went from 0 to **1**.
+- [ ] Open that order under **Account → Orders**. **Expected:** the summary shows a **Discount** line, so Subtotal − Discount = Total actually adds up. (Without it a customer sees Subtotal 100 / Total 80 with no explanation.)
 - [ ] Place a _second_ order with `TEST20` as the same customer. **Expected:** applying the coupon now fails with _"You have already used this coupon the maximum number of times"_ — the per-user limit works now that usage is recorded.
 
 ### 7b. Card / Stripe
@@ -191,6 +192,15 @@ Set up in **Admin → Coupons**: create `TEST20`, percentage, value `20`, active
 
 - [ ] Apply a coupon, then **before** placing the order, go to Admin and deactivate that coupon. Come back and place the order.
 - [ ] **Expected:** the order is refused with a clear message ("This coupon is no longer active") rather than silently charging full price. The server re-validates the code and derives the discount itself — the browser only ever sends the code, never an amount.
+
+---
+
+## 8. Stripe webhook safety
+
+- [ ] Place a Stripe order but **do not pay** — leave the Stripe page open.
+- [ ] In Admin, **cancel** that pending order. **Expected:** stock is restored.
+- [ ] Now complete the payment on the still-open Stripe page.
+- [ ] **Expected: the order stays `cancelled`.** It must not flip to `paid`, because its stock was already given back. (The webhook now only advances orders that are still `pending`/`processing`.) The payment itself will have gone through, so refund it in Stripe — that part is manual.
 
 ---
 

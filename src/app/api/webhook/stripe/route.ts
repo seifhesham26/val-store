@@ -10,7 +10,7 @@ import { stripeService } from "@/infrastructure/services/stripe.service";
 import { ResendEmailService } from "@/infrastructure/services/resend-email.service";
 import { db } from "@/db";
 import { cartItems, orders, payments } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 
 const emailService = new ResendEmailService();
 
@@ -53,10 +53,20 @@ export async function POST(request: NextRequest) {
       // Persist payment + order status
       if (metadata?.orderId && session.payment_status === "paid") {
         try {
+          // Only advance an order that is still awaiting payment.
+          //
+          // Without this guard a late webhook could resurrect an order an admin
+          // had already cancelled — and cancelling restores the reserved stock,
+          // so the order would end up "paid" with nothing held for it.
           await db
             .update(orders)
             .set({ status: "paid", updatedAt: new Date() })
-            .where(eq(orders.id, metadata.orderId));
+            .where(
+              and(
+                eq(orders.id, metadata.orderId),
+                inArray(orders.status, ["pending", "processing"])
+              )
+            );
 
           await db
             .update(payments)

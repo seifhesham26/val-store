@@ -67,6 +67,7 @@ export default function OrderDetailPage() {
         subtotal={order.subtotal}
         shippingCost={order.shippingCost}
         tax={order.tax}
+        discount={order.discount}
         total={order.total}
       />
     </div>
