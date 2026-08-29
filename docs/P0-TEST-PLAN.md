@@ -79,11 +79,11 @@ The bug: a blank URL or email field failed validation, so a fresh install couldn
 
 - ✅ **Admin → Settings → Store.** Clear **Contact Email** and **Contact Phone**, leave them empty, Save.
 - ✅ **Expected: "Store settings saved!"** (Before: a Zod validation error.)
-- [ ] **Admin → Settings → Appearance.** Leave **all** social URLs and the logo/favicon blank. Save. **Expected: saved successfully.**
-- [ ] Now type `not-a-url` into Instagram and save. **Expected: it still fails**, with "Must be a valid URL". Blank is allowed; invalid is not.
-- [ ] Type `hello` into Contact Email and save. **Expected:** fails with "Must be a valid email address".
-- [ ] Enter a valid Instagram URL, save, then check the storefront footer. **Expected:** the Instagram icon links to your URL.
-- [ ] Clear the Store Name entirely and save. **Expected:** fails with "Store name is required" — that field is genuinely required.
+- ✅ **Admin → Settings → Appearance.** Leave **all** social URLs and the logo/favicon blank. Save. **Expected: saved successfully.**
+- ✅ Now type `not-a-url` into Instagram and save. **Expected: it still fails**, with "Must be a valid URL". Blank is allowed; invalid is not.
+- ✅ Type `hello` into Contact Email and save. **Expected:** fails with "Must be a valid email address".
+- ✅ Enter a valid Instagram URL, save, then check the storefront footer. **Expected:** the Instagram icon links to your URL.
+- ✅ Clear the Store Name entirely and save. **Expected:** fails with "Store name is required" — that field is genuinely required.
 
 ---
 
@@ -147,11 +147,11 @@ This is the biggest change. Issue #8 (cart dropped the variant) had to be fixed 
 
 Previously `maxStock` was always 0 because no variant was ever recorded.
 
-- [ ] In **Admin → Inventory**, set one variant's stock to exactly **2**.
-- [ ] On the storefront add that variant to your cart, then press **+** in the cart drawer repeatedly. **Expected:** you can reach 2 and the **+ button then disables**.
-- [ ] Select a variant whose stock is **0** on the product page. **Expected:** the Add to Cart button reads **Out of Stock** and is disabled — the button now reflects the _selected_ variant, not the product overall.
-- [ ] Load a product page fresh, **before picking a size**. **Expected:** the button reads **Add to Cart** and is enabled; clicking it says "Please select a size". It must **not** say "Out of Stock" — that was a regression introduced by the variant work and fixed during review.
-- [ ] Pick a size/colour combination that doesn't exist (if your data has one). **Expected:** clicking gives "That combination is not available".
+- ✅ In **Admin → Inventory**, set one variant's stock to exactly **2**.
+- ✅ On the storefront add that variant to your cart, then press **+** in the cart drawer repeatedly. **Expected:** you can reach 2 and the **+ button then disables**.
+- ✅ Select a variant whose stock is **0** on the product page. **Expected:** the Add to Cart button reads **Out of Stock** and is disabled — the button now reflects the _selected_ variant, not the product overall.
+- ✅ Load a product page fresh, **before picking a size**. **Expected:** the button reads **Add to Cart** and is enabled; clicking it says "Please select a size". It must **not** say "Out of Stock" — that was a regression introduced by the variant work and fixed during review.
+- ✅ Pick a size/colour combination that doesn't exist (if your data has one). **Expected:** clicking gives "That combination is not available".
 
 ### 6c. Stock actually decrements on purchase
 
@@ -163,10 +163,10 @@ Previously `maxStock` was always 0 because no variant was ever recorded.
 > This fix is working on live data. The steps below are for re-checking after
 > further changes.
 
-- [ ] Note a variant's current stock in **Admin → Inventory** (say it's 10).
-- [ ] Buy 2 of it via **Cash on Delivery** (fastest path — see §7 for checkout).
-- [ ] **Expected: stock is now 8.**
-- [ ] **Admin → Inventory → History tab.** **Expected:** a new row, change type **sale**, quantity `-2`, previous 10, new 8, reason `Order VLK-…`. This is the first time a purchase has ever appeared in the inventory log.
+- ✅ Note a variant's current stock in **Admin → Inventory** (say it's 10).
+- ✅ Buy 2 of it via **Cash on Delivery** (fastest path — see §7 for checkout).
+- ✅ **Expected: stock is now 8.**
+- ✅ **Admin → Inventory → History tab.** **Expected:** a new row, change type **sale**, quantity `-2`, previous 10, new 8, reason `Order VLK-…`. This is the first time a purchase has ever appeared in the inventory log.
 
 ### 6d. Overselling is blocked
 
@@ -178,16 +178,16 @@ Previously `maxStock` was always 0 because no variant was ever recorded.
 
 ### 6e. Cancelling restores stock
 
-- [ ] Place a COD order for 2 units, confirm stock dropped by 2.
-- [ ] In Admin, set that order to **Cancelled**.
-- [ ] **Expected: stock goes back up by 2**, and the Inventory History shows a restock row with reason "Order cancelled — restocked".
-- [ ] Do the same on a `delivered` order → **Refunded**. **Expected:** stock restored, logged with change type **return**.
+- ✅ Place a COD order for 2 units, confirm stock dropped by 2.
+- ✅ In Admin, set that order to **Cancelled**.
+- ✅ **Expected: stock goes back up by 2**, and the Inventory History shows a restock row with reason "Order cancelled — restocked".
+- ✅ Do the same on a `delivered` order → **Refunded**. **Expected:** stock restored, logged with change type **return**.
 
 ### 6f. One deliberate behaviour change — please confirm you're happy
 
-- [ ] **Account → Wishlist.** The button that said **"Move to Cart"** now says **"Choose Options"** and opens the product page.
-- [ ] **Why:** a wishlist entry is a product, not a variant — no size or colour was ever chosen. Adding straight to cart would mean the app silently picking a size for the customer, which is exactly the class of bug we just fixed. Sending them to choose is the standard behaviour.
-- [ ] **If you'd rather it added directly**, say so — I can make it auto-add when a product has only one variant and only redirect when there's a real choice.
+- ✅ **Account → Wishlist.** The button that said **"Move to Cart"** now says **"Choose Options"** and opens the product page.
+- ✅ **Why:** a wishlist entry is a product, not a variant — no size or colour was ever chosen. Adding straight to cart would mean the app silently picking a size for the customer, which is exactly the class of bug we just fixed. Sending them to choose is the standard behaviour.
+- ✅ **If you'd rather it added directly**, say so — I can make it auto-add when a product has only one variant and only redirect when there's a real choice.
 
 ---
 
@@ -268,6 +268,54 @@ The badge used to keep the old count after ordering.
 - [ ] **Expected:** the cart is emptied too.
 - [ ] If you _are_ running `stripe listen --forward-to localhost:3000/api/webhook/stripe`, it should still be paid exactly once — both paths are idempotent and guarded.
 - [ ] Reload the success page a few times. **Expected:** no duplicate effects, status stays `paid`.
+
+---
+
+## 10. Cached stock + stock issue dialog
+
+Stock is now fetched once per set of variants, cached by TanStack Query, and
+refreshed every 60 seconds (and on window focus). The UI knows every limit up
+front instead of discovering it from a rejected request.
+
+- [ ] Open a product page. **Expected:** the quantity stepper caps at the
+      variant's stock and "Only N left" appears at 5 or fewer.
+- [ ] Leave the page open, change that variant's stock in **Admin → Inventory**,
+      wait ~60s (or switch tabs and back). **Expected:** the cap updates without
+      a reload.
+- [ ] With the page open, reduce stock to 1 in another tab, then immediately try
+      to add 3 before the refresh lands. **Expected:** a **dialog** — not a
+      toast — showing the product image, name, variant, "You wanted 3",
+      "Available 1", and an **"Add 1 instead"** button.
+- [ ] Click "Add 1 instead". **Expected:** the quantity drops to 1.
+- [ ] Set stock to 0 and retry. **Expected:** the dialog says **Out of stock**
+      and offers no quantity button.
+- [ ] Same checks via the hover **Quick Add** wheels on a product card.
+- [ ] Open the network tab on a product grid. **Expected:** stock is fetched in
+      a single batched request, not one per card.
+
+## 11. Cancelling / refunding with a reason and partial restock
+
+Cancel and refund no longer fire immediately — both open a dialog.
+
+- [ ] On an order, choose **Cancelled** from the dropdown (or the Cancel Order
+      button). **Expected:** a dialog listing every item with its image,
+      variant, and a stepper defaulting to the full quantity.
+- [ ] **Expected:** the confirm button is disabled until a **reason** is chosen.
+- [ ] Confirm with everything at full quantity. **Expected:** the order is
+      cancelled and all stock returns, exactly as before.
+- [ ] Cancel another order but set one line's restock to **0** (e.g. a damaged
+      item). **Expected:** an amber warning appears explaining the shortfall
+      stays out of inventory; after confirming, **only the selected units** are
+      returned.
+- [ ] **Admin → Inventory → History.** **Expected:** the restock rows carry your
+      reason, e.g. `Order cancelled: Item arrived damaged`.
+- [ ] Refund a paid order. **Expected:** the same dialog with refund-specific
+      reasons, and log entries of type **return**.
+- [ ] Check the order afterwards. **Expected:** the reason is appended to the
+      order's admin notes with a timestamp.
+- [ ] Cancel an order placed **before** variant tracking. **Expected:** the
+      dialog says none of the items are linked to a stock record — nothing to
+      return.
 
 ---
 

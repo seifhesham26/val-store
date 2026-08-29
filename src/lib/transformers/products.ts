@@ -1,4 +1,5 @@
 import { getCachedProductBySlug, getCachedRelatedProducts } from "@/lib/cache";
+import { resolveColorHex } from "@/lib/colors";
 
 type CachedProduct = NonNullable<
   Awaited<ReturnType<typeof getCachedProductBySlug>>
@@ -25,7 +26,9 @@ export function transformProductForDetail(product: CachedProduct) {
       .reduce(
         (acc, v) => {
           if (!acc.find((c) => c.name === v.color)) {
-            acc.push({ name: v.color!, hex: "#000000" }); // Default hex
+            // The schema has no hex column, so the swatch colour is resolved
+            // from the stored colour name.
+            acc.push({ name: v.color!, hex: resolveColorHex(v.color) });
           }
           return acc;
         },

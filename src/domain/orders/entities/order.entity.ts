@@ -15,6 +15,8 @@ export type OrderStatus =
   | "refunded";
 
 export interface OrderItem {
+  /** order_items row id — needed to restock specific lines. */
+  id: string;
   productId: string;
   /** The variant actually bought. Required to decrement the right stock row. */
   variantId: string | null;
@@ -22,6 +24,8 @@ export interface OrderItem {
   variantDetails: string | null;
   quantity: number;
   price: number; // Price at time of order
+  /** Primary product image, when the repository joined it. */
+  productImage?: string | null;
 }
 
 /**
@@ -77,7 +81,9 @@ export class OrderEntity {
     // Resolved addresses, populated by the repository when it joins them.
     // Null on write and on list queries that don't need them.
     public readonly shippingAddress: OrderAddress | null = null,
-    public readonly billingAddress: OrderAddress | null = null
+    public readonly billingAddress: OrderAddress | null = null,
+    /** Internal notes, including cancellation and refund reasons. */
+    public readonly adminNotes: string | null = null
   ) {}
 
   /**

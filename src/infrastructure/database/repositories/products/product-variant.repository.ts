@@ -52,6 +52,16 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
   /**
    * Find variants with filters
    */
+  async findByIds(variantIds: string[]): Promise<ProductVariantEntity[]> {
+    if (variantIds.length === 0) return [];
+
+    const variants = await db.query.productVariants.findMany({
+      where: inArray(productVariants.id, variantIds),
+    });
+
+    return variants.map((v) => this.mapToEntity(v));
+  }
+
   async findByProducts(
     productIds: string[]
   ): Promise<Map<string, ProductVariantEntity[]>> {

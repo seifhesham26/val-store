@@ -32,6 +32,17 @@ const updateOrderStatusSchema = z.object({
   id: z.string().uuid(),
   // Sourced from the domain so this can never drift from the DB enum again.
   status: z.enum(ORDER_STATUSES),
+  reason: z.string().trim().max(500).optional(),
+  // Omit to restock the whole order; pass an explicit list (even empty) to
+  // restock only part of it.
+  restock: z
+    .array(
+      z.object({
+        orderItemId: z.string().uuid(),
+        quantity: z.number().int().min(0),
+      })
+    )
+    .optional(),
 });
 
 export const ordersRouter = router({

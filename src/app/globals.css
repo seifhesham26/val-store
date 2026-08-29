@@ -141,3 +141,120 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Valkyrie loading system
+ *
+ * A branded alternative to the generic spinner: a hexagonal "shield" track with
+ * a travelling accent segment and a pulsing V chevron at its core, plus a
+ * steel-toned shimmer used by skeleton placeholders.
+ * ------------------------------------------------------------------------- */
+
+@keyframes val-orbit {
+  0% {
+    transform: rotate(0deg);
+    stroke-dashoffset: 0;
+  }
+  100% {
+    transform: rotate(360deg);
+    stroke-dashoffset: -125.4;
+  }
+}
+
+@keyframes val-core {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(1px) scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1);
+  }
+}
+
+@keyframes val-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes val-shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -50% 0;
+  }
+}
+
+@keyframes val-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateY(3px);
+    opacity: 0.9;
+  }
+}
+
+@layer components {
+  .val-loader__track,
+  .val-loader__ring,
+  .val-loader__mark {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .val-loader__ring {
+    animation: val-orbit 1.9s cubic-bezier(0.68, 0.02, 0.35, 1) infinite;
+  }
+
+  .val-loader__mark {
+    animation: val-core 1.9s ease-in-out infinite;
+  }
+
+  .val-loader__label {
+    animation: val-breathe 1.9s ease-in-out infinite;
+  }
+
+  .val-hint {
+    animation: val-hint 1.6s ease-in-out infinite;
+  }
+
+  /* Steel shimmer for skeleton placeholders. */
+  .val-skeleton {
+    background-color: rgb(255 255 255 / 0.05);
+    background-image: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgb(148 163 184 / 0.16) 45%,
+      rgb(226 232 240 / 0.1) 55%,
+      transparent 80%
+    );
+    background-size: 250% 100%;
+    background-repeat: no-repeat;
+    animation: val-shimmer 1.9s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .val-loader__ring,
+  .val-loader__mark,
+  .val-loader__label,
+  .val-hint,
+  .val-skeleton {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+
+  .val-loader__mark {
+    opacity: 1;
+  }
+}

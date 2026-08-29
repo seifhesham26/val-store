@@ -91,6 +91,7 @@ export function ProductCard({
         <QuickAddSliderBar
           productId={id}
           productName={name}
+          productImage={primaryImage}
           variants={variants}
         />
       </div>

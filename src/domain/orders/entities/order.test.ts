@@ -35,6 +35,7 @@ const createTestOrder = (
     status: "pending" as const,
     items: [
       {
+        id: "item-1",
         productId: "prod-1",
         variantId: "variant-1",
         productName: "Test Product",
@@ -184,6 +185,7 @@ describe("OrderEntity", () => {
       const order = createTestOrder({
         items: [
           {
+            id: "item-p1",
             productId: "p1",
             variantId: null,
             productName: "A",
@@ -192,6 +194,7 @@ describe("OrderEntity", () => {
             price: 10,
           },
           {
+            id: "item-p2",
             productId: "p2",
             variantId: null,
             productName: "B",

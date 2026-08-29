@@ -34,6 +34,8 @@ export class CreateOrderUseCase {
     }
 
     const items: OrderItem[] = cartItems.map((item) => ({
+      // Assigned by the database on insert; empty until the order is persisted.
+      id: "",
       productId: item.productId,
       variantId: item.variantId,
       productName: item.productName,

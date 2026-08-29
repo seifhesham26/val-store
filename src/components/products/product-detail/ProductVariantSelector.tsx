@@ -34,20 +34,31 @@ export function ProductVariantSelector({
           <label className="block text-sm font-medium text-white mb-3">
             Color: {selectedColor}
           </label>
-          <div className="flex gap-2">
-            {colors.map((color) => (
-              <button
-                key={color.name}
-                onClick={() => onSelectColor(color.name)}
-                className={`w-10 h-10 rounded-full border-2 transition-all ${
-                  selectedColor === color.name
-                    ? "border-white scale-110"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: color.hex }}
-                aria-label={color.name}
-              />
-            ))}
+          <div className="flex flex-wrap gap-3">
+            {colors.map((color) => {
+              const isSelected = selectedColor === color.name;
+              return (
+                <button
+                  key={color.name}
+                  onClick={() => onSelectColor(color.name)}
+                  title={color.name}
+                  aria-label={color.name}
+                  aria-pressed={isSelected}
+                  className={`relative h-10 w-10 rounded-full transition-all ${
+                    isSelected
+                      ? "ring-2 ring-white ring-offset-2 ring-offset-black"
+                      : "ring-1 ring-white/25 hover:ring-white/60"
+                  }`}
+                >
+                  {/* Inner disc keeps light swatches legible against the
+                      black page while the ring shows selection state. */}
+                  <span
+                    className="absolute inset-0 rounded-full"
+                    style={{ backgroundColor: color.hex }}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

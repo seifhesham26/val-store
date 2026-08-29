@@ -8,6 +8,10 @@ import { OrderStatus } from "@/domain/orders/value-objects/order-status.value-ob
 export interface UpdateOrderStatusInput {
   id: string;
   status: string;
+  /** Why the order is being cancelled or refunded. */
+  reason?: string;
+  /** Lines to return to stock. Omit to restock the whole order. */
+  restock?: { orderItemId: string; quantity: number }[];
 }
 
 export interface UpdateOrderStatusOutput {
@@ -29,7 +33,8 @@ export class UpdateOrderStatusUseCase {
     // Pass the string value, not the value object
     const updated = await this.orderRepository.updateStatus(
       input.id,
-      newStatus.getValue()
+      newStatus.getValue(),
+      { reason: input.reason, restock: input.restock }
     );
 
     return {

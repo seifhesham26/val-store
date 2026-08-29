@@ -12,6 +12,7 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import {
   OrderRepositoryInterface,
   OrderFilters,
+  UpdateOrderStatusOptions,
 } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import {
   OrderEntity,
@@ -24,6 +25,15 @@ import {
 } from "@/domain/orders/value-objects/order-status.value-object";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import { InvalidOrderStatusException } from "@/domain/orders/exceptions/invalid-order-status.exception";
+
+/** Append a timestamped line to the order's admin notes, preserving history. */
+function appendAdminNote(existing: string | null, note: string): string {
+  const stamped = `[${new Date().toISOString()}] ${note}`;
+  return existing
+    ? `${existing}
+${stamped}`
+    : stamped;
+}
 
 /** Shape of a joined `addresses` row, as returned by the relational query. */
 type DbAddress = {
@@ -71,7 +81,9 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     const order = await db.query.orders.findFirst({
       where: eq(orders.id, orderId),
       with: {
-        items: true,
+        // Images are joined only here, not in the list queries: the detail view
+        // is the only place that renders them.
+        items: { with: { product: { with: { images: true } } } },
         shippingAddress: true,
         billingAddress: true,
         payments: true,
@@ -268,7 +280,11 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   /**
    * Update order status
    */
-  async updateStatus(orderId: string, status: string): Promise<OrderEntity> {
+  async updateStatus(
+    orderId: string,
+    status: string,
+    options?: UpdateOrderStatusOptions
+  ): Promise<OrderEntity> {
     // Find existing order
     const existing = await this.findById(orderId);
     if (!existing) {
@@ -296,6 +312,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       updatedAt: Date;
       shippedAt?: Date;
       deliveredAt?: Date;
+      adminNotes?: string;
     } = {
       status: newStatus.getValue(),
       updatedAt: new Date(),
@@ -312,17 +329,39 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     const target = newStatus.getValue();
     // `cancelled` and `refunded` are final states, so an order can only reach
     // them once — no risk of restoring the same stock twice.
-    const shouldRestoreStock = target === "cancelled" || target === "refunded";
+    const isClosing = target === "cancelled" || target === "refunded";
+
+    // Default to returning everything; an explicit list (even an empty one)
+    // means the caller decided line by line — a damaged return should not go
+    // back on sale.
+    const restockByItem = options?.restock
+      ? new Map(
+          options.restock.map((line) => [line.orderItemId, line.quantity])
+        )
+      : null;
 
     await db.transaction(async (tx) => {
+      if (options?.reason) {
+        updates.adminNotes = appendAdminNote(
+          existing.adminNotes,
+          `${target === "refunded" ? "Refunded" : "Cancelled"}: ${options.reason}`
+        );
+      }
+
       await tx.update(orders).set(updates).where(eq(orders.id, orderId));
 
-      if (!shouldRestoreStock) return;
+      if (!isClosing) return;
 
       const now = new Date();
 
       for (const item of existing.items) {
         if (!item.variantId) continue;
+
+        const restockQuantity = restockByItem
+          ? Math.min(restockByItem.get(item.id) ?? 0, item.quantity)
+          : item.quantity;
+
+        if (restockQuantity <= 0) continue;
 
         const [variant] = await tx
           .select({ stockQuantity: productVariants.stockQuantity })
@@ -334,7 +373,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         // The variant may have been deleted since the order was placed.
         if (!variant) continue;
 
-        const newQuantity = variant.stockQuantity + item.quantity;
+        const newQuantity = variant.stockQuantity + restockQuantity;
 
         await tx
           .update(productVariants)
@@ -344,10 +383,12 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         await tx.insert(inventoryLogs).values({
           variantId: item.variantId,
           changeType: target === "refunded" ? "return" : "adjustment",
-          quantityChange: item.quantity,
+          quantityChange: restockQuantity,
           previousQuantity: variant.stockQuantity,
           newQuantity,
-          reason: `Order ${target} — restocked`,
+          reason: options?.reason
+            ? `Order ${target}: ${options.reason}`
+            : `Order ${target} — restocked`,
           createdAt: now,
         });
       }
@@ -480,17 +521,22 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     shippingAddressId: string | null;
     billingAddressId: string | null;
     discountAmount?: string;
+    adminNotes?: string | null;
     createdAt: Date;
     updatedAt: Date;
     shippedAt: Date | null;
     deliveredAt: Date | null;
     items?: Array<{
+      id: string;
       productId: string | null;
       variantId?: string | null;
       productName: string;
       variantDetails?: string | null;
       quantity: number;
       unitPrice: string;
+      product?: {
+        images?: Array<{ imageUrl: string; isPrimary: boolean }>;
+      } | null;
     }>;
     shippingAddress?: DbAddress | null;
     billingAddress?: DbAddress | null;
@@ -509,12 +555,17 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       : null;
     const orderItems =
       dbOrder.items?.map((item) => ({
+        id: item.id,
         productId: item.productId ?? "unknown",
         variantId: item.variantId ?? null,
         productName: item.productName,
         variantDetails: item.variantDetails ?? null,
         quantity: item.quantity,
         price: parseFloat(item.unitPrice), // Map unitPrice to price
+        productImage:
+          item.product?.images?.find((img) => img.isPrimary)?.imageUrl ??
+          item.product?.images?.[0]?.imageUrl ??
+          null,
       })) ?? [];
 
     return new OrderEntity(
@@ -540,7 +591,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       dbOrder.discountAmount ? parseFloat(dbOrder.discountAmount) : 0,
       null, // couponId is recorded in coupon_usages, not on the order row
       toOrderAddress(dbOrder.shippingAddress),
-      toOrderAddress(dbOrder.billingAddress)
+      toOrderAddress(dbOrder.billingAddress),
+      dbOrder.adminNotes ?? null
     );
   }
 }

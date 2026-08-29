@@ -7,6 +7,23 @@
 
 import { OrderEntity } from "@/domain/orders/entities/order.entity";
 
+/** How much of each line to return to stock when closing an order. */
+export interface RestockLine {
+  orderItemId: string;
+  quantity: number;
+}
+
+export interface UpdateOrderStatusOptions {
+  /** Why the order was cancelled or refunded. Stored on the order and on each stock log. */
+  reason?: string;
+  /**
+   * Lines to return to stock. Omit to restock everything (the default for API
+   * callers); pass an explicit list — including an empty one — to restock only
+   * part of the order, e.g. when a returned item comes back damaged.
+   */
+  restock?: RestockLine[];
+}
+
 export interface OrderFilters {
   status?: string; // Changed to string for compatibility with use cases
   userId?: string;
@@ -55,7 +72,11 @@ export interface OrderRepositoryInterface {
   /**
    * Update order status
    */
-  updateStatus(orderId: string, status: string): Promise<OrderEntity>;
+  updateStatus(
+    orderId: string,
+    status: string,
+    options?: UpdateOrderStatusOptions
+  ): Promise<OrderEntity>;
 
   /**
    * Delete an order

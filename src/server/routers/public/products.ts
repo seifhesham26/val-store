@@ -261,4 +261,30 @@ export const publicProductsRouter = router({
         totalPages,
       };
     }),
+
+  /**
+   * Live stock for a set of variants.
+   *
+   * Split out from the product payloads so the client can hold one cached,
+   * periodically-refreshed copy of stock and know every limit up front, instead
+   * of discovering it from failed add-to-cart calls. Server-side validation
+   * still runs on every write — this is for the UI, not for trust.
+   */
+  getStock: publicProcedure
+    .input(z.object({ variantIds: z.array(z.string().uuid()).max(100) }))
+    .query(async ({ input }) => {
+      if (input.variantIds.length === 0) {
+        return { stock: {} as Record<string, number> };
+      }
+
+      const repo = container.getProductVariantRepository();
+      const variants = await repo.findByIds(input.variantIds);
+
+      const stock: Record<string, number> = {};
+      for (const variant of variants) {
+        stock[variant.id] = variant.isAvailable ? variant.stockQuantity : 0;
+      }
+
+      return { stock };
+    }),
 });
