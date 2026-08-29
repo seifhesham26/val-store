@@ -29,6 +29,8 @@ export interface GetOrderOutput {
   shippingAddress: OrderAddress | null;
   billingAddress: OrderAddress | null;
   paymentMethod: string | null;
+  paymentStatus: string | null;
+  hasCapturedPayment: boolean;
   isPaid: boolean;
   isShipped: boolean;
   isDelivered: boolean;
@@ -70,6 +72,8 @@ export class GetOrderUseCase {
       shippingAddress: order.shippingAddress,
       billingAddress: order.billingAddress,
       paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      hasCapturedPayment: order.hasCapturedPayment(),
       isPaid: order.isPaid(),
       isShipped: order.isShipped(),
       isDelivered: order.isDelivered(),

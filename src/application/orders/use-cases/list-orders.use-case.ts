@@ -12,6 +12,8 @@ export interface ListOrdersInput {
   endDate?: Date;
   minTotal?: number;
   maxTotal?: number;
+  /** Only orders where money was captured and not yet returned. */
+  refundableOnly?: boolean;
   page?: number;
   limit?: number;
 }
@@ -25,6 +27,9 @@ export interface OrderListItem {
   createdAt: Date;
   isPaid: boolean;
   isDelivered: boolean;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  isRefundable: boolean;
 }
 
 export interface ListOrdersOutput {
@@ -51,12 +56,18 @@ export class ListOrdersUseCase {
       endDate: input.endDate,
     });
 
+    // Refundability depends on the joined payment row, so it is filtered here
+    // rather than in SQL. Applied before paging so counts stay correct.
+    const filteredOrders = input.refundableOnly
+      ? allOrders.filter((order) => order.canRefund())
+      : allOrders;
+
     // Get total count
-    const total = allOrders.length;
+    const total = filteredOrders.length;
     const totalPages = Math.ceil(total / limit);
 
     // Apply pagination
-    const paginatedOrders = allOrders.slice(offset, offset + limit);
+    const paginatedOrders = filteredOrders.slice(offset, offset + limit);
 
     // Map to DTOs
     const orderDTOs = paginatedOrders.map((order) => this.mapToDTO(order));
@@ -80,6 +91,9 @@ export class ListOrdersUseCase {
       createdAt: order.createdAt,
       isPaid: order.isPaid(),
       isDelivered: order.isDelivered(),
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      isRefundable: order.canRefund(),
     };
   }
 }

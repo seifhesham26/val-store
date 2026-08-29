@@ -13,7 +13,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Eye, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useImperativeHandle } from "react";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
+import type { OrderFilters } from "./OrdersListHeader";
+import type { AppRouter } from "@/server";
+import type { inferRouterOutputs } from "@trpc/server";
+
+type OrderRow =
+  inferRouterOutputs<AppRouter>["admin"]["orders"]["list"]["orders"][number];
 
 type OrderStatus =
   | "pending"
@@ -42,10 +49,24 @@ const statusStyles: Record<OrderStatus, string> = {
 
 const ITEMS_PER_PAGE = 10;
 
-export function OrdersTable() {
+export interface OrdersTableHandle {
+  getOrders: () => OrderRow[];
+}
+
+export function OrdersTable({
+  filters,
+  tableRef,
+}: {
+  filters: OrderFilters;
+  tableRef?: React.RefObject<OrdersTableHandle | null>;
+}) {
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     trpc.admin.orders.list.useInfiniteQuery(
-      { limit: ITEMS_PER_PAGE },
+      {
+        limit: ITEMS_PER_PAGE,
+        status: filters.status === "all" ? undefined : filters.status,
+        refundableOnly: filters.refundableOnly || undefined,
+      },
       {
         getNextPageParam: (lastPage) => {
           if (lastPage.page < lastPage.totalPages) {
@@ -58,8 +79,22 @@ export function OrdersTable() {
     );
 
   // Flatten all pages
-  const orders = data?.pages.flatMap((page) => page.orders) || [];
-  const total = data?.pages[0]?.total || 0;
+  const allOrders = data?.pages.flatMap((page) => page.orders) || [];
+
+  // Order number is not returned by the list endpoint, so the free-text search
+  // matches on the id and customer fragments the table actually displays.
+  const search = filters.search.trim().toLowerCase();
+  const orders = search
+    ? allOrders.filter(
+        (order) =>
+          order.id.toLowerCase().includes(search) ||
+          order.userId.toLowerCase().includes(search)
+      )
+    : allOrders;
+
+  const total = search ? orders.length : (data?.pages[0]?.total ?? 0);
+
+  useImperativeHandle(tableRef, () => ({ getOrders: () => orders }), [orders]);
 
   // Infinite scroll
   const { ref: sentinelRef } = useInfiniteScroll({
@@ -120,6 +155,14 @@ export function OrdersTable() {
                     >
                       {order.isPaid ? "Paid" : "Unpaid"}
                     </Badge>
+                    {order.isRefundable && (
+                      <Badge
+                        variant="outline"
+                        className="ml-1 bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400 border-sky-200 dark:border-sky-800"
+                      >
+                        Refundable
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge

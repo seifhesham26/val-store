@@ -21,6 +21,8 @@ const createTestOrder = (
     tax: number;
     shippingCost: number;
     totalAmount: number;
+    paymentMethod: string | null;
+    paymentStatus: "pending" | "completed" | "failed" | "refunded" | null;
     paidAt: Date | null;
     shippedAt: Date | null;
     deliveredAt: Date | null;
@@ -47,7 +49,8 @@ const createTestOrder = (
     totalAmount: 115,
     shippingAddress: "123 Test St",
     billingAddress: "123 Test St",
-    paymentMethod: null,
+    paymentMethod: null as string | null,
+    paymentStatus: null,
     paidAt: null,
     shippedAt: null,
     deliveredAt: null,
@@ -69,6 +72,7 @@ const createTestOrder = (
     config.shippingAddress,
     config.billingAddress,
     config.paymentMethod,
+    config.paymentStatus,
     config.paidAt,
     config.shippedAt,
     config.deliveredAt,
@@ -218,19 +222,68 @@ describe("OrderEntity", () => {
     });
   });
 
+  // Refundability follows the money, not the order status: what matters is
+  // whether payment was actually captured.
   describe("canRefund", () => {
-    it("returns true for paid orders", () => {
-      const order = createTestOrder({ status: "paid" });
+    it("returns true once the card payment is captured", () => {
+      const order = createTestOrder({
+        status: "paid",
+        paymentStatus: "completed",
+      });
       expect(order.canRefund()).toBe(true);
     });
 
-    it("returns true for delivered orders", () => {
-      const order = createTestOrder({ status: "delivered" });
+    it("returns true for a cancelled order that was already paid", () => {
+      // The case that matters: cancelling does not un-charge the customer, so
+      // the refund route has to stay open.
+      const order = createTestOrder({
+        status: "cancelled",
+        paymentStatus: "completed",
+      });
       expect(order.canRefund()).toBe(true);
     });
 
-    it("returns false for cancelled orders", () => {
-      const order = createTestOrder({ status: "cancelled" });
+    it("returns false for a cancelled order that was never paid", () => {
+      const order = createTestOrder({
+        status: "cancelled",
+        paymentStatus: "pending",
+      });
+      expect(order.canRefund()).toBe(false);
+    });
+
+    it("returns false for a paid status with no captured payment", () => {
+      // Status alone is not evidence that money changed hands.
+      const order = createTestOrder({
+        status: "paid",
+        paymentStatus: "pending",
+      });
+      expect(order.canRefund()).toBe(false);
+    });
+
+    it("returns true for a delivered cash-on-delivery order", () => {
+      const order = createTestOrder({
+        status: "delivered",
+        paymentMethod: "cash_on_delivery",
+        paymentStatus: "pending",
+        deliveredAt: new Date(),
+      });
+      expect(order.canRefund()).toBe(true);
+    });
+
+    it("returns false for an undelivered cash-on-delivery order", () => {
+      const order = createTestOrder({
+        status: "shipped",
+        paymentMethod: "cash_on_delivery",
+        paymentStatus: "pending",
+      });
+      expect(order.canRefund()).toBe(false);
+    });
+
+    it("returns false once already refunded", () => {
+      const order = createTestOrder({
+        status: "refunded",
+        paymentStatus: "completed",
+      });
       expect(order.canRefund()).toBe(false);
     });
 

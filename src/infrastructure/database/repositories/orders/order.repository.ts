@@ -16,6 +16,7 @@ import {
 import {
   OrderEntity,
   type OrderAddress,
+  type OrderPaymentStatus,
 } from "@/domain/orders/entities/order.entity";
 import {
   OrderStatus,
@@ -73,6 +74,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         items: true,
         shippingAddress: true,
         billingAddress: true,
+        payments: true,
       },
     });
 
@@ -102,6 +104,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         items: true,
         shippingAddress: true,
         billingAddress: true,
+        payments: true,
       },
       orderBy: [desc(orders.createdAt)],
     });
@@ -276,7 +279,11 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     const currentStatus = OrderStatus.create(existing.status);
     const newStatus = OrderStatus.create(status);
 
-    if (!currentStatus.canTransitionTo(newStatus.getValue())) {
+    if (
+      !currentStatus.canTransitionTo(newStatus.getValue(), {
+        paymentCaptured: existing.hasCapturedPayment(),
+      })
+    ) {
       throw new InvalidOrderStatusException(
         currentStatus.getValue(),
         newStatus.getValue()
@@ -368,6 +375,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         items: true,
         shippingAddress: true,
         billingAddress: true,
+        payments: true,
       },
       orderBy: [desc(orders.createdAt)],
       limit,
@@ -486,7 +494,19 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     }>;
     shippingAddress?: DbAddress | null;
     billingAddress?: DbAddress | null;
+    payments?: Array<{
+      paymentMethod: string;
+      paymentStatus: OrderPaymentStatus;
+      updatedAt: Date;
+    }> | null;
   }): OrderEntity {
+    // One payment row is written per order at creation. If that ever changes,
+    // the most recently updated row is the authoritative one.
+    const payment = dbOrder.payments?.length
+      ? [...dbOrder.payments].sort(
+          (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+        )[0]
+      : null;
     const orderItems =
       dbOrder.items?.map((item) => ({
         productId: item.productId ?? "unknown",
@@ -508,8 +528,11 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       parseFloat(dbOrder.totalAmount),
       dbOrder.shippingAddressId ?? "",
       dbOrder.billingAddressId ?? "",
-      null, // paymentMethod not in current schema
-      null, // paidAt not in current schema
+      payment?.paymentMethod ?? null,
+      payment?.paymentStatus ?? null,
+      // The schema has no dedicated paid_at column; the payment row's updatedAt
+      // is when it moved to completed.
+      payment?.paymentStatus === "completed" ? payment.updatedAt : null,
       dbOrder.shippedAt,
       dbOrder.deliveredAt,
       new Date(dbOrder.createdAt),

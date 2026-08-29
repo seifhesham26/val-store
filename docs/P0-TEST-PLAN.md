@@ -21,18 +21,18 @@ You need an admin account (`npx tsx scripts/set-admin.ts <your-email>`) and at l
 
 The bug: every save nulled `gender`, `material`, `careInstructions`, `metaTitle`, `metaDescription`.
 
-- [ ] Go to **Admin → Products → edit any product**. There are two new cards: **Additional Details** (Gender, Material, Care Instructions) and **SEO** (Meta Title, Meta Description).
-- [ ] Fill all five in. Put **two or three lines** in Care Instructions — each line becomes a bullet on the storefront.
-- [ ] Save. Expected: "Product updated successfully", redirect to the products list.
-- [ ] Re-open the same product. **Expected: all five values are still there.** (Before the fix they'd be blank, and the DB columns would be NULL.)
-- [ ] Change only the product **name** and save. Re-open. **Expected: the five detail fields are untouched.** This is the actual regression — an unrelated edit used to destroy them.
-- [ ] Open the product on the storefront (`/products/<slug>`). **Expected:** the Details list shows your care-instruction lines, one bullet each.
-- [ ] Set Gender to **Men**, save, then visit `/collections/men`. **Expected: the product appears.** Set it to Women and confirm it moves to `/collections/women`.
+- ✅ Go to **Admin → Products → edit any product**. There are two new cards: **Additional Details** (Gender, Material, Care Instructions) and **SEO** (Meta Title, Meta Description).
+- ✅ Fill all five in. Put **two or three lines** in Care Instructions — each line becomes a bullet on the storefront.
+- ✅ Save. Expected: "Product updated successfully", redirect to the products list.
+- ✅ Re-open the same product. **Expected: all five values are still there.** (Before the fix they'd be blank, and the DB columns would be NULL.)
+- ✅ Change only the product **name** and save. Re-open. **Expected: the five detail fields are untouched.** This is the actual regression — an unrelated edit used to destroy them.
+- ✅ Open the product on the storefront (`/products/<slug>`). **Expected:** the Details list shows your care-instruction lines, one bullet each.
+- ✅ Set Gender to **Men**, save, then visit `/collections/men`. **Expected: the product appears.** Set it to Women and confirm it moves to `/collections/women`.
 
 Sale price (fixed at the same time — it could never be cleared before):
 
-- [ ] Set a sale price, save, confirm the storefront shows the sale.
-- [ ] Clear the sale price field entirely, save, re-open. **Expected: it stays empty** and the storefront shows the normal price. (Before, the old sale price silently came back.)
+- ✅ Set a sale price, save, confirm the storefront shows the sale.
+- ✅ Clear the sale price field entirely, save, re-open. **Expected: it stays empty** and the storefront shows the normal price. (Before, the old sale price silently came back.)
 
 Creating a product:
 
@@ -45,13 +45,13 @@ Creating a product:
 
 The bug: the dropdown offered `confirmed` (not a real status — it threw), and omitted `paid`.
 
-- [ ] Open **Admin → Orders → any order**. Look at the **Update Status** dropdown.
-- [ ] **Expected:** seven options — Pending, Processing, Paid, Shipped, Delivered, Cancelled, Refunded. **No "Confirmed".**
-- [ ] **Expected:** options the order can't legally move to are **greyed out and unclickable**. For a `pending` order only Processing, Paid and Cancelled are selectable.
-- [ ] Move an order Pending → Processing. **Expected:** "Order status updated", and the dropdown now shows Processing with a _new_ set of enabled options (Paid, Cancelled).
-- [ ] Continue Processing → Paid → Shipped → Delivered. **Expected: each step succeeds.** Shipped and Delivered should also stamp the timestamps shown in the Timeline card.
-- [ ] On a `delivered` order. **Expected:** only Refunded is selectable; the "Cancel Order" button is gone and "Refund Order" is shown.
-- [ ] On a `cancelled` order. **Expected:** everything except the current status is disabled — it's a final state.
+- ✅ Open **Admin → Orders → any order**. Look at the **Update Status** dropdown.
+- ✅ **Expected:** seven options — Pending, Processing, Paid, Shipped, Delivered, Cancelled, Refunded. **No "Confirmed".**
+- ✅ **Expected:** options the order can't legally move to are **greyed out and unclickable**. For a `pending` order only Processing, Paid and Cancelled are selectable.
+- ✅ Move an order Pending → Processing. **Expected:** "Order status updated", and the dropdown now shows Processing with a _new_ set of enabled options (Paid, Cancelled).
+- ✅ Continue Processing → Paid → Shipped → Delivered. **Expected: each step succeeds.** Shipped and Delivered should also stamp the timestamps shown in the Timeline card.
+- ✅ On a `delivered` order. **Expected:** only Refunded is selectable; the "Cancel Order" button is gone and "Refund Order" is shown.
+- ✅ On a `cancelled` order. **Expected:** everything except the current status is disabled — it's a final state.
 
 > If any status change throws "Invalid order status", tell me the from → to pair; that means the transition map needs widening.
 
@@ -61,10 +61,10 @@ The bug: the dropdown offered `confirmed` (not a real status — it threw), and 
 
 The bug: the card showed a raw UUID instead of an address.
 
-- [ ] Place an order (see §6 for the full flow), then open it in **Admin → Orders**.
-- [ ] **Expected:** the Shipping Address card shows a real formatted address — name, street, city/state, postcode, country, and a clickable phone number. **Not a UUID.**
-- [ ] **Expected:** Billing Address shows the same address (checkout still reuses the shipping address for billing — that's issue #37, a P3).
-- [ ] Open an order placed _before_ today's changes. **Expected:** it also renders properly, since the address is resolved by join at read time, not stored on the order.
+- ✅ Place an order (see §6 for the full flow), then open it in **Admin → Orders**.
+- ✅ **Expected:** the Shipping Address card shows a real formatted address — name, street, city/state, postcode, country, and a clickable phone number. **Not a UUID.**
+- ✅ **Expected:** Billing Address shows the same address (checkout still reuses the shipping address for billing — that's issue #37, a P3).
+- ✅ Open an order placed _before_ today's changes. **Expected:** it also renders properly, since the address is resolved by join at read time, not stored on the order.
 
 ---
 
@@ -201,6 +201,47 @@ Set up in **Admin → Coupons**: create `TEST20`, percentage, value `20`, active
 - [ ] In Admin, **cancel** that pending order. **Expected:** stock is restored.
 - [ ] Now complete the payment on the still-open Stripe page.
 - [ ] **Expected: the order stays `cancelled`.** It must not flip to `paid`, because its stock was already given back. (The webhook now only advances orders that are still `pending`/`processing`.) The payment itself will have gone through, so refund it in Stripe — that part is manual.
+
+---
+
+## 9. Follow-ups from your testing round
+
+### 9a. Refunding a paid order that was cancelled
+
+The rule changed: **refundability now follows the money, not the order status.** Cancelling does not un-charge a customer, so a paid-then-cancelled order stays refundable.
+
+- [ ] Take an order to **paid** (card), then **shipped**, then **cancelled**. **Expected:** the Refunded option is still selectable and the "Refund Order" button is still shown — because the money was captured.
+- [ ] Take a **pending** order straight to **cancelled** (never paid). **Expected:** Refunded is disabled and the Refund button is hidden — there is nothing to refund.
+- [ ] A **delivered COD** order. **Expected:** refundable (cash was collected on delivery).
+- [ ] A **shipped COD** order. **Expected:** not refundable yet — the courier hasn't collected.
+- [ ] An order already **refunded**. **Expected:** not refundable again.
+
+### 9b. Payment card shows the truth
+
+- [ ] Open any order in Admin. **Expected:** Method reads **Cash on Delivery** or **Card (Stripe)** — it used to always say "N/A" because the payment row was never loaded.
+- [ ] **Expected:** Payment Status reads **Awaiting payment / Paid / Paid (on delivery) / Refunded / Failed**, driven by the `payments` row rather than inferred from order status.
+
+### 9c. Refundable filter on the orders list
+
+- [ ] **Admin → Orders.** The "Filters (coming soon)" button is gone. There is now a working **status dropdown**, a **Refundable** toggle, a working **search** box, and a working **Export**.
+- [ ] Click **Refundable**. **Expected:** only orders where money was captured and not yet returned — including cancelled ones that were paid.
+- [ ] **Expected:** rows that are refundable carry a blue **Refundable** badge next to the payment badge.
+- [ ] Pick a status from the dropdown. **Expected:** the list filters server-side. **Clear** resets everything.
+
+### 9d. Cart badge after checkout
+
+The badge used to keep the old count after ordering.
+
+- [ ] Place a **COD** order. **Expected:** the navbar cart badge drops to 0 immediately on the success page. _(The cart is now emptied server-side when a COD order is created, instead of relying on the browser.)_
+- [ ] Place a **Stripe** order and complete payment. **Expected:** badge is 0 when you land back on the success page.
+- [ ] Hard-refresh the success page. **Expected:** still 0 — it is not coming back from localStorage.
+
+### 9e. Stripe order marked paid without a webhook
+
+- [ ] Pay with `4242 4242 4242 4242`. **Expected:** on returning to the success page the order shows **paid** in Admin, and Payment Status is **Paid** — even if you are **not** running `stripe listen`.
+- [ ] **Expected:** the cart is emptied too.
+- [ ] If you _are_ running `stripe listen --forward-to localhost:3000/api/webhook/stripe`, it should still be paid exactly once — both paths are idempotent and guarded.
+- [ ] Reload the success page a few times. **Expected:** no duplicate effects, status stays `paid`.
 
 ---
 

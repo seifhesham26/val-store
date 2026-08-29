@@ -60,7 +60,9 @@ export function UpdateStatusCard({
                     value={status}
                     disabled={
                       !isCurrent &&
-                      !OrderStatus.canTransition(order.status, status)
+                      !OrderStatus.canTransition(order.status, status, {
+                        paymentCaptured: order.hasCapturedPayment,
+                      })
                     }
                   >
                     {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -82,7 +84,9 @@ export function UpdateStatusCard({
               Cancel Order
             </Button>
           )}
-          {OrderStatus.canTransition(order.status, "refunded") && (
+          {OrderStatus.canTransition(order.status, "refunded", {
+            paymentCaptured: order.hasCapturedPayment,
+          }) && (
             <Button
               variant="outline"
               size="sm"

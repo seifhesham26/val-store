@@ -18,6 +18,7 @@ const listOrdersSchema = z
     endDate: z.date().optional(),
     minTotal: z.number().optional(),
     maxTotal: z.number().optional(),
+    refundableOnly: z.boolean().optional(),
     limit: z.number().min(1).max(100).optional().default(10),
     cursor: z.number().min(1).optional(), // Page number as cursor
   })

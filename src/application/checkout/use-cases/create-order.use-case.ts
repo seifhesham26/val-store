@@ -91,9 +91,10 @@ export class CreateOrderUseCase {
       input.shippingAddressId,
       input.shippingAddressId,
       input.paymentMethod,
-      null,
-      null,
-      null,
+      "pending", // paymentStatus — nothing captured until Stripe confirms / COD delivers
+      null, // paidAt
+      null, // shippedAt
+      null, // deliveredAt
       now,
       now,
       discount,
@@ -103,6 +104,22 @@ export class CreateOrderUseCase {
     order.validateTotal();
 
     const created = await this.orderRepository.create(order);
+
+    // Cash on delivery is complete at this point, so empty the cart server-side
+    // rather than relying on the browser to do it. The card flow keeps its cart
+    // until Stripe confirms payment, so an abandoned checkout does not lose it.
+    if (input.paymentMethod === "cash_on_delivery") {
+      try {
+        await this.cartRepository.clearCart(input.userId);
+      } catch (error) {
+        // The order is already committed — never fail the checkout over this.
+        // The cart re-syncs from the server on the next read.
+        console.error(
+          "[CreateOrder] Failed to clear cart after COD order",
+          error
+        );
+      }
+    }
 
     return { order: created };
   }

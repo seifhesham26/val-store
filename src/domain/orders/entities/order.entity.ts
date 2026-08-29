@@ -31,6 +31,13 @@ export interface OrderItem {
  * no date transformer configured, so any Date field would arrive as a string
  * while claiming to be a Date.
  */
+/** Payment state for an order, read from the `payments` row. */
+export type OrderPaymentStatus =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "refunded";
+
 export interface OrderAddress {
   fullName: string;
   addressLine1: string;
@@ -58,6 +65,7 @@ export class OrderEntity {
     public readonly shippingAddressId: string,
     public readonly billingAddressId: string,
     public readonly paymentMethod: string | null,
+    public readonly paymentStatus: OrderPaymentStatus | null,
     public readonly paidAt: Date | null,
     public readonly shippedAt: Date | null,
     public readonly deliveredAt: Date | null,
@@ -145,13 +153,36 @@ export class OrderEntity {
   }
 
   /**
-   * Check if order can be refunded
-   * Allows refunds for paid, shipped, and delivered orders
+   * Has money actually changed hands?
+   *
+   * Card payments are captured when Stripe confirms them. Cash on delivery is
+   * captured when the courier hands the order over, which is the point the order
+   * is marked delivered.
+   *
+   * This is deliberately independent of `status`: an order that was paid and
+   * then cancelled still had money taken, and must remain refundable.
+   */
+  hasCapturedPayment(): boolean {
+    if (this.paymentStatus === "completed") return true;
+    if (
+      this.paymentMethod === "cash_on_delivery" &&
+      this.deliveredAt !== null
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check if order can be refunded.
+   *
+   * Money must have been captured and not already returned. Note this holds for
+   * cancelled orders too — cancelling a paid order does not un-charge the
+   * customer, so the refund path has to stay open.
    */
   canRefund(): boolean {
-    // Allow refunds for paid/shipped/delivered orders, but not cancelled/refunded
-    return (
-      this.isPaid() && this.status !== "cancelled" && this.status !== "refunded"
-    );
+    if (this.status === "refunded") return false;
+    if (this.paymentStatus === "refunded") return false;
+    return this.hasCapturedPayment();
   }
 }
