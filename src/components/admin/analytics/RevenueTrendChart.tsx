@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { formatCurrency } from "@/lib/currency";
 
 interface RevenueTrendChartProps {
   data: Array<{ date: string; revenue: number; orders: number }>;
@@ -78,7 +79,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
                   borderRadius: "8px",
                 }}
                 formatter={(value: number) => [
-                  `$${value.toFixed(2)}`,
+                  formatCurrency(value),
                   "Revenue",
                 ]}
               />

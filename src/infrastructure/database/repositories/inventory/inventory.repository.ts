@@ -11,7 +11,7 @@ import {
   InventoryLog,
   NewInventoryLog,
 } from "@/db/schema";
-import { eq, desc, lte } from "drizzle-orm";
+import { eq, desc, lte, inArray } from "drizzle-orm";
 import {
   InventoryRepositoryInterface,
   InventoryLogWithDetails,
@@ -195,5 +195,21 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       columns: { stockQuantity: true },
     });
     return result?.stockQuantity ?? null;
+  }
+
+  async getVariantsStock(
+    variantIds: string[]
+  ): Promise<{ id: string; sku: string; stockQuantity: number }[]> {
+    const ids = [...new Set(variantIds)];
+    if (ids.length === 0) return [];
+
+    return db
+      .select({
+        id: productVariants.id,
+        sku: productVariants.sku,
+        stockQuantity: productVariants.stockQuantity,
+      })
+      .from(productVariants)
+      .where(inArray(productVariants.id, ids));
   }
 }

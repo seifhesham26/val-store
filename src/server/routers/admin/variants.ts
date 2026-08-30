@@ -9,6 +9,7 @@ import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
+import { TRPCError } from "@trpc/server";
 
 // Validation schemas
 const addVariantSchema = z.object({
@@ -21,13 +22,16 @@ const addVariantSchema = z.object({
   isAvailable: z.boolean().default(true),
 });
 
+// Deliberately no `stockQuantity`. Variant metadata and stock levels are
+// different operations with different consequences: renaming a colour is not an
+// inventory movement, and a stock change must leave an audit row. Stock goes
+// through `updateStock` below, which does.
 const updateVariantSchema = z.object({
   id: z.string().uuid(),
   data: z.object({
     sku: z.string().min(1).optional(),
     size: z.string().nullable().optional(),
     color: z.string().nullable().optional(),
-    stockQuantity: z.number().int().min(0).optional(),
     priceAdjustment: z.number().optional(),
     isAvailable: z.boolean().optional(),
   }),
@@ -36,6 +40,10 @@ const updateVariantSchema = z.object({
 const updateStockSchema = z.object({
   id: z.string().uuid(),
   quantity: z.number().int().min(0),
+  changeType: z
+    .enum(["restock", "adjustment", "damaged", "return"])
+    .default("adjustment"),
+  reason: z.string().max(500).optional(),
 });
 
 // Helper to convert entity to plain object
@@ -95,7 +103,7 @@ export const variantsRouter = router({
         input.data.sku ?? existing.sku,
         input.data.size !== undefined ? input.data.size : existing.size,
         input.data.color !== undefined ? input.data.color : existing.color,
-        input.data.stockQuantity ?? existing.stockQuantity,
+        existing.stockQuantity,
         input.data.priceAdjustment ?? existing.priceAdjustment,
         input.data.isAvailable ?? existing.isAvailable,
         existing.createdAt,
@@ -118,16 +126,31 @@ export const variantsRouter = router({
     }),
 
   /**
-   * Update stock quantity for a variant
+   * Set a variant's stock level.
+   *
+   * The only way to change stock from the admin UI. Routed through
+   * `AdjustStockUseCase` so every movement writes an `inventory_logs` row with
+   * who did it and why — the same path the Inventory page uses.
    */
   updateStock: adminProcedure
     .input(updateStockSchema)
-    .mutation(async ({ input }) => {
-      const useCase = container.getUpdateVariantStockUseCase();
-      return useCase.execute({
+    .mutation(async ({ input, ctx }) => {
+      const useCase = container.getAdjustStockUseCase();
+      const result = await useCase.execute({
         variantId: input.id,
-        quantity: input.quantity,
-        mode: "set",
+        newQuantity: input.quantity,
+        changeType: input.changeType,
+        reason: input.reason,
+        userId: ctx.user.id,
       });
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: result.error ?? "Failed to update stock",
+        });
+      }
+
+      return result;
     }),
 });

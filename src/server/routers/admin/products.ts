@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
+import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 
 // Validation schemas
 const createProductSchema = z.object({
@@ -18,6 +19,35 @@ const createProductSchema = z.object({
   careInstructions: z.string().nullable().optional(),
   metaTitle: z.string().nullable().optional(),
   metaDescription: z.string().nullable().optional(),
+});
+
+// Images and variants are accepted by `create` only. On the edit page they are
+// managed one at a time through admin.images / admin.variants, where each change
+// is its own deliberate action; at creation they must land with the product or
+// not at all.
+const newProductRelationsSchema = z.object({
+  images: z
+    .array(
+      z.object({
+        imageUrl: urlOrAssetPath,
+        altText: z.string().nullable().optional(),
+        isPrimary: z.boolean().optional(),
+      })
+    )
+    .max(20)
+    .optional(),
+  variants: z
+    .array(
+      z.object({
+        sku: z.string().min(1),
+        size: z.string().nullable().optional(),
+        color: z.string().nullable().optional(),
+        stockQuantity: z.number().int().min(0),
+        priceAdjustment: z.number(),
+      })
+    )
+    .max(100)
+    .optional(),
 });
 
 const listProductsSchema = z.object({
@@ -63,7 +93,7 @@ export const productsRouter = router({
 
   // Create new product
   create: adminProcedure
-    .input(createProductSchema)
+    .input(createProductSchema.extend(newProductRelationsSchema.shape))
     .mutation(async ({ input }) => {
       const useCase = container.getCreateProductUseCase();
       return useCase.execute(input);

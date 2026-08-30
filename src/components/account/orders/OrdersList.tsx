@@ -5,6 +5,7 @@ import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
+import { formatCurrency } from "@/lib/currency";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type OrdersListType =
@@ -98,11 +99,11 @@ export function OrdersList({
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <p className="font-semibold text-white">
-                      ${order.total.toFixed(2)}
+                      {formatCurrency(order.total)}
                     </p>
                     {order.refundedAmount > 0 && (
                       <p className="text-xs text-orange-400">
-                        ${order.refundedAmount.toFixed(2)} refunded
+                        {formatCurrency(order.refundedAmount)} refunded
                       </p>
                     )}
                   </div>

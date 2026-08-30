@@ -20,6 +20,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { formatCurrency } from "@/lib/currency";
 
 type Period = "7d" | "30d" | "90d";
 
@@ -143,7 +144,7 @@ export function SalesChart() {
                   border: "1px solid hsl(var(--border))",
                   borderRadius: "8px",
                 }}
-                formatter={(value: number) => [`$${value.toFixed(2)}`, "Sales"]}
+                formatter={(value: number) => [formatCurrency(value), "Sales"]}
               />
               <Area
                 type="monotone"

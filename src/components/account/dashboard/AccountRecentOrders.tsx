@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
+import { formatCurrency } from "@/lib/currency";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type OrdersList = RouterOutputs["public"]["orders"]["getMyOrders"]["orders"];
@@ -46,7 +47,7 @@ export function AccountRecentOrders({
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-white">
-                    ${order.total.toFixed(2)}
+                    {formatCurrency(order.total)}
                   </p>
                   <p className="text-sm text-gray-500 capitalize">
                     {order.status}

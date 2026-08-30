@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useCartStore } from "@/lib/stores/cart-store";
+import { formatCurrency } from "@/lib/currency";
 
 export function CheckoutOrderSummary({
   couponCode,
@@ -89,11 +90,11 @@ export function CheckoutOrderSummary({
                 <p className="text-xs text-gray-500">{item.variantLabel}</p>
               )}
               <p className="text-sm text-gray-400 mt-1">
-                Qty: {item.quantity} × ${item.productPrice.toFixed(2)}
+                Qty: {item.quantity} × {formatCurrency(item.productPrice)}
               </p>
             </div>
             <div className="flex items-center font-bold text-white">
-              ${(item.quantity * item.productPrice).toFixed(2)}
+              {formatCurrency(item.quantity * item.productPrice)}
             </div>
           </div>
         ))}
@@ -157,12 +158,12 @@ export function CheckoutOrderSummary({
         <div className="border-t border-white/10 pt-4 space-y-3 mt-4">
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Subtotal</span>
-            <span className="text-white">${subtotal.toFixed(2)}</span>
+            <span className="text-white">{formatCurrency(subtotal)}</span>
           </div>
           {appliedCoupon && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Discount</span>
-              <span>-${discount.toFixed(2)}</span>
+              <span>-{formatCurrency(discount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm">
@@ -171,7 +172,7 @@ export function CheckoutOrderSummary({
           </div>
           <div className="flex justify-between font-bold text-xl pt-4 border-t border-white/10 mt-4">
             <span>Total</span>
-            <span className="text-white">${total.toFixed(2)}</span>
+            <span className="text-white">{formatCurrency(total)}</span>
           </div>
         </div>
       </CardContent>

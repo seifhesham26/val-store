@@ -13,6 +13,7 @@ import {
   SendEmailInput,
   SendEmailResult,
 } from "@/application/interfaces/email.interface";
+import { formatCurrency } from "@/lib/currency";
 
 export class ResendEmailService implements EmailServiceInterface {
   private readonly resend: Resend;
@@ -157,7 +158,7 @@ export class ResendEmailService implements EmailServiceInterface {
         <tr>
           <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.name}</td>
           <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">$${item.price.toFixed(2)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(item.price)}</td>
         </tr>
       `
       )
@@ -189,7 +190,7 @@ export class ResendEmailService implements EmailServiceInterface {
               ${itemsHtml}
               <tr>
                 <td colspan="2" style="padding: 10px; text-align: right;"><strong>Total:</strong></td>
-                <td style="padding: 10px; text-align: right;"><strong>$${orderDetails.total.toFixed(2)}</strong></td>
+                <td style="padding: 10px; text-align: right;"><strong>${formatCurrency(orderDetails.total)}</strong></td>
               </tr>
             </tbody>
           </table>
@@ -215,7 +216,7 @@ export class ResendEmailService implements EmailServiceInterface {
       to: email,
       subject: `Order Confirmed - ${orderNumber}`,
       html,
-      text: `Order ${orderNumber} confirmed. Total: $${orderDetails.total.toFixed(2)}`,
+      text: `Order ${orderNumber} confirmed. Total: ${formatCurrency(orderDetails.total)}`,
     });
   }
 

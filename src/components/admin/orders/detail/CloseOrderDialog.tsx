@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import type { OrderData } from "./types";
+import { formatCurrency } from "@/lib/currency";
 
 export type CloseAction = "cancelled" | "refunded";
 
@@ -337,7 +338,7 @@ export function CloseOrderDialog({
                 <span className="text-xs text-muted-foreground">
                   {totalReturned} unit{totalReturned === 1 ? "" : "s"} ·{" "}
                   <span className="font-medium text-foreground tabular-nums">
-                    ${refundValue.toFixed(2)}
+                    {formatCurrency(refundValue)}
                   </span>
                 </span>
               </div>
@@ -379,7 +380,7 @@ export function CloseOrderDialog({
                               {item.variantDetails
                                 ? `${item.variantDetails} · `
                                 : ""}
-                              ${item.price.toFixed(2)} each
+                              {formatCurrency(item.price)} each
                               {item.refundedQuantity > 0 &&
                                 ` · ${item.refundedQuantity} already returned`}
                             </p>
@@ -553,7 +554,7 @@ export function CloseOrderDialog({
             {isPending
               ? "Working..."
               : isRefund
-                ? `Refund $${refundValue.toFixed(2)}`
+                ? `Refund ${formatCurrency(refundValue)}`
                 : "Cancel order"}
           </Button>
         </DialogFooter>

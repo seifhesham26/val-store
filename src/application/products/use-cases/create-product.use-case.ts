@@ -2,7 +2,10 @@ import {
   ProductEntity,
   Gender,
 } from "@/domain/products/entities/product.entity";
-import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import {
+  ProductRepositoryInterface,
+  NewProductRelations,
+} from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { DuplicateSKUException } from "@/domain/products/exceptions/duplicate-sku.exception";
 import { InvalidPriceException } from "@/domain/products/exceptions/invalid-price.exception";
 
@@ -27,6 +30,12 @@ export interface CreateProductInput {
   careInstructions?: string | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
+  /**
+   * Images and variants to store alongside the product, in one transaction.
+   * Omitted entirely when the admin adds them later from the edit page.
+   */
+  images?: NewProductRelations["images"];
+  variants?: NewProductRelations["variants"];
 }
 
 export interface CreateProductOutput {
@@ -42,6 +51,7 @@ export class CreateProductUseCase {
   async execute(input: CreateProductInput): Promise<CreateProductOutput> {
     // 1. Validate business rules
     this.validatePrices(input.basePrice, input.salePrice);
+    this.validateVariantSkus(input.variants);
 
     // 2. Check if SKU already exists
     const skuExists = await this.productRepository.existsBySKU(input.sku);
@@ -54,6 +64,7 @@ export class CreateProductUseCase {
       crypto.randomUUID(), // Generate ID
       input.name,
       input.slug,
+      input.sku,
       input.description,
       input.basePrice,
       input.salePrice || null,
@@ -73,8 +84,11 @@ export class CreateProductUseCase {
       input.metaDescription ?? null
     );
 
-    // 4. Save via repository
-    const created = await this.productRepository.create(product);
+    // 4. Save via repository — product, images and variants in one transaction
+    const created = await this.productRepository.create(product, {
+      images: input.images,
+      variants: input.variants,
+    });
 
     // 5. Return DTO
     return {
@@ -83,6 +97,28 @@ export class CreateProductUseCase {
       slug: created.slug,
       message: "Product created successfully",
     };
+  }
+
+  /**
+   * Reject duplicate SKUs within the submitted batch.
+   *
+   * The column constraint would catch this too, but only as a Postgres error
+   * after the product row has been built — and the admin would see the raw
+   * message rather than which variant is at fault.
+   */
+  private validateVariantSkus(
+    variants?: NewProductRelations["variants"]
+  ): void {
+    if (!variants || variants.length === 0) return;
+
+    const seen = new Set<string>();
+    for (const variant of variants) {
+      const sku = variant.sku.trim();
+      if (seen.has(sku)) {
+        throw new DuplicateSKUException(sku);
+      }
+      seen.add(sku);
+    }
   }
 
   private validatePrices(basePrice: number, salePrice?: number): void {

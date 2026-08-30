@@ -17,6 +17,7 @@ import { AnalyticsKPICards } from "@/components/admin/analytics/AnalyticsKPICard
 import { RevenueTrendChart } from "@/components/admin/analytics/RevenueTrendChart";
 import { OrderStatusChart } from "@/components/admin/analytics/OrderStatusChart";
 import { TopProductsList } from "@/components/admin/analytics/TopProductsList";
+import { formatCurrency } from "@/lib/currency";
 
 export default function AnalyticsPage() {
   const [days, setDays] = useState<Period>(30);
@@ -31,15 +32,15 @@ export default function AnalyticsPage() {
     const rows = [
       ["Metric", "Value"],
       ["Period", `Last ${days} days`],
-      ["Total Revenue", `$${data.totalRevenue.toFixed(2)}`],
+      ["Total Revenue", formatCurrency(data.totalRevenue)],
       ["Total Orders", String(data.totalOrders)],
-      ["Avg Order Value", `$${data.avgOrderValue.toFixed(2)}`],
+      ["Avg Order Value", formatCurrency(data.avgOrderValue)],
       ["Total Customers", String(data.totalCustomers)],
       [""],
       ["Date", "Revenue", "Orders"],
       ...data.revenueTrend.map((d) => [
         d.date,
-        `$${d.revenue.toFixed(2)}`,
+        formatCurrency(d.revenue),
         String(d.orders),
       ]),
       [""],
@@ -47,7 +48,7 @@ export default function AnalyticsPage() {
       ...data.topProducts.map((p) => [
         p.productName,
         String(p.totalQuantity),
-        `$${p.totalRevenue.toFixed(2)}`,
+        formatCurrency(p.totalRevenue),
       ]),
       [""],
       ["Status", "Count"],

@@ -117,6 +117,13 @@ export interface OrderRepositoryInterface {
    * row and redeem any coupon. Idempotent — safe to call from both the webhook
    * and the success page.
    */
+  /**
+   * Advance a still-unpaid order to `paid`.
+   *
+   * `transitioned` is false when the order had already moved on — a redelivered
+   * webhook, or the success page racing it — so callers can tell a real payment
+   * from a duplicate and avoid notifying twice.
+   */
   markAsPaid(
     orderId: string,
     options?: { transactionId?: string; gatewayResponse?: unknown }

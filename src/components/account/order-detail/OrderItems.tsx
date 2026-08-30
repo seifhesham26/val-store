@@ -1,6 +1,7 @@
 import { Package } from "lucide-react";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
+import { formatCurrency } from "@/lib/currency";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type OrderDetail = NonNullable<
@@ -29,7 +30,7 @@ export function OrderItems({ items }: { items: OrderItem[] }) {
                 <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
               </div>
               <p className="font-medium text-white">
-                ${(item.price * item.quantity).toFixed(2)}
+                {formatCurrency(item.price * item.quantity)}
               </p>
             </div>
           ))}

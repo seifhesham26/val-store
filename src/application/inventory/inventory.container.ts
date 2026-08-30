@@ -4,8 +4,11 @@
 
 import { DrizzleInventoryRepository } from "@/infrastructure/database/repositories/inventory/inventory.repository";
 import { AdjustStockUseCase } from "./use-cases/adjust-stock.use-case";
+import { NotificationService } from "@/application/notifications/notification.service";
 
-export function createInventoryModule() {
+export function createInventoryModule(deps: {
+  getNotificationService: () => NotificationService;
+}) {
   let repo: DrizzleInventoryRepository | undefined;
   const getInventoryRepository = () =>
     (repo ??= new DrizzleInventoryRepository());
@@ -15,7 +18,10 @@ export function createInventoryModule() {
   return {
     getInventoryRepository,
     getAdjustStockUseCase: () =>
-      (adjustStock ??= new AdjustStockUseCase(getInventoryRepository())),
+      (adjustStock ??= new AdjustStockUseCase(
+        getInventoryRepository(),
+        deps.getNotificationService()
+      )),
   };
 }
 

@@ -7,8 +7,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { container } from "@/application/container";
-import { getCachedCategories } from "@/lib/cache";
+import { getCachedFeaturedCategories } from "@/lib/cache";
 
 interface ServerFeaturedCategoriesProps {
   title?: string;
@@ -72,28 +71,9 @@ export async function ServerFeaturedCategories({
   }[] = [];
 
   try {
-    // Fetch categories with caching
-    const allCategories = await getCachedCategories();
-
-    // Filter to active categories only
-    const activeCategories = allCategories.filter((c) => c.isActive);
-
-    // Get first 3 categories with product counts
-    const productRepo = container.getProductRepository();
-    featuredCategories = await Promise.all(
-      activeCategories.slice(0, 3).map(async (category) => {
-        const allProducts = await productRepo.findAll();
-        const categoryProducts = allProducts.filter(
-          (p) => p.isActive && p.categoryId === category.id
-        );
-        return {
-          id: category.id,
-          name: category.name,
-          slug: category.slug,
-          productCount: categoryProducts.length,
-        };
-      })
-    );
+    // Curated in Settings → Featured when anything has been chosen there, and
+    // the first three active categories by display order when it has not.
+    featuredCategories = await getCachedFeaturedCategories(3);
   } catch (error) {
     console.error(
       "[ServerFeaturedCategories] Failed to fetch categories:",

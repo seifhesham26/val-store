@@ -24,4 +24,14 @@ export interface ReviewRepositoryInterface {
     productId: string
   ): Promise<{ average: number; count: number }>;
   hasUserReviewed(productId: string, userId: string): Promise<boolean>;
+  /**
+   * The order that entitles this user to review this product, if there is one.
+   *
+   * Returns the most recent qualifying order id, or null when the user has never
+   * actually bought the product.
+   */
+  findPurchaseOrderId(
+    productId: string,
+    userId: string
+  ): Promise<string | null>;
 }

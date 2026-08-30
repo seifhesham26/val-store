@@ -18,6 +18,7 @@ const CACHE_TAGS = {
   HERO: "hero-section",
   SITE_SETTINGS: "site-settings",
   FEATURED_PRODUCTS: "featured-products",
+  FEATURED_CATEGORIES: "featured-categories",
   CATEGORIES: "categories",
   ANNOUNCEMENT: "announcement",
 } as const;
@@ -83,7 +84,7 @@ export const getCachedFeaturedProducts = unstable_cache(
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
     const variantRepo = container.getProductVariantRepository();
-    const products = await repo.findFeatured(limit);
+    const products = await resolveFeaturedProducts(repo, limit);
     const productIds = products.map((p) => p.id);
 
     // Batch-fetch primary images and variants (2 queries instead of 2N)
@@ -114,6 +115,95 @@ export const getCachedFeaturedProducts = unstable_cache(
   },
   [CACHE_TAGS.FEATURED_PRODUCTS],
   { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.FEATURED_PRODUCTS] }
+);
+
+/**
+ * The curated homepage sections, as written by Settings → Featured.
+ *
+ * The admin tab wrote to `featured_items` and the homepage read
+ * `products.isFeatured` instead, so curating changed nothing. The table is now
+ * the source of truth — with the old behaviour kept as the fallback, so an
+ * empty curation shows sensible defaults instead of a blank homepage.
+ */
+const FEATURED_PRODUCTS_SECTION = "homepage_featured";
+const FEATURED_CATEGORIES_SECTION = "homepage_categories";
+
+async function resolveFeaturedProducts(
+  repo: ReturnType<typeof container.getProductRepository>,
+  limit: number
+) {
+  const curated = await container
+    .getSiteConfigRepository()
+    .getFeaturedItems(FEATURED_PRODUCTS_SECTION);
+
+  const curatedIds = curated
+    .filter((item) => item.itemType === "product")
+    .map((item) => item.itemId);
+
+  if (curatedIds.length === 0) {
+    return repo.findFeatured(limit);
+  }
+
+  const products = await repo.findByIds(curatedIds);
+  const byId = new Map(products.map((product) => [product.id, product]));
+
+  // Re-apply the admin's order, and drop ids whose product has since been
+  // deleted or deactivated rather than rendering a hole.
+  return curatedIds
+    .flatMap((id) => {
+      const product = byId.get(id);
+      return product?.isActive ? [product] : [];
+    })
+    .slice(0, limit);
+}
+
+/**
+ * Categories for the homepage grid, curated if any have been chosen.
+ */
+export const getCachedFeaturedCategories = unstable_cache(
+  async (limit: number = 3) => {
+    const categoryRepo = container.getCategoryRepository();
+    const curated = await container
+      .getSiteConfigRepository()
+      .getFeaturedItems(FEATURED_CATEGORIES_SECTION);
+
+    const curatedIds = curated
+      .filter((item) => item.itemType === "category")
+      .map((item) => item.itemId);
+
+    let selected;
+    if (curatedIds.length > 0) {
+      const found = await categoryRepo.findByIds(curatedIds);
+      const byId = new Map(found.map((category) => [category.id, category]));
+      selected = curatedIds
+        .flatMap((id) => {
+          const category = byId.get(id);
+          return category?.isActive ? [category] : [];
+        })
+        .slice(0, limit);
+    } else {
+      const active = await categoryRepo.findActive();
+      selected = active
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .slice(0, limit);
+    }
+
+    // One grouped count for the whole grid. This used to be a `findAll()` per
+    // category — a full table scan each, inside a loop.
+    const counts = await categoryRepo.countProductsByCategory();
+
+    return selected.map((category) => ({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      productCount: counts.get(category.id) ?? 0,
+    }));
+  },
+  [CACHE_TAGS.FEATURED_CATEGORIES],
+  {
+    revalidate: DEFAULT_REVALIDATE,
+    tags: [CACHE_TAGS.FEATURED_CATEGORIES, CACHE_TAGS.CATEGORIES],
+  }
 );
 
 /**

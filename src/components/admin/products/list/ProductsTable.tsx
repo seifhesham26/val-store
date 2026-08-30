@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import Image from "next/image";
 import type { ProductFilters } from "./ProductsListHeader";
+import { formatCurrency } from "@/lib/currency";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -194,9 +195,9 @@ export const ProductsTable = forwardRef<
                   </TableCell>
                   <TableCell className="font-medium">{product.name}</TableCell>
                   <TableCell>Uncategorized</TableCell>
-                  <TableCell>${product.basePrice.toFixed(2)}</TableCell>
+                  <TableCell>{formatCurrency(product.basePrice)}</TableCell>
                   <TableCell>
-                    ${product.currentPrice.toFixed(2)}
+                    {formatCurrency(product.currentPrice)}
                     {product.isOnSale && (
                       <span className="ml-2 text-xs text-destructive">
                         -{product.discountPercentage}%

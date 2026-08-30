@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/currency";
 
 interface ProductInfoProps {
   name: string;
@@ -24,10 +25,10 @@ export function ProductInfo({
         {salePrice ? (
           <>
             <span className="text-2xl font-bold text-red-400">
-              ${salePrice.toFixed(2)}
+              {formatCurrency(salePrice)}
             </span>
             <span className="text-lg text-gray-500 line-through">
-              ${price.toFixed(2)}
+              {formatCurrency(price)}
             </span>
             <Badge variant="destructive" className="ml-2">
               {Math.round((1 - salePrice / price) * 100)}% OFF
@@ -35,7 +36,7 @@ export function ProductInfo({
           </>
         ) : (
           <span className="text-2xl font-bold text-white">
-            ${price.toFixed(2)}
+            {formatCurrency(price)}
           </span>
         )}
       </div>

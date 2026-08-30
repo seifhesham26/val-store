@@ -13,6 +13,15 @@ export class ProductEntity {
     public readonly id: string,
     public readonly name: string,
     public readonly slug: string,
+    /**
+     * The stock-keeping unit the admin typed.
+     *
+     * Distinct from `slug`: the slug is a URL and may be renamed for SEO, while
+     * the SKU is the warehouse's name for the product and must not move. Both are
+     * unique columns; conflating them is what made renaming a product corrupt its
+     * inventory identity.
+     */
+    public readonly sku: string,
     public readonly description: string,
     public readonly basePrice: number,
     public readonly salePrice: number | null,

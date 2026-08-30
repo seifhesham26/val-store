@@ -1,13 +1,13 @@
 import { db } from "@/db";
-import { products } from "@/db/schema";
-import { eq, and, gte, lte, ne, desc, sql } from "drizzle-orm";
+import { products, productImages, productVariants } from "@/db/schema";
+import { eq, and, gte, lte, ne, desc, sql, inArray } from "drizzle-orm";
 import {
   ProductRepositoryInterface,
   ProductFilters,
+  NewProductRelations,
 } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { ProductEntity } from "@/domain/products/entities/product.entity";
 import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
-import { DuplicateSKUException } from "@/domain/products/exceptions/duplicate-sku.exception";
 
 /**
  * Product Repository Implementation using Drizzle ORM
@@ -117,36 +117,88 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
     return productsList.map((p) => this.mapToEntity(p));
   }
 
+  async findByIds(productIds: string[]): Promise<ProductEntity[]> {
+    const ids = [...new Set(productIds)];
+    if (ids.length === 0) return [];
+
+    const productsList = await db.query.products.findMany({
+      where: inArray(products.id, ids),
+      with: { variants: true, images: true },
+    });
+
+    return productsList.map((p) => this.mapToEntity(p));
+  }
+
   /**
    * Create a new product
    */
-  async create(product: ProductEntity): Promise<ProductEntity> {
-    // Check if SKU exists
-    const skuExists = await this.existsBySKU(product.slug); // Using slug as SKU for now
-    if (skuExists) {
-      throw new DuplicateSKUException(product.slug);
-    }
+  async create(
+    product: ProductEntity,
+    relations?: NewProductRelations
+  ): Promise<ProductEntity> {
+    // The use case has already rejected a duplicate SKU. Re-checking here — and
+    // against the slug, as this used to — reported the wrong value in the error.
+    // Uniqueness is enforced for real by the column constraint.
 
-    // Create product (without relations for now - variants/images handled separately)
-    const [newProduct] = await db
-      .insert(products)
-      .values({
-        name: product.name,
-        slug: product.slug,
-        sku: product.slug, // Using slug as SKU
-        description: product.description,
-        categoryId: product.categoryId,
-        basePrice: product.basePrice.toString(),
-        salePrice: product.salePrice?.toString() || null,
-        isActive: product.isActive,
-        isFeatured: product.isFeatured,
-        gender: product.gender as "men" | "women" | "unisex" | "kids" | null,
-        material: product.material,
-        careInstructions: product.careInstructions,
-        metaTitle: product.metaTitle,
-        metaDescription: product.metaDescription,
-      })
-      .returning();
+    // Product, images and variants commit together. The images and variants used
+    // to be saved by the client in a loop after this returned, so a failure part
+    // way through left a product that existed but was missing pieces, with only a
+    // toast to say so.
+    const newProduct = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(products)
+        .values({
+          name: product.name,
+          slug: product.slug,
+          sku: product.sku,
+          description: product.description,
+          categoryId: product.categoryId,
+          basePrice: product.basePrice.toString(),
+          salePrice: product.salePrice?.toString() || null,
+          isActive: product.isActive,
+          isFeatured: product.isFeatured,
+          gender: product.gender as "men" | "women" | "unisex" | "kids" | null,
+          material: product.material,
+          careInstructions: product.careInstructions,
+          metaTitle: product.metaTitle,
+          metaDescription: product.metaDescription,
+        })
+        .returning();
+
+      const images = relations?.images ?? [];
+      if (images.length > 0) {
+        // If the admin marked none of them, the first upload is the primary —
+        // otherwise the product card has no image to show.
+        const hasPrimary = images.some((image) => image.isPrimary);
+
+        await tx.insert(productImages).values(
+          images.map((image, index) => ({
+            productId: created.id,
+            imageUrl: image.imageUrl,
+            altText: image.altText ?? product.name,
+            displayOrder: index,
+            isPrimary: image.isPrimary ?? (!hasPrimary && index === 0),
+          }))
+        );
+      }
+
+      const variants = relations?.variants ?? [];
+      if (variants.length > 0) {
+        await tx.insert(productVariants).values(
+          variants.map((variant) => ({
+            productId: created.id,
+            sku: variant.sku,
+            size: variant.size ?? null,
+            color: variant.color ?? null,
+            stockQuantity: variant.stockQuantity,
+            priceAdjustment: variant.priceAdjustment.toString(),
+            isAvailable: true,
+          }))
+        );
+      }
+
+      return created;
+    });
 
     return this.mapToEntity(newProduct);
   }
@@ -165,6 +217,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
       .set({
         name: product.name,
         slug: product.slug,
+        sku: product.sku,
         description: product.description,
         categoryId: product.categoryId,
         basePrice: product.basePrice.toString(),
@@ -304,6 +357,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
     id: string;
     name: string;
     slug: string;
+    sku: string;
     description: string | null;
     basePrice: string;
     salePrice: string | null;
@@ -332,6 +386,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
       dbProduct.id,
       dbProduct.name,
       dbProduct.slug,
+      dbProduct.sku,
       dbProduct.description || "",
       parseFloat(dbProduct.basePrice),
       dbProduct.salePrice ? parseFloat(dbProduct.salePrice) : null,

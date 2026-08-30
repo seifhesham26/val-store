@@ -19,6 +19,11 @@ export interface CategoryRepositoryInterface {
   findBySlug(slug: string): Promise<CategoryEntity | null>;
 
   /**
+   * Find several categories by id, in one query. Order is not guaranteed.
+   */
+  findByIds(categoryIds: string[]): Promise<CategoryEntity[]>;
+
+  /**
    * Find all categories
    */
   findAll(): Promise<CategoryEntity[]>;
@@ -67,4 +72,17 @@ export interface CategoryRepositoryInterface {
    * Get category count
    */
   count(): Promise<number>;
+
+  /**
+   * How many products point at each category.
+   *
+   * Returned as a map so the admin list can be rendered from one query instead
+   * of one per row. Categories with no products are absent from the map.
+   */
+  countProductsByCategory(): Promise<Map<string, number>>;
+
+  /**
+   * How many products point at a single category.
+   */
+  countProducts(categoryId: string): Promise<number>;
 }

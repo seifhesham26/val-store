@@ -18,6 +18,7 @@ import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import type { OrderFilters } from "./OrdersListHeader";
 import type { AppRouter } from "@/server";
 import type { inferRouterOutputs } from "@trpc/server";
+import { formatCurrency } from "@/lib/currency";
 
 type OrderRow =
   inferRouterOutputs<AppRouter>["admin"]["orders"]["list"]["orders"][number];
@@ -171,17 +172,17 @@ export function OrdersTable({
                     {order.refundedAmount > 0 ? (
                       <div className="leading-tight">
                         <span className="text-muted-foreground line-through">
-                          ${order.totalAmount.toFixed(2)}
+                          {formatCurrency(order.totalAmount)}
                         </span>
                         <div className="font-medium">
-                          ${order.netAmount.toFixed(2)}{" "}
+                          {formatCurrency(order.netAmount)}{" "}
                           <span className="text-xs font-normal text-muted-foreground">
                             net
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <>${order.totalAmount.toFixed(2)}</>
+                      <>{formatCurrency(order.totalAmount)}</>
                     )}
                   </TableCell>
                   <TableCell>
@@ -198,7 +199,7 @@ export function OrdersTable({
                           {order.fullyRefunded ? "Full" : "Partial"}
                         </Badge>
                         <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                          -${order.refundedAmount.toFixed(2)}
+                          -{formatCurrency(order.refundedAmount)}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {order.refundedItems} of {order.totalItems}{" "}

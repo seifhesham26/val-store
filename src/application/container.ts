@@ -17,10 +17,23 @@ import { createCustomerModule } from "./customers";
 import { createServicesModule } from "./services";
 import { createCouponModule } from "./coupons";
 import { createInventoryModule } from "./inventory";
+import { createNotificationModule } from "./notifications";
 
 function createContainer() {
   const products = createProductModule();
-  const orders = createOrderModule();
+  // Inventory and notifications need each other: the notifier reads variant
+  // SKUs to say what ran low, and stock adjustments emit notifications. The
+  // cycle is broken by passing getters rather than instances — both arrows run
+  // on first use, by which time both modules exist.
+  const inventory = createInventoryModule({
+    getNotificationService: () => notifications.getNotificationService(),
+  });
+  const notifications = createNotificationModule({
+    getInventoryRepository: inventory.getInventoryRepository,
+  });
+  const orders = createOrderModule({
+    getNotificationService: notifications.getNotificationService,
+  });
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
   const cart = createCartModule({
@@ -31,12 +44,12 @@ function createContainer() {
     getOrderRepository: orders.getOrderRepository,
     getCartRepository: cart.getCartRepository,
     getValidateCouponUseCase: couponsModule.getValidateCouponUseCase,
+    getNotificationService: notifications.getNotificationService,
   });
   const wishlist = createWishlistModule();
   const address = createAddressModule();
   const customers = createCustomerModule();
   const services = createServicesModule();
-  const inventory = createInventoryModule();
 
   return {
     // Products
@@ -63,6 +76,8 @@ function createContainer() {
     ...couponsModule,
     // Inventory
     ...inventory,
+    // Notifications
+    ...notifications,
   };
 }
 

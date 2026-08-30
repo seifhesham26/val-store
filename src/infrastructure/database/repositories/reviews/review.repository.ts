@@ -3,8 +3,15 @@
  */
 
 import { db } from "@/db";
-import { reviews, user, Review, NewReview } from "@/db/schema";
-import { eq, and, desc, avg, count } from "drizzle-orm";
+import {
+  reviews,
+  user,
+  orders,
+  orderItems,
+  Review,
+  NewReview,
+} from "@/db/schema";
+import { eq, and, desc, avg, count, inArray } from "drizzle-orm";
 import {
   ReviewRepositoryInterface,
   ReviewWithUser,
@@ -126,5 +133,29 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
       where: and(eq(reviews.productId, productId), eq(reviews.userId, userId)),
     });
     return result !== undefined;
+  }
+
+  async findPurchaseOrderId(
+    productId: string,
+    userId: string
+  ): Promise<string | null> {
+    // Only orders that were actually paid for count. `pending` is an intention,
+    // and `cancelled`/`refunded` are purchases that came undone — none of those
+    // should earn a verified badge.
+    const [row] = await db
+      .select({ orderId: orders.id })
+      .from(orders)
+      .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.userId, userId),
+          eq(orderItems.productId, productId),
+          inArray(orders.status, ["paid", "processing", "shipped", "delivered"])
+        )
+      )
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+
+    return row?.orderId ?? null;
   }
 }

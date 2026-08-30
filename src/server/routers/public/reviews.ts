@@ -7,6 +7,7 @@
 import { router, publicProcedure, protectedProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
 import { DrizzleReviewRepository } from "@/infrastructure/database/repositories/reviews/review.repository";
+import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";
 
 const reviewRepo = new DrizzleReviewRepository();
@@ -59,14 +60,37 @@ export const publicReviewsRouter = router({
         });
       }
 
-      return reviewRepo.create({
+      // A verified badge has to be earned by an actual paid order, so it is
+      // resolved here rather than taken from the client.
+      const orderId = await reviewRepo.findPurchaseOrderId(
+        input.productId,
+        ctx.user.id
+      );
+
+      const review = await reviewRepo.create({
         productId: input.productId,
         userId: ctx.user.id,
+        orderId,
         rating: input.rating,
         title: input.title,
         comment: input.comment,
-        isVerifiedPurchase: false, // TODO: Check if user purchased
+        isVerifiedPurchase: orderId !== null,
         isApproved: false, // Requires admin approval
       });
+
+      // Reviews sit unapproved until an admin acts, so this is the only thing
+      // that tells them there is something in the queue.
+      const product = await container
+        .getProductRepository()
+        .findById(input.productId);
+
+      await container.getNotificationService().reviewSubmitted({
+        reviewId: review.id,
+        productName: product?.name ?? "a product",
+        rating: input.rating,
+        isVerifiedPurchase: orderId !== null,
+      });
+
+      return review;
     }),
 });

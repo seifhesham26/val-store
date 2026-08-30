@@ -57,14 +57,29 @@ export async function POST(request: NextRequest) {
           // Shared with the success page's confirmSession: advances the order,
           // completes the payment row and redeems the coupon, guarded so a late
           // webhook cannot resurrect an order an admin already cancelled.
-          await container.getOrderRepository().markAsPaid(metadata.orderId, {
-            gatewayResponse: {
-              stripePaymentIntentId:
-                typeof session.payment_intent === "string"
-                  ? session.payment_intent
-                  : null,
-            },
-          });
+          const paid = await container
+            .getOrderRepository()
+            .markAsPaid(metadata.orderId, {
+              gatewayResponse: {
+                stripePaymentIntentId:
+                  typeof session.payment_intent === "string"
+                    ? session.payment_intent
+                    : null,
+              },
+            });
+
+          // Payment lands here rather than through UpdateOrderStatusUseCase, so
+          // the customer's "payment received" notification is emitted here too
+          // — but only on a real transition, so a redelivered webhook does not
+          // notify the same customer twice.
+          if (paid.transitioned) {
+            await container.getNotificationService().orderStatusChanged({
+              orderId: metadata.orderId,
+              orderNumber: paid.orderNumber,
+              userId: paid.userId ?? metadata.userId ?? null,
+              status: "paid",
+            });
+          }
         } catch (error) {
           console.error(
             JSON.stringify({
@@ -164,12 +179,26 @@ export async function POST(request: NextRequest) {
     }
 
     case "payment_intent.succeeded": {
-      const _paymentIntent = event.data.object;
+      // The checkout.session.completed branch above already recorded the
+      // payment; this arrives for the same money and needs no second write.
       break;
     }
 
     case "payment_intent.payment_failed": {
-      const _paymentIntent = event.data.object;
+      const paymentIntent = event.data.object;
+
+      // Nobody was told when a card was declined after the order row existed.
+      // The customer sees Stripe's own message; this is for the admins, who
+      // otherwise see a pending order with no explanation.
+      await container.getNotificationService().paymentFailed({
+        orderId: paymentIntent.metadata?.orderId ?? null,
+        orderNumber: null,
+        reason:
+          paymentIntent.last_payment_error?.message ??
+          paymentIntent.status ??
+          undefined,
+      });
+
       break;
     }
 

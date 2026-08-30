@@ -6,13 +6,11 @@
 
 import { router, adminProcedure } from "@/server/trpc";
 import { z } from "zod/v4";
-import { DrizzleInventoryRepository } from "@/infrastructure/database/repositories/inventory/inventory.repository";
-import { AdjustStockUseCase } from "@/application/inventory/use-cases/adjust-stock.use-case";
+import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";
 import { inventoryChangeTypeEnum } from "@/db/schema";
 
-const inventoryRepo = new DrizzleInventoryRepository();
-const adjustStockUseCase = new AdjustStockUseCase(inventoryRepo);
+const inventoryRepo = container.getInventoryRepository();
 
 export const adminInventoryRouter = router({
   /**
@@ -69,7 +67,7 @@ export const adminInventoryRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const result = await adjustStockUseCase.execute({
+      const result = await container.getAdjustStockUseCase().execute({
         variantId: input.variantId,
         newQuantity: input.newQuantity,
         changeType: input.changeType,

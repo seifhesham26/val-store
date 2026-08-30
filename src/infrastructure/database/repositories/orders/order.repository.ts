@@ -28,6 +28,7 @@ import {
 } from "@/domain/orders/value-objects/order-status.value-object";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import { InvalidOrderStatusException } from "@/domain/orders/exceptions/invalid-order-status.exception";
+import { STORE_CURRENCY } from "@/lib/currency";
 
 /** Append a timestamped line to the order's admin notes, preserving history. */
 function appendAdminNote(existing: string | null, note: string): string {
@@ -184,7 +185,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         shippingAmount: order.shippingCost.toFixed(2),
         discountAmount: order.discount.toFixed(2),
         totalAmount: order.totalAmount.toFixed(2),
-        currency: "EGP",
+        currency: STORE_CURRENCY,
         couponId: order.couponId,
         shippingAddressId: order.shippingAddressId,
         billingAddressId: order.billingAddressId,
@@ -216,7 +217,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
             : "stripe",
         paymentStatus: "pending",
         amount: order.totalAmount.toFixed(2),
-        currency: "EGP",
+        currency: STORE_CURRENCY,
         transactionId: null,
         paymentGatewayResponse: null,
         createdAt: now,
@@ -717,7 +718,11 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   async markAsPaid(
     orderId: string,
     options?: { transactionId?: string; gatewayResponse?: unknown }
-  ): Promise<{ transitioned: boolean }> {
+  ): Promise<{
+    transitioned: boolean;
+    orderNumber: string | null;
+    userId: string | null;
+  }> {
     return db.transaction(async (tx) => {
       const now = new Date();
 
@@ -736,11 +741,16 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         )
         .returning({
           id: orders.id,
+          orderNumber: orders.orderNumber,
           userId: orders.userId,
           couponId: orders.couponId,
         });
 
-      if (!updated) return { transitioned: false };
+      // Nothing matched: the order had already moved on. Callers use this to
+      // avoid notifying twice when a webhook is redelivered.
+      if (!updated) {
+        return { transitioned: false, orderNumber: null, userId: null };
+      }
 
       await tx
         .update(payments)
@@ -785,7 +795,11 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         }
       }
 
-      return { transitioned: true };
+      return {
+        transitioned: true,
+        orderNumber: updated.orderNumber,
+        userId: updated.userId,
+      };
     });
   }
 

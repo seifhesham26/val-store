@@ -4,6 +4,10 @@ import { db } from "@/db";
 import { container } from "@/application/container";
 import { userProfiles, customers } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import {
+  checkRateLimit,
+  passwordResetRateLimiter,
+} from "@/server/utils/rate-limiter";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -34,6 +38,18 @@ export const auth = betterAuth({
     requireEmailVerification: false, // Disabled so users can sign up without email verification
     sendResetPassword: async ({ user, url }) => {
       try {
+        // Three per hour per address. Better Auth answers the request
+        // identically either way, so this throttles the mail without telling a
+        // stranger whether the address exists.
+        const { allowed } = await checkRateLimit(
+          passwordResetRateLimiter,
+          `reset:${user.email.toLowerCase()}`
+        );
+        if (!allowed) {
+          console.warn("[Auth] Password reset rate limited:", user.id);
+          return;
+        }
+
         const emailService = container.getEmailService();
         await emailService.sendPasswordResetEmail(
           user.email,
@@ -125,6 +141,14 @@ export const auth = betterAuth({
               });
             }
           }
+
+          // Last, so a notification failure cannot stop a signup from
+          // completing — the service swallows its own errors either way.
+          await container.getNotificationService().customerRegistered({
+            userId: user.id,
+            name: user.name || null,
+            email: user.email,
+          });
         },
       },
     },

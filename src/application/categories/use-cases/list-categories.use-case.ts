@@ -16,8 +16,13 @@ export interface CategoryListItem {
   description: string | null;
   parentId: string | null;
   imageUrl: string | null;
+  displayOrder: number;
   isActive: boolean;
   isTopLevel: boolean;
+  /** Products in this category. Drives the delete guard's warning. */
+  productCount: number;
+  /** Direct children. A category with children cannot be deleted. */
+  childCount: number;
 }
 
 export interface ListCategoriesOutput {
@@ -41,8 +46,32 @@ export class ListCategoriesUseCase {
     // Get total count
     const total = await this.categoryRepository.count();
 
+    // Two aggregates, both computed once for the whole list rather than per row.
+    const productCounts =
+      await this.categoryRepository.countProductsByCategory();
+    const childCounts = new Map<string, number>();
+    for (const category of categories) {
+      if (category.parentId) {
+        childCounts.set(
+          category.parentId,
+          (childCounts.get(category.parentId) ?? 0) + 1
+        );
+      }
+    }
+
     // Map to DTOs
-    const categoryDTOs = categories.map((category) => this.mapToDTO(category));
+    const categoryDTOs = categories
+      .map((category) =>
+        this.mapToDTO(
+          category,
+          productCounts.get(category.id) ?? 0,
+          childCounts.get(category.id) ?? 0
+        )
+      )
+      .sort(
+        (a, b) =>
+          a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)
+      );
 
     return {
       categories: categoryDTOs,
@@ -50,7 +79,11 @@ export class ListCategoriesUseCase {
     };
   }
 
-  private mapToDTO(category: CategoryEntity): CategoryListItem {
+  private mapToDTO(
+    category: CategoryEntity,
+    productCount: number,
+    childCount: number
+  ): CategoryListItem {
     return {
       id: category.id,
       name: category.name,
@@ -58,8 +91,11 @@ export class ListCategoriesUseCase {
       description: category.description,
       parentId: category.parentId,
       imageUrl: category.imageUrl,
+      displayOrder: category.displayOrder,
       isActive: category.isActive,
       isTopLevel: category.isTopLevel(),
+      productCount,
+      childCount,
     };
   }
 }

@@ -21,6 +21,7 @@ export interface ProductListItem {
   id: string;
   name: string;
   slug: string;
+  sku: string;
   basePrice: number;
   salePrice: number | null;
   currentPrice: number;
@@ -81,6 +82,7 @@ export class ListProductsUseCase {
       id: product.id,
       name: product.name,
       slug: product.slug,
+      sku: product.sku,
       basePrice: product.basePrice,
       salePrice: product.salePrice,
       currentPrice: product.getCurrentPrice(),

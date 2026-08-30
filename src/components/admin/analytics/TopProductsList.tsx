@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 interface TopProductsListProps {
   products: Array<{
@@ -39,7 +40,7 @@ export function TopProductsList({ products }: TopProductsListProps) {
                   </div>
                 </div>
                 <span className="font-semibold text-sm">
-                  ${product.totalRevenue.toFixed(2)}
+                  {formatCurrency(product.totalRevenue)}
                 </span>
               </div>
             ))}
