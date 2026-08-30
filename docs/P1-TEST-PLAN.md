@@ -20,7 +20,7 @@ You need:
 
 One thing to know before anything looks wrong:
 
-- [ ] **Prices now render in EGP, not dollars.** `EGP 1,234.00` where you used to see `$1,234.00`. That is issue #17 and it is intentional — see section 9.
+- ✅ **Prices now render in EGP, not dollars.** `EGP 1,234.00` where you used to see `$1,234.00`. That is issue #17 and it is intentional — see section 9.
 
 ---
 
@@ -28,13 +28,13 @@ One thing to know before anything looks wrong:
 
 The bug: `DrizzleProductRepository.create()` wrote `sku: product.slug` and threw the typed SKU away. `ProductEntity` had no `sku` field at all, so the value had nowhere to travel.
 
-- [ ] **Admin → Products → New**. Type a name, then a **SKU that is clearly not the slug** — e.g. name "Storm Hoodie", slug `storm-hoodie`, SKU `VLK-HOOD-014`.
-- [ ] Publish, then check the row in **Drizzle Studio**. **Expected:** `products.sku` is `VLK-HOOD-014`, `products.slug` is `storm-hoodie`. (Before, both said `storm-hoodie`.)
-- [ ] Open the product's edit page. **Expected:** a new **SKU** field, populated with what you typed. It sits under Slug and is labelled as the warehouse identifier.
-- [ ] Change the SKU, save, re-open. **Expected:** the new value persisted.
-- [ ] **Rename the slug** and save. **Expected:** the SKU is unchanged. This is the real regression — the two used to drift apart silently, because the SKU was a stale copy of an old slug.
-- [ ] Try to save a SKU that another product already uses. **Expected:** a clear "SKU already exists" error naming **your** SKU — not a Postgres constraint error, and not an error naming the slug (which is what the old duplicate check reported).
-- [ ] Re-save a product **without** touching its SKU. **Expected:** it saves. The uniqueness check only runs when the value actually changes, so a product cannot collide with itself.
+- ✅ **Admin → Products → New**. Type a name, then a **SKU that is clearly not the slug** — e.g. name "Storm Hoodie", slug `storm-hoodie`, SKU `VLK-HOOD-014`.
+- ✅ Publish, then check the row in **Drizzle Studio**. **Expected:** `products.sku` is `VLK-HOOD-014`, `products.slug` is `storm-hoodie`. (Before, both said `storm-hoodie`.)
+- ✅ Open the product's edit page. **Expected:** a new **SKU** field, populated with what you typed. It sits under Slug and is labelled as the warehouse identifier.
+- ✅ Change the SKU, save, re-open. **Expected:** the new value persisted.
+- ✅ **Rename the slug** and save. **Expected:** the SKU is unchanged. This is the real regression — the two used to drift apart silently, because the SKU was a stale copy of an old slug.
+- ✅ Try to save a SKU that another product already uses. **Expected:** a clear "SKU already exists" error naming **your** SKU — not a Postgres constraint error, and not an error naming the slug (which is what the old duplicate check reported).
+- ✅ Re-save a product **without** touching its SKU. **Expected:** it saves. The uniqueness check only runs when the value actually changes, so a product cannot collide with itself.
 
 ---
 
@@ -42,11 +42,11 @@ The bug: `DrizzleProductRepository.create()` wrote `sku: product.slug` and threw
 
 The bug: the browser created the product, then looped through images and variants one request at a time, each in its own `try/catch` that only raised a toast. A failure left a product that existed but was missing pieces — and it still redirected.
 
-- [ ] **Admin → Products → New**. Add **two or three images** and **two or three variants** before saving. Publish.
-- [ ] **Expected:** one success toast, and the edit page opens with every image and every variant already attached.
-- [ ] Now force a failure: add two variants with the **same SKU** and publish. **Expected:** the save is rejected with a duplicate-SKU error, and **no product is created at all**. Check the products list — nothing new. (Before, you would get a product plus one of the two variants plus an error toast.)
-- [ ] Fix the SKU and publish again. **Expected:** everything lands.
-- [ ] Adding an image or a variant **from the edit page** still works one at a time — that path is unchanged on purpose, because there each change is its own deliberate action.
+- ✅ **Admin → Products → New**. Add **two or three images** and **two or three variants** before saving. Publish.
+- ✅ **Expected:** one success toast, and the edit page opens with every image and every variant already attached.
+- ✅ Force a failure: add two variants with the **same SKU** and publish. **Expected:** the save is rejected with a duplicate-SKU error, and **no product is created at all**. Check the products list — nothing new. (Before, you would get a product plus one of the two variants plus an error toast.)
+- ✅ Fix the SKU and publish again. **Expected:** everything lands.
+- ✅ Adding an image or a variant **from the edit page** still works one at a time — that path is unchanged on purpose, because there each change is its own deliberate action.
 
 ---
 
@@ -54,11 +54,11 @@ The bug: the browser created the product, then looped through images and variant
 
 The bug: editing stock on the product page wrote the number straight to the variant. Editing it on the Inventory page went through `AdjustStockUseCase` and logged. The history was silently incomplete.
 
-- [ ] **Admin → Products → edit a product → Variants**. Change a variant's **stock** and save it.
-- [ ] Go to **Admin → Inventory → logs**. **Expected:** a new row for that variant — change type **adjustment**, the correct before/after numbers, your name as the author, and the reason "Edited on the product page".
-- [ ] Now edit the same variant's **SKU, size or colour** without touching stock, and save. **Expected:** it saves, and **no new inventory log appears.** Renaming a colour is not an inventory movement.
-- [ ] Buy something (see section 5). **Expected:** a **sale** row appears in the same log, from the P0 work.
-- [ ] Adjust stock from **Admin → Inventory** as before. **Expected:** unchanged behaviour, and both paths' rows sit in the same history and reconcile.
+- ✅ **Admin → Products → edit a product → Variants**. Change a variant's **stock** and save it.
+- ✅ Go to **Admin → Inventory → logs**. **Expected:** a new row for that variant — change type **adjustment**, the correct before/after numbers, your name as the author, and the reason "Edited on the product page".
+- ✅ Now edit the same variant's **SKU, size or colour** without touching stock, and save. **Expected:** it saves, and **no new inventory log appears.** Renaming a colour is not an inventory movement.
+- ✅ Buy something (see section 5). **Expected:** a **sale** row appears in the same log, from the P0 work.
+- ✅ Adjust stock from **Admin → Inventory** as before. **Expected:** unchanged behaviour, and both paths' rows sit in the same history and reconcile.
 
 **Known boundary, by design:** creating a _new_ variant with an opening stock figure does not write a log row. That is the opening balance, not a movement. Every change after it is logged.
 
