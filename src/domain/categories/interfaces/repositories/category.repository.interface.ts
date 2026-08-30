@@ -78,11 +78,27 @@ export interface CategoryRepositoryInterface {
    *
    * Returned as a map so the admin list can be rendered from one query instead
    * of one per row. Categories with no products are absent from the map.
+   *
+   * `activeOnly` decides whether archived products count. The storefront wants
+   * only what a shopper can buy; the admin list must agree with the delete
+   * guard, which refuses while *any* product still points here — an archived
+   * product would silently lose its category otherwise.
    */
-  countProductsByCategory(): Promise<Map<string, number>>;
+  countProductsByCategory(options?: {
+    activeOnly?: boolean;
+  }): Promise<Map<string, number>>;
 
   /**
-   * How many products point at a single category.
+   * How many products point at a single category, archived ones included.
    */
   countProducts(categoryId: string): Promise<number>;
+
+  /**
+   * How many subcategories each category has.
+   *
+   * Counted in the database rather than from a fetched page of categories, so
+   * the number matches what the delete guard sees even when the caller asked
+   * for active categories only.
+   */
+  countChildrenByCategory(): Promise<Map<string, number>>;
 }

@@ -47,17 +47,16 @@ export class ListCategoriesUseCase {
     const total = await this.categoryRepository.count();
 
     // Two aggregates, both computed once for the whole list rather than per row.
-    const productCounts =
-      await this.categoryRepository.countProductsByCategory();
-    const childCounts = new Map<string, number>();
-    for (const category of categories) {
-      if (category.parentId) {
-        childCounts.set(
-          category.parentId,
-          (childCounts.get(category.parentId) ?? 0) + 1
-        );
-      }
-    }
+    //
+    // Both count everything, archived and inactive included, because these
+    // numbers are what the admin reads before pressing Delete — and the delete
+    // guard refuses on any child or any product, active or not. Counting only
+    // the visible ones would show "0 products" on a category the server then
+    // refuses to delete.
+    const [productCounts, childCounts] = await Promise.all([
+      this.categoryRepository.countProductsByCategory({ activeOnly: false }),
+      this.categoryRepository.countChildrenByCategory(),
+    ]);
 
     // Map to DTOs
     const categoryDTOs = categories

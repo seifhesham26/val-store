@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
+import { revalidateTag } from "next/cache";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 
@@ -7,7 +8,9 @@ import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.
 const createProductSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1),
-  sku: z.string().min(1),
+  // Bounded to match the column: `products.sku` is varchar(100), and
+  // overflowing it surfaces a raw Postgres error instead of a field message.
+  sku: z.string().min(1).max(100),
   description: z.string(),
   categoryId: z.string().uuid(),
   basePrice: z.number().positive(),
@@ -39,7 +42,7 @@ const newProductRelationsSchema = z.object({
   variants: z
     .array(
       z.object({
-        sku: z.string().min(1),
+        sku: z.string().min(1).max(100),
         size: z.string().nullable().optional(),
         color: z.string().nullable().optional(),
         stockQuantity: z.number().int().min(0),
@@ -59,6 +62,19 @@ const listProductsSchema = z.object({
   limit: z.number().min(1).max(100).optional().default(10),
   cursor: z.number().min(1).optional(), // Page number as cursor for infinite scroll
 });
+
+/**
+ * Drop the homepage's cached view of the catalogue.
+ *
+ * `isFeatured`, the price and the active flag are all read through
+ * `unstable_cache`, so an edit that is not announced here stays invisible on the
+ * storefront for up to a minute — long enough for an admin to conclude the save
+ * did not work and press it again.
+ */
+function revalidateCatalogue() {
+  revalidateTag("featured-products", "max");
+  revalidateTag("all-products", "max");
+}
 
 export const productsRouter = router({
   // List all products with infinite scroll support
@@ -96,7 +112,9 @@ export const productsRouter = router({
     .input(createProductSchema.extend(newProductRelationsSchema.shape))
     .mutation(async ({ input }) => {
       const useCase = container.getCreateProductUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCatalogue();
+      return result;
     }),
 
   // Update product
@@ -114,7 +132,9 @@ export const productsRouter = router({
     )
     .mutation(async ({ input }) => {
       const useCase = container.getUpdateProductUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCatalogue();
+      return result;
     }),
 
   // Delete product
@@ -122,7 +142,9 @@ export const productsRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const useCase = container.getDeleteProductUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCatalogue();
+      return result;
     }),
 
   // Toggle product status
@@ -130,6 +152,8 @@ export const productsRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const useCase = container.getToggleProductStatusUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCatalogue();
+      return result;
     }),
 });

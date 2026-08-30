@@ -43,7 +43,7 @@ import { VariantsSection } from "@/components/admin/products/create/VariantsSect
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   slug: z.string().min(1, "Slug is required"),
-  sku: z.string().min(1, "SKU is required"),
+  sku: z.string().min(1, "SKU is required").max(100),
   description: z.string(),
   basePrice: z.number().positive("Price must be positive"),
   salePrice: z.number().positive().nullable(),

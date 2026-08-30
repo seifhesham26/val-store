@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 import { z } from "zod";
@@ -43,6 +44,18 @@ const deleteCategorySchema = z.object({
   id: z.string().uuid(),
 });
 
+/**
+ * Drop the homepage's cached view of the categories.
+ *
+ * The storefront reads categories through `unstable_cache`, so without this an
+ * admin edit is invisible for up to a minute. It never mattered while there was
+ * no Categories page; now that there is one, every write has to say so.
+ */
+function revalidateCategories() {
+  revalidateTag("categories", "max");
+  revalidateTag("featured-categories", "max");
+}
+
 export const categoriesRouter = router({
   // List all categories
   list: adminProcedure.input(listCategoriesSchema).query(async ({ input }) => {
@@ -55,7 +68,9 @@ export const categoriesRouter = router({
     .input(createCategorySchema)
     .mutation(async ({ input }) => {
       const useCase = container.getCreateCategoryUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCategories();
+      return result;
     }),
 
   // Update an existing category
@@ -63,7 +78,9 @@ export const categoriesRouter = router({
     .input(updateCategorySchema)
     .mutation(async ({ input }) => {
       const useCase = container.getUpdateCategoryUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCategories();
+      return result;
     }),
 
   // Delete category
@@ -71,6 +88,8 @@ export const categoriesRouter = router({
     .input(deleteCategorySchema)
     .mutation(async ({ input }) => {
       const useCase = container.getDeleteCategoryUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCategories();
+      return result;
     }),
 });

@@ -14,7 +14,7 @@ import { TRPCError } from "@trpc/server";
 // Validation schemas
 const addVariantSchema = z.object({
   productId: z.string().uuid(),
-  sku: z.string().min(1, "SKU is required"),
+  sku: z.string().min(1, "SKU is required").max(100),
   size: z.string().optional(),
   color: z.string().optional(),
   stockQuantity: z.number().int().min(0).default(0),
@@ -29,7 +29,7 @@ const addVariantSchema = z.object({
 const updateVariantSchema = z.object({
   id: z.string().uuid(),
   data: z.object({
-    sku: z.string().min(1).optional(),
+    sku: z.string().min(1).max(100).optional(),
     size: z.string().nullable().optional(),
     color: z.string().nullable().optional(),
     priceAdjustment: z.number().optional(),

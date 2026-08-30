@@ -138,14 +138,18 @@ export class DrizzleCategoryRepository implements CategoryRepositoryInterface {
     return rows.map((row) => this.mapToEntity(row));
   }
 
-  async countProductsByCategory(): Promise<Map<string, number>> {
+  async countProductsByCategory(options?: {
+    activeOnly?: boolean;
+  }): Promise<Map<string, number>> {
+    const activeOnly = options?.activeOnly ?? true;
+
     const rows = await db
       .select({
         categoryId: products.categoryId,
         total: countRows(),
       })
       .from(products)
-      .where(eq(products.isActive, true))
+      .where(activeOnly ? eq(products.isActive, true) : undefined)
       .groupBy(products.categoryId);
 
     return new Map(
@@ -154,6 +158,24 @@ export class DrizzleCategoryRepository implements CategoryRepositoryInterface {
           Boolean(row.categoryId)
         )
         .map((row) => [row.categoryId, Number(row.total)])
+    );
+  }
+
+  async countChildrenByCategory(): Promise<Map<string, number>> {
+    const rows = await db
+      .select({
+        parentId: categories.parentId,
+        total: countRows(),
+      })
+      .from(categories)
+      .groupBy(categories.parentId);
+
+    return new Map(
+      rows
+        .filter((row): row is { parentId: string; total: number } =>
+          Boolean(row.parentId)
+        )
+        .map((row) => [row.parentId, Number(row.total)])
     );
   }
 

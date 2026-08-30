@@ -149,12 +149,17 @@ async function resolveFeaturedProducts(
 
   // Re-apply the admin's order, and drop ids whose product has since been
   // deleted or deactivated rather than rendering a hole.
-  return curatedIds
+  const resolved = curatedIds
     .flatMap((id) => {
       const product = byId.get(id);
       return product?.isActive ? [product] : [];
     })
     .slice(0, limit);
+
+  // A curation can outlive its products: archive or delete every item on the
+  // list and this resolves to nothing. Fall back rather than render a titled
+  // section with an empty grid under it.
+  return resolved.length > 0 ? resolved : repo.findFeatured(limit);
 }
 
 /**
@@ -171,7 +176,7 @@ export const getCachedFeaturedCategories = unstable_cache(
       .filter((item) => item.itemType === "category")
       .map((item) => item.itemId);
 
-    let selected;
+    let selected: Awaited<ReturnType<typeof categoryRepo.findActive>> = [];
     if (curatedIds.length > 0) {
       const found = await categoryRepo.findByIds(curatedIds);
       const byId = new Map(found.map((category) => [category.id, category]));
@@ -181,7 +186,11 @@ export const getCachedFeaturedCategories = unstable_cache(
           return category?.isActive ? [category] : [];
         })
         .slice(0, limit);
-    } else {
+    }
+
+    // Same as for products: an empty list *and* a list whose every entry has
+    // since been deactivated both mean "nothing curated", and both fall back.
+    if (selected.length === 0) {
       const active = await categoryRepo.findActive();
       selected = active
         .sort((a, b) => a.displayOrder - b.displayOrder)

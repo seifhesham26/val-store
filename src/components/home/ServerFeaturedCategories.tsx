@@ -18,12 +18,10 @@ function CategoryCard({
   name,
   slug,
   productCount,
-  index,
 }: {
   name: string;
   slug: string;
   productCount?: number;
-  index: number;
 }) {
   return (
     <Link
@@ -34,7 +32,10 @@ function CategoryCard({
       <div className="relative aspect-3/4 bg-val-steel overflow-hidden">
         {/* Category image from picsum */}
         <Image
-          src={`https://picsum.photos/seed/category-${index}/600/800`}
+          // Seeded on the slug, not the grid position: these are curated in
+          // Settings → Featured now, and an index seed made every image change
+          // places whenever an admin reordered the cards.
+          src={`https://picsum.photos/seed/category-${slug}/600/800`}
           alt={name}
           fill
           sizes="(max-width: 768px) 100vw, 33vw"
@@ -95,13 +96,12 @@ export async function ServerFeaturedCategories({
 
         {/* Categories Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-          {featuredCategories.map((category, index) => (
+          {featuredCategories.map((category) => (
             <CategoryCard
               key={category.id}
               name={category.name}
               slug={category.slug}
               productCount={category.productCount}
-              index={index}
             />
           ))}
         </div>

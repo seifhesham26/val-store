@@ -87,6 +87,9 @@ export function CreateProductForm() {
   const onSubmit = (values: CreateProductValues) => {
     createMutation.mutate({
       ...values,
+      // Trimmed like every other identifier: a trailing space here is invisible
+      // in the field and would make the SKU miss its own uniqueness check.
+      sku: values.sku.trim(),
       // Blank optional text fields are stored as null rather than "".
       material: values.material.trim() || null,
       careInstructions: values.careInstructions.trim() || null,
