@@ -7,8 +7,6 @@
  */
 
 import { trpc } from "@/lib/trpc";
-import { useCart } from "@/components/providers/cart-provider";
-import { type Product } from "@/db/schema";
 import { toast } from "sonner";
 
 import { WishlistLoading } from "@/components/account/wishlist/WishlistLoading";
@@ -16,7 +14,6 @@ import { WishlistEmpty } from "@/components/account/wishlist/WishlistEmpty";
 import { WishlistGrid } from "@/components/account/wishlist/WishlistGrid";
 
 export default function WishlistPage() {
-  const { addItem } = useCart();
   const utils = trpc.useUtils();
 
   const { data: wishlistItems, isLoading } =
@@ -35,11 +32,6 @@ export default function WishlistPage() {
     },
   });
 
-  const handleMoveToCart = async (product: Pick<Product, "id">) => {
-    addItem(product.id, 1);
-    removeMutation.mutate({ productId: product.id });
-  };
-
   const handleRemove = (productId: string) => {
     removeMutation.mutate({ productId });
   };
@@ -47,11 +39,5 @@ export default function WishlistPage() {
   if (isLoading) return <WishlistLoading />;
   if (!wishlistItems || wishlistItems.length === 0) return <WishlistEmpty />;
 
-  return (
-    <WishlistGrid
-      items={wishlistItems}
-      onMoveToCart={handleMoveToCart}
-      onRemove={handleRemove}
-    />
-  );
+  return <WishlistGrid items={wishlistItems} onRemove={handleRemove} />;
 }

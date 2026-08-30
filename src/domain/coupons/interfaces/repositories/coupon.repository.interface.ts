@@ -15,6 +15,19 @@ export interface CouponRepositoryInterface {
   delete(id: string): Promise<void>;
   incrementUsage(id: string): Promise<void>;
   getUserUsageCount(couponId: string, userId: string): Promise<number>;
+  /**
+   * Orders currently holding this coupon that have not been paid for yet.
+   *
+   * Redemption is only recorded once money changes hands, so without counting
+   * these a customer could open several checkouts against a one-per-customer
+   * code and pay every one of them. Restricted to the payment window, so an
+   * order that is about to expire stops blocking on its own.
+   */
+  countPendingOrders(
+    couponId: string,
+    since: Date,
+    userId?: string
+  ): Promise<number>;
   recordUsage(
     couponId: string,
     userId: string,

@@ -10,7 +10,9 @@
 import { trpc } from "@/lib/trpc";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { ProductCard } from "@/components/products/ProductCard";
-import { Loader2 } from "lucide-react";
+import { ProductCardSkeletonGrid } from "@/components/products/ProductCardSkeleton";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
+import { ChevronDown } from "lucide-react";
 
 interface InfiniteProductGridProps {
   categoryId?: string;
@@ -22,6 +24,12 @@ interface InfiniteProductGridProps {
 }
 
 const ITEMS_PER_PAGE = 12;
+
+/** How many placeholder cards to append while the next page is in flight. */
+const NEXT_PAGE_PLACEHOLDERS = 4;
+
+const GRID_CLASSES =
+  "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6";
 
 export function InfiniteProductGrid({
   categoryId,
@@ -61,21 +69,15 @@ export function InfiniteProductGrid({
         {/* Header skeleton */}
         <div className="py-12 md:py-16 border-b border-white/10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center">
-            <div className="h-8 w-48 bg-white/12 rounded animate-pulse mb-4" />
-            <div className="h-4 w-96 max-w-full bg-white/12 rounded animate-pulse mb-4" />
-            <div className="h-4 w-24 bg-white/12 rounded animate-pulse" />
+            <div className="val-skeleton h-8 w-48 rounded mb-4" />
+            <div className="val-skeleton h-4 w-96 max-w-full rounded mb-4" />
+            <div className="val-skeleton h-4 w-24 rounded" />
           </div>
         </div>
         {/* Product grid skeleton */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="space-y-3">
-                <div className="aspect-3/4 bg-white/12 rounded-lg animate-pulse" />
-                <div className="h-4 w-3/4 bg-white/12 rounded animate-pulse" />
-                <div className="h-4 w-1/4 bg-white/12 rounded animate-pulse" />
-              </div>
-            ))}
+          <div className={GRID_CLASSES}>
+            <ProductCardSkeletonGrid count={8} />
           </div>
         </div>
       </div>
@@ -102,7 +104,7 @@ export function InfiniteProductGrid({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         {/* Product Grid */}
         {products.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className={GRID_CLASSES}>
             {products.map((product) => (
               <ProductCard
                 key={product.id}
@@ -120,6 +122,11 @@ export function InfiniteProductGrid({
                 variants={product.variants}
               />
             ))}
+
+            {/* Placeholders grow the grid while the next page loads */}
+            {isFetchingNextPage && (
+              <ProductCardSkeletonGrid count={NEXT_PAGE_PLACEHOLDERS} />
+            )}
           </div>
         ) : (
           <div className="text-center py-16">
@@ -131,23 +138,54 @@ export function InfiniteProductGrid({
         {hasNextPage && (
           <div
             ref={sentinelRef}
-            className="flex items-center justify-center py-8"
+            className="flex items-center justify-center py-12"
           >
             {isFetchingNextPage ? (
-              <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+              <ValkyrieLoader size="md" label="Loading" />
             ) : (
-              <span className="text-sm text-gray-500">Scroll for more...</span>
+              <div className="flex flex-col items-center gap-2 text-gray-600">
+                <ChevronDown className="val-hint h-4 w-4" />
+                <span className="text-[11px] uppercase tracking-[0.28em]">
+                  Scroll for more
+                </span>
+              </div>
             )}
           </div>
         )}
 
         {/* End of list */}
-        {!hasNextPage && products.length > 0 && (
-          <p className="text-center text-sm text-gray-500 py-8">
-            You&apos;ve reached the end
-          </p>
-        )}
+        {!hasNextPage && products.length > 0 && <EndOfCollection />}
       </div>
+    </div>
+  );
+}
+
+/** Closing marker shown once every product has been loaded. */
+function EndOfCollection() {
+  return (
+    <div className="flex items-center gap-4 py-12">
+      <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/15" />
+      <div className="flex items-center gap-3">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 48 48"
+          fill="none"
+          aria-hidden="true"
+        >
+          <polygon
+            points="24,3 42,13.5 42,34.5 24,45 6,34.5 6,13.5"
+            stroke="var(--val-accent)"
+            strokeOpacity="0.5"
+            strokeWidth="3"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="text-[11px] uppercase tracking-[0.28em] text-gray-500">
+          End of collection
+        </span>
+      </div>
+      <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/15" />
     </div>
   );
 }

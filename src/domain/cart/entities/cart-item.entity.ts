@@ -16,8 +16,20 @@ export class CartItemEntity {
     public readonly quantity: number,
     public readonly maxStock: number, // Available stock for this product
     public readonly addedAt: Date,
-    public readonly updatedAt: Date
+    public readonly updatedAt: Date,
+    // The specific variant (size/colour) chosen. Null only for products that
+    // have no variants at all. Carried through to the order so stock can be
+    // decremented against the right row.
+    public readonly variantId: string | null = null,
+    public readonly variantSize: string | null = null,
+    public readonly variantColor: string | null = null
   ) {}
+
+  /** Human-readable variant label, e.g. "Black / L". */
+  getVariantLabel(): string | null {
+    const parts = [this.variantColor, this.variantSize].filter(Boolean);
+    return parts.length > 0 ? parts.join(" / ") : null;
+  }
 
   /**
    * Calculate subtotal for this cart item

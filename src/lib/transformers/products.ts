@@ -1,4 +1,5 @@
 import { getCachedProductBySlug, getCachedRelatedProducts } from "@/lib/cache";
+import { resolveColorHex } from "@/lib/colors";
 
 type CachedProduct = NonNullable<
   Awaited<ReturnType<typeof getCachedProductBySlug>>
@@ -25,13 +26,24 @@ export function transformProductForDetail(product: CachedProduct) {
       .reduce(
         (acc, v) => {
           if (!acc.find((c) => c.name === v.color)) {
-            acc.push({ name: v.color!, hex: "#000000" }); // Default hex
+            // The schema has no hex column, so the swatch colour is resolved
+            // from the stored colour name.
+            acc.push({ name: v.color!, hex: resolveColorHex(v.color) });
           }
           return acc;
         },
         [] as { name: string; hex: string }[]
       ),
     images: product.images.map((img) => img.imageUrl),
+    // Kept so the page can resolve the chosen size/colour back to a real
+    // variant id — without this the cart cannot record what was bought.
+    variants: product.variants.map((v) => ({
+      id: v.id,
+      size: v.size,
+      color: v.color,
+      inStock: v.inStock,
+      availableStock: v.availableStock,
+    })),
     isOnSale:
       product.salePrice !== null && product.salePrice < product.basePrice,
     inStock: product.variants.some((v) => v.inStock),
@@ -52,6 +64,7 @@ export function transformRelatedProducts(
     price: p.basePrice,
     salePrice: p.salePrice ?? undefined,
     primaryImage: p.primaryImage ?? undefined,
+    variants: p.variants,
     isOnSale: p.salePrice !== null && p.salePrice < p.basePrice,
   }));
 }

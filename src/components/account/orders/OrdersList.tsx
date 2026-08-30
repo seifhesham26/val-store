@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight, Clock, Loader2 } from "lucide-react";
+import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
 
@@ -10,10 +13,34 @@ type OrdersListType =
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-500/15 text-yellow-400 border border-yellow-500/20",
   processing: "bg-blue-500/15 text-blue-400 border border-blue-500/20",
+  paid: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
   shipped: "bg-purple-500/15 text-purple-400 border border-purple-500/20",
   delivered: "bg-green-500/15 text-green-400 border border-green-500/20",
   cancelled: "bg-red-500/15 text-red-400 border border-red-500/20",
+  refunded: "bg-orange-500/15 text-orange-400 border border-orange-500/20",
 };
+
+/**
+ * An unpaid card order is held for a short window and then released. Saying so
+ * — with the time left — is kinder than letting it turn into "cancelled" with
+ * no explanation.
+ */
+function PaymentCountdown({
+  deadline,
+}: {
+  deadline: string | Date | null | undefined;
+}) {
+  const { open, label } = usePaymentWindow(deadline);
+  if (!open) return null;
+
+  return (
+    <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-400">
+      <Clock className="h-3 w-3 shrink-0" />
+      Waiting for payment — <span className="tabular-nums">{label}</span> left
+      before this order is released.
+    </p>
+  );
+}
 
 interface OrdersListProps {
   orders: OrdersListType;
@@ -69,12 +96,22 @@ export function OrdersList({
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <p className="font-semibold text-white">
-                    ${order.total.toFixed(2)}
-                  </p>
+                  <div className="text-right">
+                    <p className="font-semibold text-white">
+                      ${order.total.toFixed(2)}
+                    </p>
+                    {order.refundedAmount > 0 && (
+                      <p className="text-xs text-orange-400">
+                        ${order.refundedAmount.toFixed(2)} refunded
+                      </p>
+                    )}
+                  </div>
                   <ChevronRight className="h-5 w-5 text-gray-600" />
                 </div>
               </div>
+              {order.awaitingPayment && (
+                <PaymentCountdown deadline={order.paymentDeadline} />
+              )}
             </div>
           </Link>
         ))}

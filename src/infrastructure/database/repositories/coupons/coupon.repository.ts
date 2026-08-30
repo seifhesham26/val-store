@@ -5,8 +5,8 @@
  */
 
 import { db } from "@/db";
-import { coupons, couponUsages, Coupon, NewCoupon } from "@/db/schema";
-import { eq, sql, and, count } from "drizzle-orm";
+import { coupons, couponUsages, orders, Coupon, NewCoupon } from "@/db/schema";
+import { eq, sql, and, count, gte } from "drizzle-orm";
 import { CouponRepositoryInterface } from "@/domain/coupons/interfaces/repositories/coupon.repository.interface";
 
 export class DrizzleCouponRepository implements CouponRepositoryInterface {
@@ -79,6 +79,29 @@ export class DrizzleCouponRepository implements CouponRepositoryInterface {
           eq(couponUsages.userId, userId)
         )
       );
+    return result[0]?.count ?? 0;
+  }
+
+  async countPendingOrders(
+    couponId: string,
+    since: Date,
+    userId?: string
+  ): Promise<number> {
+    const conditions = [
+      eq(orders.couponId, couponId),
+      eq(orders.status, "pending"),
+      gte(orders.createdAt, since),
+    ];
+
+    if (userId) {
+      conditions.push(eq(orders.userId, userId));
+    }
+
+    const result = await db
+      .select({ count: count() })
+      .from(orders)
+      .where(and(...conditions));
+
     return result[0]?.count ?? 0;
   }
 

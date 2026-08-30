@@ -23,15 +23,7 @@ export async function ServerFeaturedProducts({
   showViewAll = true,
   limit = 8,
 }: ServerFeaturedProductsProps) {
-  let products: {
-    id: string;
-    name: string;
-    slug: string;
-    basePrice: number;
-    salePrice: number | null;
-    isFeatured: boolean;
-    primaryImage: string | null;
-  }[] = [];
+  let products: Awaited<ReturnType<typeof getCachedFeaturedProducts>> = [];
 
   // Try to fetch featured products with caching
   try {
@@ -66,6 +58,7 @@ export async function ServerFeaturedProducts({
                 price={product.basePrice}
                 salePrice={product.salePrice ?? undefined}
                 primaryImage={product.primaryImage ?? undefined}
+                variants={product.variants}
                 isOnSale={
                   product.salePrice !== null &&
                   product.salePrice < product.basePrice

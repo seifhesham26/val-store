@@ -15,6 +15,11 @@ import { toast } from "sonner";
 
 import { VerticalWheel } from "@/components/products/quick-add/VerticalWheel";
 import { QuickAddButton } from "@/components/products/quick-add/QuickAddButton";
+import {
+  StockIssueDialog,
+  type StockIssue,
+} from "@/components/products/StockIssueDialog";
+import { useVariantStock } from "@/hooks/use-variant-stock";
 
 export interface QuickAddVariant {
   id: string;
@@ -26,12 +31,14 @@ export interface QuickAddVariant {
 interface QuickAddSliderBarProps {
   productId: string;
   productName: string;
+  productImage?: string | null;
   variants: QuickAddVariant[];
 }
 
 export function QuickAddSliderBar({
   productId,
   productName,
+  productImage,
   variants,
 }: QuickAddSliderBarProps) {
   // Derive unique sizes and colors from variants
@@ -46,6 +53,11 @@ export function QuickAddSliderBar({
   const [colorIndex, setColorIndex] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
+  const [stockIssue, setStockIssue] = useState<StockIssue | null>(null);
+
+  // Shares the same cached stock query as the product page — one fetch per set
+  // of variants, refreshed in the background, not one request per add.
+  const stock = useVariantStock(variants.map((v) => v.id));
 
   const { addItem, openCart, isAuthenticated } = useCart();
 
@@ -58,7 +70,11 @@ export function QuickAddSliderBar({
       (selectedSize === null || v.size === selectedSize) &&
       (selectedColor === null || v.color === selectedColor)
   );
-  const inStock = matchingVariant?.inStock ?? false;
+  // Live figure when the cache has it, otherwise the flag the grid was rendered
+  // with.
+  const liveStock = stock.get(matchingVariant?.id);
+  const inStock =
+    liveStock !== null ? liveStock > 0 : (matchingVariant?.inStock ?? false);
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -85,13 +101,29 @@ export function QuickAddSliderBar({
 
     setIsAdding(true);
     try {
-      await addItem(productId, 1);
+      await addItem(productId, 1, matchingVariant?.id ?? null);
       setJustAdded(true);
       toast.success(`${productName} added to cart`);
       openCart();
       setTimeout(() => setJustAdded(false), 2000);
-    } catch {
-      toast.error("Failed to add to cart");
+    } catch (error) {
+      stock.refresh();
+      const message = error instanceof Error ? error.message : "";
+      const match = message.match(/only\s+(\d+)\s+left/i);
+
+      setStockIssue({
+        productName,
+        productImage,
+        variantLabel:
+          [selectedColor, selectedSize].filter(Boolean).join(" / ") || null,
+        requested: 1,
+        available: /out of stock/i.test(message)
+          ? 0
+          : match
+            ? Number(match[1])
+            : null,
+        message: message || undefined,
+      });
     } finally {
       setIsAdding(false);
     }
@@ -144,6 +176,11 @@ export function QuickAddSliderBar({
           onAdd={handleQuickAdd}
         />
       </div>
+
+      <StockIssueDialog
+        issue={stockIssue}
+        onOpenChange={(open) => !open && setStockIssue(null)}
+      />
     </div>
   );
 }

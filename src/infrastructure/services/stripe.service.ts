@@ -6,6 +6,15 @@
 
 import Stripe from "stripe";
 
+/**
+ * Currency used for Stripe checkout.
+ *
+ * NOTE: this must stay in sync with the currency the order rows are written in
+ * (see DrizzleOrderRepository.create). Issue #17 tracks making both read from
+ * site_settings instead of being hardcoded.
+ */
+const CHECKOUT_CURRENCY = "egp";
+
 // Initialize Stripe with secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-12-15.clover",
@@ -38,6 +47,10 @@ export interface CreateCheckoutSessionInput {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  /** Discount to apply, in major units (e.g. 12.50). Omit or 0 for none. */
+  discountAmount?: number;
+  /** Coupon code behind the discount, used to name it in the Stripe dashboard. */
+  discountLabel?: string;
 }
 
 export interface CreateCheckoutSessionResult {
@@ -89,14 +102,39 @@ export class StripeService {
       successUrl,
       cancelUrl,
       metadata = {},
+      discountAmount = 0,
+      discountLabel,
     } = input;
+
+    // Stripe rejects negative line items, so a coupon discount has to be applied
+    // as an actual Stripe coupon. Created per-session and used once.
+    const discountMinorUnits = Math.round(discountAmount * 100);
+    let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
+
+    if (discountMinorUnits > 0) {
+      // Stripe caps a coupon name at 40 characters and an order id alone is 36,
+      // so the id belongs in metadata; the name stays short and readable in the
+      // Stripe dashboard.
+      const label = discountLabel
+        ? `Coupon ${discountLabel}`
+        : "Order discount";
+
+      const stripeCoupon = await stripe.coupons.create({
+        amount_off: discountMinorUnits,
+        currency: CHECKOUT_CURRENCY,
+        duration: "once",
+        name: label.slice(0, 40),
+        metadata: { orderId },
+      });
+      discounts = [{ coupon: stripeCoupon.id }];
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems.map((item) => ({
         price_data: {
-          currency: "egp",
+          currency: CHECKOUT_CURRENCY,
           product_data: {
             name: item.productName,
             images: item.imageUrl ? [item.imageUrl] : [],
@@ -109,6 +147,12 @@ export class StripeService {
         quantity: item.quantity,
       })),
       customer_email: customerEmail,
+      discounts,
+      // The order reserves its stock before this redirect, so an abandoned
+      // checkout holds inventory. Stripe's default window is 24 hours; 30
+      // minutes is its minimum and far more appropriate here. Expiry fires
+      // `checkout.session.expired`, which cancels the order and returns stock.
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {

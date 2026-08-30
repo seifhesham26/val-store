@@ -10,7 +10,9 @@
 import { trpc } from "@/lib/trpc";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { ProductCard } from "@/components/products/ProductCard";
-import { Loader2, Search } from "lucide-react";
+import { ProductCardSkeletonGrid } from "@/components/products/ProductCardSkeleton";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
+import { ChevronDown, Search } from "lucide-react";
 import Link from "next/link";
 
 interface InfiniteSearchGridProps {
@@ -18,6 +20,11 @@ interface InfiniteSearchGridProps {
 }
 
 const ITEMS_PER_PAGE = 12;
+
+/** How many placeholder cards to append while the next page is in flight. */
+const NEXT_PAGE_PLACEHOLDERS = 4;
+
+const GRID_CLASSES = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6";
 
 export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -46,9 +53,13 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
 
   if (isLoading) {
     return (
-      <div className="container py-16">
-        <div className="flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="container py-8">
+        <div className="mb-8 space-y-3">
+          <div className="val-skeleton h-8 w-64 max-w-full rounded" />
+          <div className="val-skeleton h-4 w-40 rounded" />
+        </div>
+        <div className={GRID_CLASSES}>
+          <ProductCardSkeletonGrid count={8} />
         </div>
       </div>
     );
@@ -82,7 +93,7 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
       </div>
 
       {/* Product Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className={GRID_CLASSES}>
         {products.map((product) => (
           <ProductCard
             key={product.id}
@@ -99,29 +110,41 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
             variants={product.variants}
           />
         ))}
+
+        {/* Placeholders grow the grid while the next page loads */}
+        {isFetchingNextPage && (
+          <ProductCardSkeletonGrid count={NEXT_PAGE_PLACEHOLDERS} />
+        )}
       </div>
 
       {/* Infinite scroll sentinel */}
       {hasNextPage && (
         <div
           ref={sentinelRef}
-          className="flex items-center justify-center py-8"
+          className="flex items-center justify-center py-12"
         >
           {isFetchingNextPage ? (
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <ValkyrieLoader size="md" label="Loading" />
           ) : (
-            <span className="text-sm text-muted-foreground">
-              Scroll for more...
-            </span>
+            <div className="flex flex-col items-center gap-2 text-gray-600">
+              <ChevronDown className="val-hint h-4 w-4" />
+              <span className="text-[11px] uppercase tracking-[0.28em]">
+                Scroll for more
+              </span>
+            </div>
           )}
         </div>
       )}
 
       {/* End of list */}
       {!hasNextPage && products.length > 0 && (
-        <p className="text-center text-sm text-muted-foreground py-8">
-          You&apos;ve reached the end
-        </p>
+        <div className="flex items-center gap-4 py-12">
+          <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/15" />
+          <span className="text-[11px] uppercase tracking-[0.28em] text-gray-500">
+            End of results
+          </span>
+          <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/15" />
+        </div>
       )}
     </div>
   );

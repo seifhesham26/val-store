@@ -23,16 +23,19 @@ function createContainer() {
   const orders = createOrderModule();
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
-  const cart = createCartModule();
+  const cart = createCartModule({
+    getProductVariantRepository: products.getProductVariantRepository,
+  });
+  const couponsModule = createCouponModule();
   const checkout = createCheckoutModule({
     getOrderRepository: orders.getOrderRepository,
     getCartRepository: cart.getCartRepository,
+    getValidateCouponUseCase: couponsModule.getValidateCouponUseCase,
   });
   const wishlist = createWishlistModule();
   const address = createAddressModule();
   const customers = createCustomerModule();
   const services = createServicesModule();
-  const couponsModule = createCouponModule();
   const inventory = createInventoryModule();
 
   return {

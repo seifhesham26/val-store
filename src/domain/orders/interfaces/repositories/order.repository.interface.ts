@@ -5,7 +5,35 @@
  * Implementation will be in the infrastructure layer.
  */
 
-import { OrderEntity } from "@/domain/orders/entities/order.entity";
+import {
+  OrderEntity,
+  type RefundLine,
+} from "@/domain/orders/entities/order.entity";
+
+/** How much of each line to return to stock when closing an order. */
+export interface RestockLine {
+  orderItemId: string;
+  quantity: number;
+}
+
+export interface UpdateOrderStatusOptions {
+  /** Why the order was cancelled or refunded. Stored on the order and on each stock log. */
+  reason?: string;
+  /**
+   * Lines to return to stock. Omit to restock everything (the default for API
+   * callers); pass an explicit list — including an empty one — to restock only
+   * part of the order, e.g. when a returned item comes back damaged.
+   */
+  restock?: RestockLine[];
+  /**
+   * Bypass the payment-window guard.
+   *
+   * Only for the system unwinding its own failure — a Stripe hand-off that
+   * never got off the ground. An admin must not be able to cancel an order
+   * while the customer may still be entering their card.
+   */
+  force?: boolean;
+}
 
 export interface OrderFilters {
   status?: string; // Changed to string for compatibility with use cases
@@ -55,7 +83,44 @@ export interface OrderRepositoryInterface {
   /**
    * Update order status
    */
-  updateStatus(orderId: string, status: string): Promise<OrderEntity>;
+  updateStatus(
+    orderId: string,
+    status: string,
+    options?: UpdateOrderStatusOptions
+  ): Promise<OrderEntity>;
+
+  /**
+   * Record a return: refund the units sent back and restock the resellable
+   * ones. The order only reaches `refunded` once every unit has come back.
+   */
+  refund(
+    orderId: string,
+    input: { lines: RefundLine[]; reason?: string }
+  ): Promise<OrderEntity>;
+
+  /**
+   * Card orders past their payment window that were never marked paid.
+   *
+   * Only finds them — deciding whether to cancel needs the payment provider,
+   * since a missing confirmation is not the same as a missing payment.
+   */
+  findExpiredCheckouts(
+    olderThan: Date,
+    limit?: number
+  ): Promise<{ orderId: string; sessionId: string | null }[]>;
+
+  /** Mark an order's payment as failed, e.g. after an expired checkout. */
+  markPaymentFailed(orderId: string): Promise<void>;
+
+  /**
+   * Recognise payment for an order: advance it to `paid`, complete its payment
+   * row and redeem any coupon. Idempotent — safe to call from both the webhook
+   * and the success page.
+   */
+  markAsPaid(
+    orderId: string,
+    options?: { transactionId?: string; gatewayResponse?: unknown }
+  ): Promise<{ transitioned: boolean }>;
 
   /**
    * Delete an order

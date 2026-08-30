@@ -24,13 +24,37 @@ export function PaymentCard({ order }: { order: OrderData }) {
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Method</span>
           <span className="text-sm font-medium">
-            {order.paymentMethod || "N/A"}
+            {order.paymentMethod === "cash_on_delivery"
+              ? "Cash on Delivery"
+              : order.paymentMethod === "stripe"
+                ? "Card (Stripe)"
+                : "N/A"}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Payment Status</span>
-          <Badge variant={order.isPaid ? "default" : "destructive"}>
-            {order.isPaid ? "Paid" : "Unpaid"}
+          {/* Driven by the payments row, not the order status — an order can be
+              marked paid while the charge has not actually been captured. */}
+          <Badge
+            variant={
+              order.paymentStatus === "completed"
+                ? "default"
+                : order.paymentStatus === "refunded"
+                  ? "secondary"
+                  : order.hasCapturedPayment
+                    ? "default"
+                    : "destructive"
+            }
+          >
+            {order.paymentStatus === "completed"
+              ? "Paid"
+              : order.paymentStatus === "refunded"
+                ? "Refunded"
+                : order.paymentStatus === "failed"
+                  ? "Failed"
+                  : order.hasCapturedPayment
+                    ? "Paid (on delivery)"
+                    : "Awaiting payment"}
           </Badge>
         </div>
         <Separator />
@@ -52,6 +76,27 @@ export function PaymentCard({ order }: { order: OrderData }) {
             <span>Total</span>
             <span>${order.totalAmount.toFixed(2)}</span>
           </div>
+          {/* Returns can be partial, so what has actually gone back to the
+              customer is worth stating separately from the order total. */}
+          {order.refundedAmount > 0 && (
+            <>
+              <div className="flex justify-between text-sm text-amber-600 dark:text-amber-400">
+                <span>Refunded</span>
+                <span>-${order.refundedAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-medium">
+                <span>Net</span>
+                <span>
+                  ${(order.totalAmount - order.refundedAmount).toFixed(2)}
+                </span>
+              </div>
+              {order.partiallyRefunded && (
+                <p className="text-xs text-muted-foreground">
+                  Partly returned — the rest can still be returned.
+                </p>
+              )}
+            </>
+          )}
         </div>
       </CardContent>
     </Card>

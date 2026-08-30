@@ -12,6 +12,8 @@ import { persist, createJSONStorage } from "zustand/middleware";
 export interface CartItem {
   id: string;
   productId: string;
+  variantId: string | null;
+  variantLabel: string | null;
   productName: string;
   productPrice: number;
   productImage: string | null;
@@ -58,8 +60,11 @@ export const useCartStore = create<CartStore>()(
 
       addItem: (item: CartItem) =>
         set((state: CartState) => {
+          // Identity is product + variant: the same shirt in M and L are two
+          // separate lines.
           const existingIndex = state.items.findIndex(
-            (i: CartItem) => i.productId === item.productId
+            (i: CartItem) =>
+              i.productId === item.productId && i.variantId === item.variantId
           );
 
           if (existingIndex >= 0) {
@@ -116,7 +121,10 @@ export const useCartStore = create<CartStore>()(
       isEmpty: () => get().items.length === 0,
     }),
     {
-      name: "valkyrie-cart",
+      // Bumped when CartItem gained variantId/variantLabel. Rehydrating a
+      // pre-variant cart would produce lines that can't be matched or ordered
+      // correctly, so old persisted carts are dropped rather than migrated.
+      name: "valkyrie-cart-v2",
       storage: createJSONStorage(() => localStorage),
       partialize: (state: CartStore) => ({ items: state.items }),
     }

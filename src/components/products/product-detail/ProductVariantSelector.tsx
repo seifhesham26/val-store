@@ -11,6 +11,8 @@ interface ProductVariantSelectorProps {
   onSelectColor: (color: string) => void;
   onSelectSize: (size: string) => void;
   onChangeQuantity: (quantity: number) => void;
+  /** Stock ceiling for the chosen variant; null when nothing is chosen yet. */
+  maxQuantity?: number | null;
 }
 
 export function ProductVariantSelector({
@@ -22,6 +24,7 @@ export function ProductVariantSelector({
   onSelectColor,
   onSelectSize,
   onChangeQuantity,
+  maxQuantity = null,
 }: ProductVariantSelectorProps) {
   return (
     <>
@@ -31,20 +34,31 @@ export function ProductVariantSelector({
           <label className="block text-sm font-medium text-white mb-3">
             Color: {selectedColor}
           </label>
-          <div className="flex gap-2">
-            {colors.map((color) => (
-              <button
-                key={color.name}
-                onClick={() => onSelectColor(color.name)}
-                className={`w-10 h-10 rounded-full border-2 transition-all ${
-                  selectedColor === color.name
-                    ? "border-white scale-110"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: color.hex }}
-                aria-label={color.name}
-              />
-            ))}
+          <div className="flex flex-wrap gap-3">
+            {colors.map((color) => {
+              const isSelected = selectedColor === color.name;
+              return (
+                <button
+                  key={color.name}
+                  onClick={() => onSelectColor(color.name)}
+                  title={color.name}
+                  aria-label={color.name}
+                  aria-pressed={isSelected}
+                  className={`relative h-10 w-10 rounded-full transition-all ${
+                    isSelected
+                      ? "ring-2 ring-white ring-offset-2 ring-offset-black"
+                      : "ring-1 ring-white/25 hover:ring-white/60"
+                  }`}
+                >
+                  {/* Inner disc keeps light swatches legible against the
+                      black page while the ring shows selection state. */}
+                  <span
+                    className="absolute inset-0 rounded-full"
+                    style={{ backgroundColor: color.hex }}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -92,13 +106,26 @@ export function ProductVariantSelector({
             </button>
             <span className="px-4 text-white font-medium">{quantity}</span>
             <button
-              onClick={() => onChangeQuantity(quantity + 1)}
-              className="p-3 text-white hover:bg-white/10 transition-colors"
+              onClick={() =>
+                onChangeQuantity(
+                  maxQuantity === null
+                    ? quantity + 1
+                    : Math.min(quantity + 1, maxQuantity)
+                )
+              }
+              disabled={maxQuantity !== null && quantity >= maxQuantity}
+              className="p-3 text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               aria-label="Increase quantity"
             >
               <Plus className="h-4 w-4" />
             </button>
           </div>
+
+          {maxQuantity !== null && maxQuantity > 0 && maxQuantity <= 5 && (
+            <span className="text-sm text-amber-400">
+              Only {maxQuantity} left
+            </span>
+          )}
         </div>
       </div>
     </>

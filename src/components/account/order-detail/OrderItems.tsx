@@ -23,6 +23,9 @@ export function OrderItems({ items }: { items: OrderItem[] }) {
               </div>
               <div className="flex-1">
                 <p className="font-medium text-white">{item.productName}</p>
+                {item.variantDetails && (
+                  <p className="text-sm text-gray-400">{item.variantDetails}</p>
+                )}
                 <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
               </div>
               <p className="font-medium text-white">

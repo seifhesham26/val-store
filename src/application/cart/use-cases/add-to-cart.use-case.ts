@@ -12,12 +12,15 @@ export interface AddToCartInput {
   userId: string;
   productId: string;
   quantity: number;
+  /** Chosen variant. Null only for products with no variants. */
+  variantId?: string | null;
 }
 
 export interface AddToCartOutput {
   cartItem: {
     id: string;
     productId: string;
+    variantId: string | null;
     productName: string;
     quantity: number;
     price: number;
@@ -31,7 +34,7 @@ export class AddToCartUseCase {
   constructor(private readonly cartRepository: CartRepositoryInterface) {}
 
   async execute(input: AddToCartInput): Promise<AddToCartOutput> {
-    const { userId, productId, quantity } = input;
+    const { userId, productId, quantity, variantId = null } = input;
 
     if (quantity < 1) {
       throw new Error("Quantity must be at least 1");
@@ -48,7 +51,8 @@ export class AddToCartUseCase {
       quantity,
       0, // Max stock loaded by repo
       new Date(),
-      new Date()
+      new Date(),
+      variantId
     );
 
     const addedItem = await this.cartRepository.addItem(cartItem);
@@ -63,6 +67,7 @@ export class AddToCartUseCase {
       cartItem: {
         id: addedItem.id,
         productId: addedItem.productId,
+        variantId: addedItem.variantId,
         productName: addedItem.productName,
         quantity: addedItem.quantity,
         price: addedItem.productPrice,

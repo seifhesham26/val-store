@@ -1,4 +1,7 @@
-import { ProductEntity } from "@/domain/products/entities/product.entity";
+import {
+  ProductEntity,
+  Gender,
+} from "@/domain/products/entities/product.entity";
 import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
 
@@ -31,6 +34,11 @@ export interface GetProductOutput {
   isLowStock: boolean;
   isOutOfStock: boolean;
   discountPercentage: number;
+  gender: Gender | null;
+  material: string | null;
+  careInstructions: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -82,6 +90,11 @@ export class GetProductUseCase {
       isLowStock: product.isLowStock(),
       isOutOfStock: product.isOutOfStock(),
       discountPercentage: product.getDiscountPercentage(),
+      gender: product.gender,
+      material: product.material,
+      careInstructions: product.careInstructions,
+      metaTitle: product.metaTitle,
+      metaDescription: product.metaDescription,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
     };

@@ -1,12 +1,34 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Instagram, Facebook, Twitter, Music2 } from "lucide-react"; // Music2 for TikTok
+import {
+  Instagram,
+  Facebook,
+  Twitter,
+  Music2, // Music2 for TikTok
+  Truck,
+  ShieldCheck,
+  Banknote,
+} from "lucide-react";
 import { container } from "@/application/container";
 
 export async function Footer() {
-  // Fetch site settings for social links and store name
-  const siteConfigRepo = container.getSiteConfigRepository();
-  const settings = await siteConfigRepo.getSiteSettings();
+  // Fetch site settings for social links and store name.
+  //
+  // Degrades to defaults on failure, matching the homepage server sections: the
+  // footer renders on every page, so a transient database error must not take
+  // the whole site down with it.
+  let settings: Awaited<
+    ReturnType<
+      ReturnType<typeof container.getSiteConfigRepository>["getSiteSettings"]
+    >
+  > = null;
+
+  try {
+    const siteConfigRepo = container.getSiteConfigRepository();
+    settings = await siteConfigRepo.getSiteSettings();
+  } catch (error) {
+    console.error("[Footer] Failed to fetch site settings:", error);
+  }
 
   const currentYear = new Date().getFullYear();
   const storeName = settings?.storeName || "Valkyrie";
@@ -61,6 +83,33 @@ export async function Footer() {
       enabled: true,
     },
   ];
+
+  const trustSignals = [
+    {
+      icon: Truck,
+      title: "Nationwide delivery",
+      description: "Shipping across Egypt",
+    },
+    {
+      icon: Banknote,
+      title: "Cash on delivery",
+      description: "Pay when it arrives",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Secure payments",
+      description: "Encrypted card checkout",
+    },
+  ];
+
+  const legalLinks = [
+    { label: "Privacy Policy", href: "/privacy" },
+    { label: "Terms of Service", href: "/terms" },
+    { label: "Shipping Policy", href: "/shipping" },
+    { label: "Returns Policy", href: "/returns" },
+  ];
+
+  const paymentMethods = ["Visa", "Mastercard", "Meeza", "Cash on Delivery"];
 
   return (
     <footer className="bg-black border-t border-white/10">
@@ -152,38 +201,78 @@ export async function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-12 pt-8 border-t border-white/10">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            {/* Logo */}
-            <Link href="/">
-              <Image
-                src="/logo/VAL-LOGO.png"
-                alt="Valkyrie"
-                width={120}
-                height={35}
-                className="h-8 w-auto object-contain"
+        <div className="mt-12 border-t border-white/10 pt-10">
+          {/* Trust strip */}
+          <div className="grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-3">
+            {trustSignals.map((signal) => (
+              <div
+                key={signal.title}
+                className="flex items-center gap-3 bg-black px-5 py-4"
+              >
+                <signal.icon className="h-4 w-4 shrink-0 text-val-accent" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-white">
+                    {signal.title}
+                  </p>
+                  <p className="truncate text-[11px] text-gray-500">
+                    {signal.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Identity + legal */}
+          <div className="mt-10 flex flex-col items-center gap-6 border-t border-white/10 pt-8 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-center gap-4 md:flex-row md:gap-5">
+              <Link href="/" aria-label={`${storeName} home`}>
+                <Image
+                  src="/logo/VAL-LOGO.png"
+                  alt={storeName}
+                  width={140}
+                  height={40}
+                  className="h-9 w-auto object-contain"
+                />
+              </Link>
+              <span
+                aria-hidden="true"
+                className="hidden h-8 w-px bg-white/10 md:block"
               />
-            </Link>
+              <p className="text-center text-xs text-gray-500 md:text-left">
+                © {currentYear} {storeName}. All rights reserved.
+              </p>
+            </div>
 
-            {/* Copyright */}
-            <p className="text-sm text-gray-500">
-              © {currentYear} {storeName}. All rights reserved.
+            <nav
+              aria-label="Legal"
+              className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2"
+            >
+              {legalLinks.map((link) => (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="text-xs text-gray-400 transition-colors hover:text-white"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          {/* Payment methods */}
+          <div className="mt-8 flex flex-col items-center gap-3 border-t border-white/5 pt-6 sm:flex-row sm:justify-between">
+            <p className="text-[10px] uppercase tracking-[0.28em] text-gray-600">
+              Secure checkout
             </p>
-
-            {/* Legal links */}
-            <div className="flex items-center gap-6">
-              <Link
-                href="/privacy"
-                className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
-              >
-                Privacy Policy
-              </Link>
-              <Link
-                href="/terms"
-                className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
-              >
-                Terms of Service
-              </Link>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {paymentMethods.map((method) => (
+                <span
+                  key={method}
+                  className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-gray-400"
+                >
+                  {method}
+                </span>
+              ))}
             </div>
           </div>
         </div>

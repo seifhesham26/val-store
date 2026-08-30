@@ -5,17 +5,37 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle, Package, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCart } from "@/components/providers/cart-provider";
-import { useSession } from "@/lib/auth-client";
 import { trpc } from "@/lib/trpc";
+import { useCartStore } from "@/lib/stores/cart-store";
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session_id");
   const orderId = searchParams.get("order_id");
-  const { clearCart } = useCart();
-  const { isPending } = useSession();
-  const hasCleared = useRef(false);
+  const utils = trpc.useUtils();
+  const hasConfirmed = useRef(false);
+
+  // The webhook is the primary path for marking a Stripe order paid, but it can
+  // be delayed, fail, or (in local development) never arrive at all. Confirming
+  // here as well means the order is never left stranded at "pending" after a
+  // successful payment. The mutation is idempotent.
+  const clearLocalCart = useCartStore((state) => state.clearCart);
+
+  const confirmSession = trpc.public.checkout.confirmSession.useMutation({
+    onSuccess: (result) => {
+      // Empty the local cart the moment payment is confirmed, rather than
+      // waiting for the refetch below to report it — otherwise the navbar badge
+      // keeps showing the old count until that lands.
+      //
+      // Guarded on `paid`: an abandoned checkout must keep the customer's cart.
+      if (result.paid) clearLocalCart();
+    },
+    onSettled: () => {
+      utils.public.cart.get.invalidate();
+      utils.public.cart.stockStatus.invalidate();
+      utils.public.orders.getOrderNumberByStripeSession.invalidate();
+    },
+  });
 
   const orderNumberByIdQuery = trpc.public.orders.getOrderNumberById.useQuery(
     { orderId: orderId ?? "" },
@@ -33,13 +53,22 @@ function CheckoutSuccessContent() {
     orderNumberBySessionQuery.data?.orderNumber ??
     null;
 
-  // Clear local cart on success
   useEffect(() => {
-    if (!isPending && !hasCleared.current) {
-      clearCart();
-      hasCleared.current = true;
+    if (hasConfirmed.current) return;
+    hasConfirmed.current = true;
+
+    if (sessionId) {
+      confirmSession.mutate({ sessionId });
+    } else {
+      // Cash on delivery already emptied the cart server-side. Mirror that
+      // locally straight away, then re-sync to confirm.
+      clearLocalCart();
+      utils.public.cart.get.invalidate();
+      utils.public.cart.stockStatus.invalidate();
     }
-  }, [clearCart, isPending]);
+    // Runs once on mount; the ref guards against re-entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   return (
     <div className="container mx-auto px-4 py-16">

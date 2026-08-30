@@ -19,11 +19,15 @@ export interface CartRepositoryInterface {
   findByUserId(userId: string): Promise<CartItemEntity[]>;
 
   /**
-   * Find a specific cart item for a user and product
+   * Find a specific cart item for a user, product and variant.
+   *
+   * The variant is part of the identity: the same product in two different
+   * sizes is two cart lines, not one line of quantity two.
    */
   findByUserAndProduct(
     userId: string,
-    productId: string
+    productId: string,
+    variantId: string | null
   ): Promise<CartItemEntity | null>;
 
   /**

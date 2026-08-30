@@ -32,11 +32,27 @@ export function SummaryCard({ order }: { order: OrderData }) {
         <div>
           <CardTitle>Order Summary</CardTitle>
           <CardDescription>
-            Order #{order.id.slice(0, 8).toUpperCase()}
+            {order.orderNumber ??
+              `Order #${order.id.slice(0, 8).toUpperCase()}`}
           </CardDescription>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-muted-foreground">Customer</span>
+          {order.customer ? (
+            <span className="truncate text-right text-sm font-medium">
+              {order.customer.name}
+              <span className="block text-xs font-normal text-muted-foreground">
+                {order.customer.email}
+              </span>
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              Deleted account
+            </span>
+          )}
+        </div>
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Status</span>
           <Badge

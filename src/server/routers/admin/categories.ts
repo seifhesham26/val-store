@@ -1,4 +1,5 @@
 import { container } from "@/application/container";
+import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
 
@@ -19,7 +20,7 @@ const createCategorySchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   parentId: z.string().uuid().optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: urlOrAssetPath.optional(),
   displayOrder: z.number().int().optional(),
 });
 

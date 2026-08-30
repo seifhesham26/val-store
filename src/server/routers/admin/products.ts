@@ -13,6 +13,11 @@ const createProductSchema = z.object({
   salePrice: z.number().positive().optional(),
   isActive: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
+  gender: z.enum(["men", "women", "unisex", "kids"]).nullable().optional(),
+  material: z.string().nullable().optional(),
+  careInstructions: z.string().nullable().optional(),
+  metaTitle: z.string().nullable().optional(),
+  metaDescription: z.string().nullable().optional(),
 });
 
 const listProductsSchema = z.object({
@@ -69,7 +74,12 @@ export const productsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        data: createProductSchema.partial(),
+        // salePrice is nullable on update specifically: sending null is how the
+        // edit form clears an existing sale price. An omitted key still means
+        // "leave unchanged".
+        data: createProductSchema.partial().extend({
+          salePrice: z.number().positive().nullable().optional(),
+        }),
       })
     )
     .mutation(async ({ input }) => {

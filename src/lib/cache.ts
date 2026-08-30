@@ -82,12 +82,15 @@ export const getCachedFeaturedProducts = unstable_cache(
   async (limit: number = 8) => {
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
+    const variantRepo = container.getProductVariantRepository();
     const products = await repo.findFeatured(limit);
+    const productIds = products.map((p) => p.id);
 
-    // Batch-fetch primary images (1 query instead of N)
-    const imageMap = await imageRepo.findPrimaryByProducts(
-      products.map((p) => p.id)
-    );
+    // Batch-fetch primary images and variants (2 queries instead of 2N)
+    const [imageMap, variantMap] = await Promise.all([
+      imageRepo.findPrimaryByProducts(productIds),
+      variantRepo.findByProducts(productIds),
+    ]);
 
     return products.map((p) => ({
       id: p.id,
@@ -97,6 +100,16 @@ export const getCachedFeaturedProducts = unstable_cache(
       salePrice: p.salePrice,
       isFeatured: p.isFeatured,
       primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+      // Needed by Quick Add: without these the card cannot record which variant
+      // was bought, and the order would skip stock entirely.
+      variants: (variantMap.get(p.id) ?? [])
+        .filter((v) => v.isAvailable)
+        .map((v) => ({
+          id: v.id,
+          size: v.size,
+          color: v.color,
+          inStock: v.stockQuantity > 0,
+        })),
     }));
   },
   [CACHE_TAGS.FEATURED_PRODUCTS],
@@ -189,6 +202,9 @@ export const getCachedProductBySlug = unstable_cache(
           color: v.color,
           priceAdjustment: v.priceAdjustment,
           inStock: v.stockQuantity > 0,
+          // Exposed so the product page can cap the quantity stepper at what
+          // can actually be fulfilled.
+          availableStock: v.stockQuantity,
         })),
     };
   },
@@ -233,16 +249,18 @@ export const getCachedRelatedProducts = unstable_cache(
   async (excludeId: string, limit: number = 4) => {
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
+    const variantRepo = container.getProductVariantRepository();
     const products = await repo.findAll({
       isActive: true,
       excludeId,
       limit,
     });
+    const productIds = products.map((p) => p.id);
 
-    // Batch-fetch primary images (1 query instead of N)
-    const imageMap = await imageRepo.findPrimaryByProducts(
-      products.map((p) => p.id)
-    );
+    const [imageMap, variantMap] = await Promise.all([
+      imageRepo.findPrimaryByProducts(productIds),
+      variantRepo.findByProducts(productIds),
+    ]);
 
     return products.map((p) => ({
       id: p.id,
@@ -251,6 +269,14 @@ export const getCachedRelatedProducts = unstable_cache(
       basePrice: p.basePrice,
       salePrice: p.salePrice,
       primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+      variants: (variantMap.get(p.id) ?? [])
+        .filter((v) => v.isAvailable)
+        .map((v) => ({
+          id: v.id,
+          size: v.size,
+          color: v.color,
+          inStock: v.stockQuantity > 0,
+        })),
     }));
   },
   ["related-products"],

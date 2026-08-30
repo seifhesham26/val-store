@@ -8,8 +8,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { ResendEmailService } from "@/infrastructure/services/resend-email.service";
+import { container } from "@/application/container";
 import { db } from "@/db";
-import { cartItems, orders, payments } from "@/db/schema";
+import { cartItems, payments } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 const emailService = new ResendEmailService();
@@ -53,24 +54,17 @@ export async function POST(request: NextRequest) {
       // Persist payment + order status
       if (metadata?.orderId && session.payment_status === "paid") {
         try {
-          await db
-            .update(orders)
-            .set({ status: "paid", updatedAt: new Date() })
-            .where(eq(orders.id, metadata.orderId));
-
-          await db
-            .update(payments)
-            .set({
-              paymentStatus: "completed",
-              paymentGatewayResponse: JSON.stringify({
-                stripePaymentIntentId:
-                  typeof session.payment_intent === "string"
-                    ? session.payment_intent
-                    : null,
-              }),
-              updatedAt: new Date(),
-            })
-            .where(eq(payments.orderId, metadata.orderId));
+          // Shared with the success page's confirmSession: advances the order,
+          // completes the payment row and redeems the coupon, guarded so a late
+          // webhook cannot resurrect an order an admin already cancelled.
+          await container.getOrderRepository().markAsPaid(metadata.orderId, {
+            gatewayResponse: {
+              stripePaymentIntentId:
+                typeof session.payment_intent === "string"
+                  ? session.payment_intent
+                  : null,
+            },
+          });
         } catch (error) {
           console.error(
             JSON.stringify({
@@ -123,6 +117,43 @@ export async function POST(request: NextRequest) {
           console.error(
             JSON.stringify({
               error: "Failed to clear cart",
+              details: error instanceof Error ? error.message : String(error),
+            })
+          );
+        }
+      }
+
+      break;
+    }
+
+    /**
+     * The customer opened Stripe and never paid.
+     *
+     * The order and its stock reservation were created before the redirect, so
+     * without this they sit as `pending` forever, holding inventory nobody is
+     * buying. Cancelling returns the stock and releases the coupon.
+     */
+    case "checkout.session.expired": {
+      const session = event.data.object;
+      const orderId = session.metadata?.orderId;
+
+      if (orderId) {
+        try {
+          await container
+            .getOrderRepository()
+            .updateStatus(orderId, "cancelled", {
+              reason: "Checkout expired without payment",
+            });
+
+          await db
+            .update(payments)
+            .set({ paymentStatus: "failed", updatedAt: new Date() })
+            .where(eq(payments.orderId, orderId));
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              error: "Failed to cancel expired checkout order",
+              orderId,
               details: error instanceof Error ? error.message : String(error),
             })
           );

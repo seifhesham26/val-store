@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, ArrowRight, Loader2 } from "lucide-react";
+import { ShoppingBag, ArrowRight, Loader2, AlertTriangle } from "lucide-react";
 
 interface CartSummaryProps {
   subtotal: number;
@@ -16,6 +16,9 @@ interface CartSummaryProps {
   onCheckout?: () => void;
   isLoading?: boolean;
   showCheckoutButton?: boolean;
+  /** Live stock no longer covers the cart — checkout is replaced by a prompt. */
+  stockBlocked?: boolean;
+  onReviewStock?: () => void;
 }
 
 export function CartSummary({
@@ -24,6 +27,8 @@ export function CartSummary({
   onCheckout,
   isLoading = false,
   showCheckoutButton = true,
+  stockBlocked = false,
+  onReviewStock,
 }: CartSummaryProps) {
   // Placeholder for shipping/tax - can be expanded later
   const shipping: number = 0; // Free shipping or calculated
@@ -60,7 +65,18 @@ export function CartSummary({
         </div>
       </div>
 
-      {showCheckoutButton && (
+      {showCheckoutButton && stockBlocked && (
+        <Button
+          className="w-full bg-amber-500 text-black font-medium hover:bg-amber-500/90"
+          size="lg"
+          onClick={onReviewStock}
+        >
+          <AlertTriangle className="mr-2 h-4 w-4" />
+          Review stock changes
+        </Button>
+      )}
+
+      {showCheckoutButton && !stockBlocked && (
         <Button
           className="w-full bg-val-accent hover:bg-val-accent/90 text-white font-medium"
           size="lg"

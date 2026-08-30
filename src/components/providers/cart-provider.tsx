@@ -39,6 +39,8 @@ export function CartProvider({ children }: CartProviderProps) {
       const items: CartItem[] = serverCart.items.map((item) => ({
         id: item.id,
         productId: item.productId,
+        variantId: item.variantId,
+        variantLabel: item.variantLabel,
         productName: item.productName,
         productPrice: item.productPrice,
         productImage: item.productImage,
@@ -70,38 +72,43 @@ export function useCart() {
     {}
   );
 
-  // Server mutations
+  // Server mutations.
+  //
+  // Every cart write also refreshes the stock check: what is available depends
+  // on what the cart is holding, so a stale check would keep reporting a
+  // problem the customer has already fixed.
+  const invalidateCart = useCallback(() => {
+    utils.public.cart.get.invalidate();
+    utils.public.cart.stockStatus.invalidate();
+  }, [utils]);
+
   const addMutation = trpc.public.cart.add.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   const updateMutation = trpc.public.cart.updateQuantity.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   const removeMutation = trpc.public.cart.remove.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   const clearMutation = trpc.public.cart.clear.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   // Add item - sync with server if authenticated
   const addItem = useCallback(
-    async (productId: string, quantity: number = 1) => {
+    async (
+      productId: string,
+      quantity: number = 1,
+      variantId: string | null = null
+    ) => {
       if (isAuthenticated) {
         store.setSyncing(true);
         try {
-          await addMutation.mutateAsync({ productId, quantity });
+          await addMutation.mutateAsync({ productId, quantity, variantId });
         } finally {
           store.setSyncing(false);
         }

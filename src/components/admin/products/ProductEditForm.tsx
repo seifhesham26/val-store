@@ -35,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { AdditionalDetailsSection } from "@/components/admin/products/create/AdditionalDetailsSection";
 import { ImageUploadSection } from "@/components/admin/products/create/ImageUploadSection";
 import { VariantsSection } from "@/components/admin/products/create/VariantsSection";
 
@@ -47,6 +48,11 @@ const productFormSchema = z.object({
   salePrice: z.number().positive().nullable(),
   isActive: z.boolean(),
   isFeatured: z.boolean(),
+  gender: z.enum(["men", "women", "unisex", "kids"]),
+  material: z.string(),
+  careInstructions: z.string(),
+  metaTitle: z.string(),
+  metaDescription: z.string(),
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
@@ -87,6 +93,11 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
       salePrice: null,
       isActive: true,
       isFeatured: false,
+      gender: "unisex",
+      material: "",
+      careInstructions: "",
+      metaTitle: "",
+      metaDescription: "",
     },
     values: product
       ? {
@@ -97,6 +108,11 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
           salePrice: product.salePrice,
           isActive: product.isActive,
           isFeatured: product.isFeatured,
+          gender: product.gender ?? "unisex",
+          material: product.material ?? "",
+          careInstructions: product.careInstructions ?? "",
+          metaTitle: product.metaTitle ?? "",
+          metaDescription: product.metaDescription ?? "",
         }
       : undefined,
   });
@@ -107,8 +123,14 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
       id: productId,
       data: {
         ...values,
-        // Convert null to undefined for API compatibility
-        salePrice: values.salePrice ?? undefined,
+        // null (not undefined) so clearing the field actually removes the sale
+        // price — the use case treats undefined as "leave unchanged".
+        salePrice: values.salePrice ?? null,
+        // Blank optional text fields are stored as null rather than "".
+        material: values.material.trim() || null,
+        careInstructions: values.careInstructions.trim() || null,
+        metaTitle: values.metaTitle.trim() || null,
+        metaDescription: values.metaDescription.trim() || null,
       },
     });
   };
@@ -341,6 +363,9 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
             />
           </CardContent>
         </Card>
+
+        {/* Additional details + SEO */}
+        <AdditionalDetailsSection />
 
         {/* Images */}
         <ImageUploadSection productId={productId} />

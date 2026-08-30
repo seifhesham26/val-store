@@ -26,6 +26,7 @@ export const cartRouter = router({
       z.object({
         productId: z.string().uuid(),
         quantity: z.number().int().min(1).default(1),
+        variantId: z.string().uuid().nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -34,6 +35,7 @@ export const cartRouter = router({
         userId: ctx.user.id,
         productId: input.productId,
         quantity: input.quantity,
+        variantId: input.variantId ?? null,
       });
     }),
 
@@ -70,6 +72,45 @@ export const cartRouter = router({
       return useCase.execute({
         cartItemId: input.cartItemId,
         userId: ctx.user.id,
+      });
+    }),
+
+  /**
+   * Live stock reconciliation for the cart.
+   *
+   * Cheap enough to call on any interaction: one cart read plus one batched
+   * variant read, and a third query only when something is actually wrong.
+   */
+  stockStatus: protectedProcedure.query(async ({ ctx }) => {
+    // Release abandoned checkouts so stock held by an expired payment window
+    // comes back into circulation. Deliberately not awaited: this is global
+    // housekeeping that asks Stripe about other people's orders, and a shopper
+    // checking their cart should not wait for it. The next poll, fifteen
+    // seconds later, sees the result. The use case throttles itself and
+    // swallows its own errors.
+    void container.getCancelExpiredCheckoutsUseCase().execute();
+
+    const useCase = container.getCheckCartStockUseCase();
+    return useCase.execute(ctx.user.id);
+  }),
+
+  /**
+   * Move a cart line onto a different variant of the same product — the
+   * "take this colour instead" route out of a stock problem.
+   */
+  changeVariant: protectedProcedure
+    .input(
+      z.object({
+        cartItemId: z.string().uuid(),
+        variantId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const useCase = container.getChangeCartItemVariantUseCase();
+      return useCase.execute({
+        userId: ctx.user.id,
+        cartItemId: input.cartItemId,
+        variantId: input.variantId,
       });
     }),
 

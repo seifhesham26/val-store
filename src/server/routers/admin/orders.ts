@@ -1,6 +1,7 @@
 import { container } from "@/application/container";
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
+import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
 
 /**
  * Orders Router - Thin Adapter
@@ -17,6 +18,8 @@ const listOrdersSchema = z
     endDate: z.date().optional(),
     minTotal: z.number().optional(),
     maxTotal: z.number().optional(),
+    refundableOnly: z.boolean().optional(),
+    returnedOnly: z.boolean().optional(),
     limit: z.number().min(1).max(100).optional().default(10),
     cursor: z.number().min(1).optional(), // Page number as cursor
   })
@@ -28,20 +31,46 @@ const getOrderSchema = z.object({
 
 const updateOrderStatusSchema = z.object({
   id: z.string().uuid(),
-  status: z.enum([
-    "pending",
-    "confirmed",
-    "processing",
-    "shipped",
-    "delivered",
-    "cancelled",
-    "refunded",
-  ]),
+  // Sourced from the domain so this can never drift from the DB enum again.
+  status: z.enum(ORDER_STATUSES),
+  reason: z.string().trim().max(500).optional(),
+  // Omit to restock the whole order; pass an explicit list (even empty) to
+  // restock only part of it.
+  restock: z
+    .array(
+      z.object({
+        orderItemId: z.string().uuid(),
+        quantity: z.number().int().min(0),
+      })
+    )
+    .optional(),
+});
+
+/**
+ * A return is recorded per line, with two separate numbers: how many units the
+ * customer is refunded for, and how many of those are fit to sell again.
+ */
+const refundOrderSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.string().trim().max(500).optional(),
+  lines: z
+    .array(
+      z.object({
+        orderItemId: z.string().uuid(),
+        returned: z.number().int().min(0),
+        restocked: z.number().int().min(0),
+      })
+    )
+    .min(1),
 });
 
 export const ordersRouter = router({
   // List orders with filtering and pagination
   list: adminProcedure.input(listOrdersSchema).query(async ({ input }) => {
+    // Sweep abandoned checkouts so the list never shows a stale "pending" card
+    // order that should already have released its stock.
+    await container.getCancelExpiredCheckoutsUseCase().execute();
+
     const useCase = container.getListOrdersUseCase();
     const page = input?.cursor ?? 1;
     return useCase.execute({
@@ -56,6 +85,17 @@ export const ordersRouter = router({
     const useCase = container.getGetOrderUseCase();
     return useCase.execute(input);
   }),
+
+  /**
+   * Record a return. Bounds are enforced against the order itself — you cannot
+   * return more than was ordered, nor more than is left to return.
+   */
+  refund: adminProcedure
+    .input(refundOrderSchema)
+    .mutation(async ({ input }) => {
+      const useCase = container.getRefundOrderUseCase();
+      return useCase.execute(input);
+    }),
 
   // Update order status
   updateStatus: adminProcedure

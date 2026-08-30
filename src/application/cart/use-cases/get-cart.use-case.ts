@@ -9,6 +9,8 @@ import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/c
 export interface CartItemDto {
   id: string;
   productId: string;
+  variantId: string | null;
+  variantLabel: string | null;
   productName: string;
   productPrice: number;
   productImage: string | null;
@@ -35,6 +37,8 @@ export class GetCartUseCase {
     const items: CartItemDto[] = cartItems.map((item) => ({
       id: item.id,
       productId: item.productId,
+      variantId: item.variantId,
+      variantLabel: item.getVariantLabel(),
       productName: item.productName,
       productPrice: item.productPrice,
       productImage: item.productImage,

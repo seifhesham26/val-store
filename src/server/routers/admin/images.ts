@@ -8,12 +8,13 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
+import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 import { ProductImageEntity } from "@/domain/products/entities/product-image.entity";
 
 // Validation schemas
 const addImageSchema = z.object({
   productId: z.string().uuid(),
-  imageUrl: z.string().url("Must be a valid URL"),
+  imageUrl: urlOrAssetPath,
   altText: z.string().optional(),
   isPrimary: z.boolean().optional(),
 });
