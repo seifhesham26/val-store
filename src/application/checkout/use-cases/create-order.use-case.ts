@@ -42,6 +42,7 @@ export class CreateOrderUseCase {
       variantDetails: item.getVariantLabel(),
       quantity: item.quantity,
       price: item.productPrice,
+      refundedQuantity: 0,
     }));
 
     const subtotal = items.reduce(

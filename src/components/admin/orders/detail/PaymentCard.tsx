@@ -76,6 +76,27 @@ export function PaymentCard({ order }: { order: OrderData }) {
             <span>Total</span>
             <span>${order.totalAmount.toFixed(2)}</span>
           </div>
+          {/* Returns can be partial, so what has actually gone back to the
+              customer is worth stating separately from the order total. */}
+          {order.refundedAmount > 0 && (
+            <>
+              <div className="flex justify-between text-sm text-amber-600 dark:text-amber-400">
+                <span>Refunded</span>
+                <span>-${order.refundedAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-medium">
+                <span>Net</span>
+                <span>
+                  ${(order.totalAmount - order.refundedAmount).toFixed(2)}
+                </span>
+              </div>
+              {order.partiallyRefunded && (
+                <p className="text-xs text-muted-foreground">
+                  Partly returned — the rest can still be returned.
+                </p>
+              )}
+            </>
+          )}
         </div>
       </CardContent>
     </Card>

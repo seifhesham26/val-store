@@ -51,6 +51,11 @@ export const ordersRouter = router({
         total: order.totalAmount,
         itemCount: order.items.length,
         createdAt: order.createdAt,
+        // An unpaid card order is held briefly and then released. The customer
+        // should see that rather than watch it silently turn into "cancelled".
+        awaitingPayment: order.isAwaitingPayment(),
+        paymentDeadline: order.paymentDeadline(),
+        refundedAmount: order.refundedAmount(),
       }));
 
       return {

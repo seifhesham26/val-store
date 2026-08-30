@@ -24,8 +24,26 @@ export interface OrderItem {
   variantDetails: string | null;
   quantity: number;
   price: number; // Price at time of order
+  /** Units already returned and refunded. Zero for an untouched line. */
+  refundedQuantity: number;
   /** Primary product image, when the repository joined it. */
   productImage?: string | null;
+}
+
+/**
+ * One line of a return.
+ *
+ * `returned` and `restocked` are deliberately separate numbers. A customer can
+ * send back three shirts and be refunded for all three, while only two are fit
+ * to sell again — the third is money returned but stock not recovered. Folding
+ * them into one figure would either short-change the customer or invent stock.
+ */
+export interface RefundLine {
+  orderItemId: string;
+  /** Units the customer is being refunded for. */
+  returned: number;
+  /** Of those, how many go back on sale. Never more than `returned`. */
+  restocked: number;
 }
 
 /**
@@ -64,6 +82,11 @@ export interface OrderAddress {
   postalCode: string;
   country: string;
   phone: string;
+}
+
+/** Money is compared and stored to the cent; keep derived figures there too. */
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 export class OrderEntity {
@@ -218,6 +241,142 @@ export class OrderEntity {
   isAwaitingPayment(at: Date = new Date()): boolean {
     const deadline = this.paymentDeadline();
     return deadline !== null && deadline.getTime() > at.getTime();
+  }
+
+  /** Units of a line that have not yet been returned. */
+  refundableQuantity(orderItemId: string): number {
+    const item = this.items.find((i) => i.id === orderItemId);
+    if (!item) return 0;
+    return Math.max(0, item.quantity - item.refundedQuantity);
+  }
+
+  /**
+   * The fraction of list price the customer actually paid.
+   *
+   * Line prices are what the goods cost before any coupon. The customer paid
+   * `subtotal - discount` for them, so every refund has to be scaled down by
+   * this — otherwise a full return on a discounted order hands back the
+   * coupon's value as well as the goods.
+   *
+   * Tax and shipping are excluded deliberately: this scales the goods only.
+   */
+  private paidFraction(): number {
+    if (this.discount <= 0 || this.subtotal <= 0) return 1;
+    return Math.max(0, (this.subtotal - this.discount) / this.subtotal);
+  }
+
+  /**
+   * Money already returned to the customer.
+   *
+   * Derived from the lines rather than stored, so it can never disagree with
+   * them.
+   */
+  refundedAmount(): number {
+    const listValue = this.items.reduce(
+      (sum, item) => sum + item.refundedQuantity * item.price,
+      0
+    );
+    return roundMoney(listValue * this.paidFraction());
+  }
+
+  /** Has every unit on the order been returned? */
+  isFullyRefunded(): boolean {
+    return (
+      this.items.length > 0 &&
+      this.items.every((item) => item.refundedQuantity >= item.quantity)
+    );
+  }
+
+  /** Has some, but not all, of the order been returned? */
+  isPartiallyRefunded(): boolean {
+    return (
+      this.items.some((item) => item.refundedQuantity > 0) &&
+      !this.isFullyRefunded()
+    );
+  }
+
+  /**
+   * Check a proposed return against what is left to return.
+   *
+   * @throws Error describing the first problem found
+   */
+  validateRefund(lines: RefundLine[]): void {
+    if (this.stockAlreadyReturned() && lines.some((l) => l.restocked > 0)) {
+      throw new Error(
+        "This order was cancelled, so its stock has already gone back. Record the refund without restocking."
+      );
+    }
+
+    const seen = new Set<string>();
+
+    for (const line of lines) {
+      if (seen.has(line.orderItemId)) {
+        throw new Error(
+          "The same order line was listed twice in the refund request"
+        );
+      }
+      seen.add(line.orderItemId);
+
+      const item = this.items.find((i) => i.id === line.orderItemId);
+      if (!item) {
+        throw new Error("That line is not part of this order");
+      }
+
+      if (
+        !Number.isInteger(line.returned) ||
+        !Number.isInteger(line.restocked) ||
+        line.returned < 0 ||
+        line.restocked < 0
+      ) {
+        throw new Error(
+          `Return quantities for ${item.productName} must be whole numbers of units`
+        );
+      }
+
+      const remaining = this.refundableQuantity(line.orderItemId);
+      if (line.returned > remaining) {
+        throw new Error(
+          `Cannot return ${line.returned} of ${item.productName} — only ${remaining} ${
+            remaining === 1 ? "is" : "are"
+          } left to return`
+        );
+      }
+
+      if (line.restocked > line.returned) {
+        throw new Error(
+          `Cannot put ${line.restocked} of ${item.productName} back on sale when only ${line.returned} ${
+            line.returned === 1 ? "is" : "are"
+          } being returned`
+        );
+      }
+    }
+
+    if (lines.every((line) => line.returned === 0)) {
+      throw new Error("Select at least one item to return");
+    }
+  }
+
+  /**
+   * What a proposed return is worth to the customer — at what they paid, not
+   * at list price.
+   */
+  refundValue(lines: RefundLine[]): number {
+    const listValue = lines.reduce((sum, line) => {
+      const item = this.items.find((i) => i.id === line.orderItemId);
+      return item ? sum + item.price * line.returned : sum;
+    }, 0);
+    return roundMoney(listValue * this.paidFraction());
+  }
+
+  /**
+   * Has this order's stock already gone back?
+   *
+   * Cancelling returns everything to inventory. A refund recorded afterwards —
+   * which is legitimate, since cancelling does not un-charge anyone — must
+   * therefore move money only, or the same units would be added twice.
+   */
+  stockAlreadyReturned(): boolean {
+    return this.status === "cancelled";
   }
 
   /**

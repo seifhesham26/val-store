@@ -381,6 +381,11 @@ export const orderItems = pgTable(
     quantity: integer("quantity").notNull(),
     unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
     totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+    // Units of this line the customer has sent back and been refunded for.
+    // Tracked per line so a partial return can be recorded — and so the same
+    // unit cannot be refunded twice. The order's refunded total is derived
+    // from these rather than stored separately, which cannot drift.
+    refundedQuantity: integer("refunded_quantity").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({

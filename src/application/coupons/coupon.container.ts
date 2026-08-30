@@ -7,8 +7,7 @@ import { ValidateCouponUseCase } from "./use-cases/validate-coupon.use-case";
 
 export function createCouponModule() {
   let repo: DrizzleCouponRepository | undefined;
-  const getCouponRepository = () =>
-    (repo ??= new DrizzleCouponRepository());
+  const getCouponRepository = () => (repo ??= new DrizzleCouponRepository());
 
   let validate: ValidateCouponUseCase | undefined;
 

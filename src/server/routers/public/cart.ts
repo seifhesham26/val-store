@@ -82,9 +82,13 @@ export const cartRouter = router({
    * variant read, and a third query only when something is actually wrong.
    */
   stockStatus: protectedProcedure.query(async ({ ctx }) => {
-    // Release abandoned checkouts before reporting availability, so stock held
-    // by an expired payment window is counted as free. Throttled internally.
-    await container.getCancelExpiredCheckoutsUseCase().execute();
+    // Release abandoned checkouts so stock held by an expired payment window
+    // comes back into circulation. Deliberately not awaited: this is global
+    // housekeeping that asks Stripe about other people's orders, and a shopper
+    // checking their cart should not wait for it. The next poll, fifteen
+    // seconds later, sees the result. The use case throttles itself and
+    // swallows its own errors.
+    void container.getCancelExpiredCheckoutsUseCase().execute();
 
     const useCase = container.getCheckCartStockUseCase();
     return useCase.execute(ctx.user.id);

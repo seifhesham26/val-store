@@ -51,6 +51,24 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
     },
   });
 
+  const refundMutation = trpc.admin.orders.refund.useMutation({
+    onSuccess: (result) => {
+      toast.success(
+        result.fullyRefunded
+          ? `Order fully refunded ($${result.refundedTotal.toFixed(2)})`
+          : `Refunded $${result.amount.toFixed(2)} — order stays open`
+      );
+      setCloseAction(null);
+      utils.admin.orders.getById.invalidate({ id: orderId });
+      utils.admin.orders.list.invalidate();
+      utils.admin.inventory.invalidate();
+      utils.public.products.getStock.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to record the return");
+    },
+  });
+
   const handleStatusChange = (newStatus: string) => {
     // Closing an order needs the reason/restock dialog first.
     if (newStatus === "cancelled" || newStatus === "refunded") {
@@ -109,17 +127,27 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
       <CloseOrderDialog
         order={order}
         action={closeAction}
-        isPending={updateStatusMutation.isPending}
+        isPending={updateStatusMutation.isPending || refundMutation.isPending}
         onOpenChange={(open) => !open && setCloseAction(null)}
-        onConfirm={({ reason, restock }) =>
-          closeAction &&
+        onConfirm={(input) => {
+          // A return is recorded per line rather than as a status change: it may
+          // only cover part of the order, in which case the order stays open.
+          if (input.action === "refunded") {
+            refundMutation.mutate({
+              id: orderId,
+              reason: input.reason,
+              lines: input.lines,
+            });
+            return;
+          }
+
           updateStatusMutation.mutate({
             id: orderId,
-            status: closeAction,
-            reason,
-            restock,
-          })
-        }
+            status: "cancelled",
+            reason: input.reason,
+            restock: input.restock,
+          });
+        }}
       />
     </div>
   );

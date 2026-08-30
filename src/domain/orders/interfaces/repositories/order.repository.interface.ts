@@ -5,7 +5,10 @@
  * Implementation will be in the infrastructure layer.
  */
 
-import { OrderEntity } from "@/domain/orders/entities/order.entity";
+import {
+  OrderEntity,
+  type RefundLine,
+} from "@/domain/orders/entities/order.entity";
 
 /** How much of each line to return to stock when closing an order. */
 export interface RestockLine {
@@ -87,10 +90,27 @@ export interface OrderRepositoryInterface {
   ): Promise<OrderEntity>;
 
   /**
-   * Cancel every card order whose payment window has elapsed, returning their
-   * stock and releasing their coupons. Returns how many were cancelled.
+   * Record a return: refund the units sent back and restock the resellable
+   * ones. The order only reaches `refunded` once every unit has come back.
    */
-  cancelExpiredCheckouts(): Promise<number>;
+  refund(
+    orderId: string,
+    input: { lines: RefundLine[]; reason?: string }
+  ): Promise<OrderEntity>;
+
+  /**
+   * Card orders past their payment window that were never marked paid.
+   *
+   * Only finds them — deciding whether to cancel needs the payment provider,
+   * since a missing confirmation is not the same as a missing payment.
+   */
+  findExpiredCheckouts(
+    olderThan: Date,
+    limit?: number
+  ): Promise<{ orderId: string; sessionId: string | null }[]>;
+
+  /** Mark an order's payment as failed, e.g. after an expired checkout. */
+  markPaymentFailed(orderId: string): Promise<void>;
 
   /**
    * Recognise payment for an order: advance it to `paid`, complete its payment

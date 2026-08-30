@@ -45,6 +45,24 @@ const updateOrderStatusSchema = z.object({
     .optional(),
 });
 
+/**
+ * A return is recorded per line, with two separate numbers: how many units the
+ * customer is refunded for, and how many of those are fit to sell again.
+ */
+const refundOrderSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.string().trim().max(500).optional(),
+  lines: z
+    .array(
+      z.object({
+        orderItemId: z.string().uuid(),
+        returned: z.number().int().min(0),
+        restocked: z.number().int().min(0),
+      })
+    )
+    .min(1),
+});
+
 export const ordersRouter = router({
   // List orders with filtering and pagination
   list: adminProcedure.input(listOrdersSchema).query(async ({ input }) => {
@@ -66,6 +84,17 @@ export const ordersRouter = router({
     const useCase = container.getGetOrderUseCase();
     return useCase.execute(input);
   }),
+
+  /**
+   * Record a return. Bounds are enforced against the order itself — you cannot
+   * return more than was ordered, nor more than is left to return.
+   */
+  refund: adminProcedure
+    .input(refundOrderSchema)
+    .mutation(async ({ input }) => {
+      const useCase = container.getRefundOrderUseCase();
+      return useCase.execute(input);
+    }),
 
   // Update order status
   updateStatus: adminProcedure

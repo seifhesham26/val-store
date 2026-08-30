@@ -27,14 +27,19 @@ interface CouponFormDialogProps {
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }
 
-/** `<input type="date">` only accepts `yyyy-MM-dd`. */
+/**
+ * `<input type="date">` only accepts `yyyy-MM-dd`.
+ *
+ * Read back in UTC to match how the form writes them, so a date does not shift
+ * by a day for an admin in a different time zone.
+ */
 function toDateInputValue(value: Date | string | null | undefined): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getUTCDate()}`.padStart(2, "0");
+  return `${date.getUTCFullYear()}-${month}-${day}`;
 }
 
 export function CouponFormDialog({

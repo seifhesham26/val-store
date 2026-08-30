@@ -411,7 +411,7 @@ Put an item in your cart, then in a second window go to
   **no** dialog interrupts you — the modal only appears where you can act on
   it. The product page's own quantity ceiling still updates within 15s.
 - ✅ Sanity check that nothing regressed: place an ordinary order with plenty
-      of stock. **Expected:** no dialog, no extra delay.
+  of stock. **Expected:** no dialog, no extra delay.
 
 ### Note on the final gate
 
@@ -506,9 +506,9 @@ order and returns its stock.
   and the charge equals the discounted total, not the full one.
 - ✅ Card checkout **without** a coupon. **Expected:** unchanged.
 - ✅ To confirm the unwind: temporarily break the Stripe key in `.env`, try a
-      card checkout, and check Admin → Orders. **Expected:** an error, and
-      **no** lingering `pending` order — it is cancelled, with stock returned
-      and the reason "Payment could not be started".
+  card checkout, and check Admin → Orders. **Expected:** an error, and
+  **no** lingering `pending` order — it is cancelled, with stock returned
+  and the reason "Payment could not be started".
 
 ### Clean-up you may want
 
@@ -578,7 +578,7 @@ exactly rather than inventing a second, disagreeing deadline.
 - ✅ Cancel a COD order that used a coupon. **Expected:** the usage count goes
   back down and the customer can use the code again.
 - ✅ Refund a paid order that used a coupon. **Expected:** the usage count
-      stays where it is.
+  stays where it is.
 
 ### How the expiry actually fires
 
@@ -592,6 +592,145 @@ Two independent routes, because neither alone is reliable:
 
 So in local development route 2 is what you will see, and it needs a page load
 to trigger — the order will not vanish while you stare at an idle screen.
+
+---
+
+## 16. Partial returns
+
+**Run `pnpm db:push` again** — `order_items` gained a `refunded_quantity`
+column. Additive, nullable-safe (defaults to 0), no data touched.
+
+### The flaw this fixes
+
+Cancelling and refunding were treated as the same shape: one number per line,
+"how much goes back on sale". That is right for a cancellation — nothing
+shipped, so nothing came back — but wrong for a return in two ways.
+
+1. **Money and stock are different numbers.** A customer returns three shirts
+   and is refunded for three; only two are fit to resell. One figure cannot say
+   both.
+2. **A return may be partial.** Send back one of three and the order is not
+   "refunded" — it is _partly_ refunded. Marking it `refunded` would close it
+   and make the other two unreturnable.
+
+So a return is no longer a status change. It is recorded per line against
+`refunded_quantity`, and the order only reaches `refunded` once every unit has
+come back. `updateStatus` now rejects `refunded` outright and says so.
+
+The order's refunded total is **derived** from the lines rather than stored
+alongside them, so the two cannot drift apart.
+
+### The checks
+
+Use a **delivered, paid** order with at least two lines, one of quantity 3.
+
+- [ ] Choose **Refunded**. **Expected:** the dialog is titled "Record a return"
+      and each line has **two** steppers — "Refund the customer for" and "Of
+      those, put back on sale" — both showing `n/max`.
+- [ ] Set the 3-unit line to return **1**. **Expected:** the header total and
+      the confirm button both read the value of one unit, not the order total.
+- [ ] Try to put more back on sale than you are returning. **Expected:**
+      impossible — the second stepper's ceiling follows the first, and lowering
+      the first drags the second down with it.
+- [ ] Confirm. **Expected:** toast says _"Refunded $X — order stays open"_, the
+      order status is **still delivered**, and the Payment card shows
+      **Refunded −$X**, a **Net** line, and "Partly returned — the rest can
+      still be returned."
+- [ ] Reopen the refund dialog. **Expected:** that line now reads
+      "1 already returned" and its ceiling is **2**, not 3.
+- [ ] Return the remaining 2 and the other line. **Expected:** toast says
+      "Order fully refunded", status becomes **refunded**, payment shows
+      **refunded**.
+- [ ] Try to refund it again. **Expected:** no Refund button — there is nothing
+      left to return.
+- [ ] Return 2 units but put **0** back on sale. **Expected:** an amber note
+      says they will not go back on sale but the customer is still refunded —
+      stock does not move, the refund total does.
+- [ ] Check **Admin → Inventory → History**. **Expected:** a **return** entry
+      only for the units you marked resellable, carrying your reason.
+- [ ] Cancelling is unchanged: one stepper per line, still "Cancel order".
+
+### Still bookkeeping only
+
+This records the return and moves the stock; it does **not** call Stripe to
+send the money back. That remains manual in the Stripe dashboard. Now that
+returns are per-line with a computed amount, wiring `stripe.refunds.create` to
+it is a small step — say the word.
+
+---
+
+## 17. Audit fixes
+
+Twelve issues found by reviewing everything built in this session. No schema
+changes — nothing to push.
+
+### Money
+
+- [ ] **Refunds now use what the customer paid, not list price.** Place an
+      order with a coupon (say 20% off), mark it delivered, then return one
+      line. **Expected:** the confirm button shows the _discounted_ value.
+      Returning everything refunds exactly the order total, never the
+      undiscounted subtotal. _Previously a full return on a discounted order
+      handed back the coupon's value as well as the goods._
+- [ ] **Cancel then refund no longer double-restocks.** Cancel a paid order
+      (stock returns), then press **Record a return**. **Expected:** the
+      "put back on sale" column reads "already back in stock", a note explains
+      this records the money only, and stock does **not** move again.
+- [ ] **Concurrent returns can't over-refund.** The increment is now guarded in
+      SQL: if two admins return the same units at once, the second is rejected
+      with "already been returned by someone else" rather than both succeeding.
+
+### The expiry sweep — the one that was live
+
+- [ ] **A paid order is no longer destroyed by a lost confirmation.** Pay for
+      an order and close the tab **before** the success page loads, so nothing
+      marks it paid. Wait out the window, then load Admin → Orders.
+      **Expected:** the order is **paid**, not cancelled. The sweep asks Stripe
+      first: paid → recover it; unpaid → cancel it; **unreachable → leave it
+      alone and look again later**. It never destroys an order on a failed
+      lookup.
+- [ ] **Coupons can't be spent twice while in flight.** With a
+      one-per-customer coupon, start a card checkout and abandon it, then try
+      to use the same coupon again immediately. **Expected:** refused, with
+      "You already have an unpaid order using this coupon…". Wait for that
+      order to expire and it works again. _Deferring redemption to payment —
+      correct — had opened a window where several checkouts could each carry
+      the same code._
+
+### Correctness and consistency
+
+- [ ] **Deadlocks.** Variant rows are now locked in the same order on every
+      path that touches them (creation, cancellation, returns). Nothing to see;
+      it just stops two concurrent operations wedging each other.
+- [ ] **The Refund button is gated on refundability, not on a status
+      transition.** A `shipped` order can now take a partial return — it
+      previously could not, because a partial return doesn't change status at
+      all. The button reads **Record a return**, or **Record another return**
+      once something has already come back.
+- [ ] **The countdown now actually expires.** Open an order inside its payment
+      window and let the timer run to zero without touching anything.
+      **Expected:** the notice changes and **Cancel Order** becomes enabled by
+      itself. _It used to stay disabled until you reloaded, because the flag
+      came from the server._
+- [ ] **Coupon dates no longer shift by time zone.** Set an expiry, save,
+      reopen. **Expected:** the same date, regardless of where the admin is.
+      Dates are anchored to UTC on both write and read now.
+
+### Visibility and cost
+
+- [ ] **Customers see the payment window.** Start a card checkout, abandon it,
+      go to **Account → Orders**. **Expected:** the order shows "Waiting for
+      payment — 28:14 left before this order is released", ticking. A refunded
+      order shows how much came back. `paid` and `refunded` also have proper
+      status colours now, instead of falling through to grey.
+- [ ] **Order lines show what came back.** After a partial return, Admin →
+      order → Items. **Expected:** "1 of 3 returned · 2 still with the
+      customer". _It used to read "Qty: 3" with no sign anything had happened._
+- [ ] **The sweep is off the shopper's path.** It runs unawaited from the cart
+      stock check, so nobody waits on Stripe lookups for other people's orders,
+      and the batch is capped at 20. Order lists still await it, since a stale
+      row there is the thing being looked at. **Expected:** no change you can
+      see — the cart check should just feel the same as before.
 
 ---
 

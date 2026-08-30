@@ -90,8 +90,12 @@ export default function AdminCouponsPage() {
       // A date input gives a bare day. Start of that day for "starts", end of
       // it for "expires" — otherwise a coupon dated today expires at midnight
       // this morning, i.e. before the day it is supposed to cover.
-      startsAt: startsAt ? new Date(`${startsAt}T00:00:00`) : null,
-      expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59.999`) : null,
+      //
+      // Anchored to UTC rather than the browser's zone: the column has no time
+      // zone, so parsing as local time would store a different instant
+      // depending on where the admin happens to be sitting.
+      startsAt: startsAt ? new Date(`${startsAt}T00:00:00.000Z`) : null,
+      expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59.999Z`) : null,
     };
 
     if (editingCoupon) {

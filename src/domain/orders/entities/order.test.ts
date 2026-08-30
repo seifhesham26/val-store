@@ -43,6 +43,7 @@ const createTestOrder = (
         variantDetails: "Black / M",
         quantity: 2,
         price: 50,
+        refundedQuantity: 0,
       },
     ],
     subtotal: 100,
@@ -193,6 +194,7 @@ describe("OrderEntity", () => {
             variantDetails: null,
             quantity: 2,
             price: 10,
+            refundedQuantity: 0,
           },
           {
             id: "item-p2",
@@ -202,6 +204,7 @@ describe("OrderEntity", () => {
             variantDetails: null,
             quantity: 3,
             price: 20,
+            refundedQuantity: 0,
           },
         ],
       });
@@ -226,6 +229,165 @@ describe("OrderEntity", () => {
     });
   });
 
+  // A customer can send back part of an order. Money and stock are separate
+  // numbers: a damaged return is refunded but not resold.
+  describe("partial returns", () => {
+    const twoLineOrder = (
+      refunded: [number, number] = [0, 0],
+      extra: { discount?: number; status?: string; subtotal?: number } = {}
+    ) =>
+      createTestOrder({
+        ...extra,
+        items: [
+          {
+            id: "item-a",
+            productId: "p1",
+            variantId: "v1",
+            productName: "Tee",
+            variantDetails: "Black / M",
+            quantity: 3,
+            price: 20,
+            refundedQuantity: refunded[0],
+          },
+          {
+            id: "item-b",
+            productId: "p2",
+            variantId: "v2",
+            productName: "Cap",
+            variantDetails: null,
+            quantity: 1,
+            price: 15,
+            refundedQuantity: refunded[1],
+          },
+        ],
+      });
+
+    it("prices a return from the returned units only", () => {
+      const order = twoLineOrder();
+      expect(
+        order.refundValue([
+          { orderItemId: "item-a", returned: 1, restocked: 1 },
+          { orderItemId: "item-b", returned: 0, restocked: 0 },
+        ])
+      ).toBe(20);
+    });
+
+    it("is not fully refunded while units remain", () => {
+      const order = twoLineOrder([1, 0]);
+      expect(order.isFullyRefunded()).toBe(false);
+      expect(order.isPartiallyRefunded()).toBe(true);
+      expect(order.refundedAmount()).toBe(20);
+    });
+
+    it("is fully refunded once every unit is back", () => {
+      const order = twoLineOrder([3, 1]);
+      expect(order.isFullyRefunded()).toBe(true);
+      expect(order.isPartiallyRefunded()).toBe(false);
+      expect(order.refundedAmount()).toBe(75);
+    });
+
+    it("counts down what is left to return", () => {
+      const order = twoLineOrder([1, 0]);
+      expect(order.refundableQuantity("item-a")).toBe(2);
+      expect(order.refundableQuantity("item-b")).toBe(1);
+    });
+
+    it("rejects returning more than is left", () => {
+      // Two already came back, so a third return of two is one too many.
+      const order = twoLineOrder([2, 0]);
+      expect(() =>
+        order.validateRefund([
+          { orderItemId: "item-a", returned: 2, restocked: 0 },
+        ])
+      ).toThrow(/only 1 is left to return/);
+    });
+
+    it("rejects restocking more than was returned", () => {
+      const order = twoLineOrder();
+      expect(() =>
+        order.validateRefund([
+          { orderItemId: "item-a", returned: 1, restocked: 2 },
+        ])
+      ).toThrow(/back on sale when only 1 is being returned/);
+    });
+
+    it("allows a return that is refunded but not resold", () => {
+      // The damaged-goods case: money back, stock not recovered.
+      const order = twoLineOrder();
+      expect(() =>
+        order.validateRefund([
+          { orderItemId: "item-a", returned: 2, restocked: 0 },
+        ])
+      ).not.toThrow();
+    });
+
+    // A coupon means the customer paid less than list price, so a return must
+    // hand back less than list price too — otherwise the discount is refunded
+    // as well as the goods.
+    it("refunds at what was paid, not at list price", () => {
+      // 3x20 + 1x15 = 75 list, 20% off => paid 60. Returning one 20 tee is
+      // worth 16, not 20.
+      const order = twoLineOrder([0, 0], { subtotal: 75, discount: 15 });
+      expect(
+        order.refundValue([
+          { orderItemId: "item-a", returned: 1, restocked: 1 },
+        ])
+      ).toBe(16);
+    });
+
+    it("never refunds more than the order charged", () => {
+      const order = twoLineOrder([0, 0], { subtotal: 75, discount: 15 });
+      const everything = order.refundValue([
+        { orderItemId: "item-a", returned: 3, restocked: 3 },
+        { orderItemId: "item-b", returned: 1, restocked: 1 },
+      ]);
+      expect(everything).toBe(60);
+    });
+
+    it("reports money already returned at what was paid", () => {
+      const order = twoLineOrder([1, 0], { subtotal: 75, discount: 15 });
+      expect(order.refundedAmount()).toBe(16);
+    });
+
+    it("refunds at list price when there is no discount", () => {
+      const order = twoLineOrder();
+      expect(
+        order.refundValue([
+          { orderItemId: "item-a", returned: 1, restocked: 1 },
+        ])
+      ).toBe(20);
+    });
+
+    // Cancelling already handed every unit back to inventory, so a refund
+    // recorded afterwards must not add them a second time.
+    it("refuses to restock a cancelled order", () => {
+      const order = twoLineOrder([0, 0], { status: "cancelled" });
+      expect(() =>
+        order.validateRefund([
+          { orderItemId: "item-a", returned: 1, restocked: 1 },
+        ])
+      ).toThrow(/already gone back/);
+    });
+
+    it("still allows refunding a cancelled order without restocking", () => {
+      const order = twoLineOrder([0, 0], { status: "cancelled" });
+      expect(() =>
+        order.validateRefund([
+          { orderItemId: "item-a", returned: 1, restocked: 0 },
+        ])
+      ).not.toThrow();
+    });
+
+    it("rejects a return of nothing at all", () => {
+      const order = twoLineOrder();
+      expect(() =>
+        order.validateRefund([
+          { orderItemId: "item-a", returned: 0, restocked: 0 },
+        ])
+      ).toThrow(/at least one item/);
+    });
+  });
+
   // Returning more units than were ordered would create stock out of nothing,
   // so the order itself polices what a restock request may ask for.
   describe("validateRestock", () => {
@@ -239,6 +401,7 @@ describe("OrderEntity", () => {
           variantDetails: "Black / M",
           quantity: 2,
           price: 10,
+          refundedQuantity: 0,
         },
       ],
     });

@@ -1,5 +1,6 @@
 import { OrderData } from "./types";
 import { PaymentWindowNotice } from "./PaymentWindowNotice";
+import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { Loader2 } from "lucide-react";
 import {
   Card,
@@ -33,6 +34,11 @@ export function UpdateStatusCard({
   isPending,
   onStatusChange,
 }: UpdateStatusCardProps) {
+  // Derived from the clock, not from the flag in the response: otherwise the
+  // deadline passes on screen while the buttons stay disabled until a reload.
+  const paymentWindow = usePaymentWindow(order.paymentDeadline);
+  const heldForPayment = order.awaitingPayment && paymentWindow.open;
+
   return (
     <Card>
       <CardHeader>
@@ -69,7 +75,7 @@ export function UpdateStatusCard({
                         paymentCaptured: order.hasCapturedPayment,
                       }) ||
                         // Held while the customer may still be paying.
-                        (status === "cancelled" && order.awaitingPayment))
+                        (status === "cancelled" && heldForPayment))
                     }
                   >
                     {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -86,21 +92,24 @@ export function UpdateStatusCard({
               variant="destructive"
               size="sm"
               onClick={() => onStatusChange("cancelled")}
-              disabled={isPending || order.awaitingPayment}
+              disabled={isPending || heldForPayment}
             >
               Cancel Order
             </Button>
           )}
-          {OrderStatus.canTransition(order.status, "refunded", {
-            paymentCaptured: order.hasCapturedPayment,
-          }) && (
+          {/* Gated on refundability, not on a status transition: a partial
+              return does not move the order's status at all, so gating it on
+              `→ refunded` would make one impossible from, say, `shipped`. */}
+          {order.canRefund && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => onStatusChange("refunded")}
               disabled={isPending}
             >
-              Refund Order
+              {order.partiallyRefunded
+                ? "Record another return"
+                : "Record a return"}
             </Button>
           )}
         </div>

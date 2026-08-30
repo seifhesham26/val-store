@@ -16,9 +16,9 @@ import {
 } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import {
   OrderEntity,
-  PAYMENT_WINDOW_MS,
   type OrderAddress,
   type OrderPaymentStatus,
+  type RefundLine,
 } from "@/domain/orders/entities/order.entity";
 import {
   OrderStatus,
@@ -26,10 +26,6 @@ import {
 } from "@/domain/orders/value-objects/order-status.value-object";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import { InvalidOrderStatusException } from "@/domain/orders/exceptions/invalid-order-status.exception";
-
-/** How often the lazy expiry sweep is allowed to run, per server process. */
-const EXPIRY_SWEEP_INTERVAL_MS = 60_000;
-let lastExpirySweep = 0;
 
 /** Append a timestamped line to the order's admin notes, preserving history. */
 function appendAdminNote(existing: string | null, note: string): string {
@@ -338,6 +334,16 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
     const target = newStatus.getValue();
 
+    // Refunds move money and stock per line, so they go through `refund()`
+    // where the returned quantities are recorded. Flipping the status here
+    // would mark the whole order refunded without any record of what actually
+    // came back.
+    if (target === "refunded") {
+      throw new Error(
+        "Use the refund operation to record a return, not a status change"
+      );
+    }
+
     // An unpaid card order inside its payment window is genuinely in flight —
     // the customer may be on Stripe's page entering a card right now. Pulling
     // it out from under them would take the stock back mid-payment and leave
@@ -353,9 +359,9 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           `It will be cancelled automatically at ${deadline?.toISOString()} if it is not paid.`
       );
     }
-    // `cancelled` and `refunded` are final states, so an order can only reach
-    // them once — no risk of restoring the same stock twice.
-    const isClosing = target === "cancelled" || target === "refunded";
+    // `cancelled` is a final state, so an order can only reach it once — no
+    // risk of restoring the same stock twice.
+    const isClosing = target === "cancelled";
 
     // Reject a restock that asks for more than was ordered, or names a line
     // belonging to some other order, before anything is written. The clamp
@@ -377,7 +383,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       if (options?.reason) {
         updates.adminNotes = appendAdminNote(
           existing.adminNotes,
-          `${target === "refunded" ? "Refunded" : "Cancelled"}: ${options.reason}`
+          `Cancelled: ${options.reason}`
         );
       }
 
@@ -387,7 +393,14 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
       const now = new Date();
 
-      for (const item of existing.items) {
+      // Lock variant rows in a consistent order across every path that touches
+      // them (creation, cancellation, returns). Two transactions taking the
+      // same two rows in opposite orders can deadlock each other.
+      const restockable = existing.items
+        .filter((item) => item.variantId !== null)
+        .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
+
+      for (const item of restockable) {
         if (!item.variantId) continue;
 
         const restockQuantity = restockByItem
@@ -415,13 +428,13 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
         await tx.insert(inventoryLogs).values({
           variantId: item.variantId,
-          changeType: target === "refunded" ? "return" : "adjustment",
+          changeType: "adjustment",
           quantityChange: restockQuantity,
           previousQuantity: variant.stockQuantity,
           newQuantity,
           reason: options?.reason
-            ? `Order ${target}: ${options.reason}`
-            : `Order ${target} — restocked`,
+            ? `Order cancelled: ${options.reason}`
+            : "Order cancelled — restocked",
           createdAt: now,
         });
       }
@@ -463,25 +476,182 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   }
 
   /**
-   * Cancel card orders whose payment window has elapsed.
+   * Record a return: refund money for the units sent back, and put the
+   * resellable ones back on sale.
    *
-   * There is no scheduler in this app, so this is swept lazily from a few read
-   * paths rather than run on a timer. It is throttled per process so those
-   * reads do not each pay for it.
+   * Separate from `updateStatus` because a return is not a status change. A
+   * customer may send back one of three shirts; the order is not "refunded", it
+   * is partly refunded, and the remaining two must still be returnable later.
+   * The order only reaches `refunded` once every unit has come back.
    */
-  async cancelExpiredCheckouts(): Promise<number> {
-    const now = Date.now();
-    if (now - lastExpirySweep < EXPIRY_SWEEP_INTERVAL_MS) return 0;
-    lastExpirySweep = now;
+  async refund(
+    orderId: string,
+    input: { lines: RefundLine[]; reason?: string }
+  ): Promise<OrderEntity> {
+    const existing = await this.findById(orderId);
+    if (!existing) {
+      throw new OrderNotFoundException(orderId);
+    }
 
-    // A minute's grace past the deadline, so Stripe's own `checkout.session
-    // .expired` event — which expires at the same instant — gets first go at
-    // cancelling. This sweep is the fallback for when that webhook is not
-    // being delivered, which is always the case in local development.
-    const cutoff = new Date(now - PAYMENT_WINDOW_MS - 60_000);
+    if (!existing.canRefund()) {
+      throw new Error("This order has no captured payment left to refund");
+    }
 
-    const stale = await db
-      .select({ id: orders.id })
+    existing.validateRefund(input.lines);
+
+    const amount = existing.refundValue(input.lines);
+    const returnedUnits = input.lines.reduce(
+      (sum, line) => sum + line.returned,
+      0
+    );
+
+    // Does this return complete the order?
+    const fullyRefunded = existing.items.every((item) => {
+      const line = input.lines.find((l) => l.orderItemId === item.id);
+      return item.refundedQuantity + (line?.returned ?? 0) >= item.quantity;
+    });
+
+    if (fullyRefunded) {
+      const currentStatus = OrderStatus.create(existing.status);
+      if (
+        !currentStatus.canTransitionTo("refunded", {
+          paymentCaptured: existing.hasCapturedPayment(),
+        })
+      ) {
+        throw new InvalidOrderStatusException(existing.status, "refunded");
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      const now = new Date();
+
+      // Same ordering discipline as everywhere else that locks variant rows:
+      // two concurrent returns touching the same variants must take them in the
+      // same order or they can deadlock each other.
+      const ordered = [...input.lines]
+        .filter((line) => line.returned > 0)
+        .map((line) => ({
+          line,
+          item: existing.items.find((i) => i.id === line.orderItemId),
+        }))
+        .filter((entry) => entry.item !== undefined)
+        // Same lock ordering as everywhere else that touches variant rows.
+        // Lines with no variant sort last; they take no lock at all.
+        .sort((a, b) =>
+          (a.item!.variantId ?? "￿").localeCompare(b.item!.variantId ?? "￿")
+        );
+
+      for (const { line, item } of ordered) {
+        if (!item) continue;
+
+        // Guarded increment rather than a plain one. The validation above ran
+        // outside this transaction, so two returns submitted at the same moment
+        // could both have passed it; this makes the database the arbiter and
+        // rolls the whole thing back if the units are no longer there.
+        const [bumped] = await tx
+          .update(orderItems)
+          .set({
+            refundedQuantity: sql`${orderItems.refundedQuantity} + ${line.returned}`,
+          })
+          .where(
+            and(
+              eq(orderItems.id, line.orderItemId),
+              lte(
+                sql`${orderItems.refundedQuantity} + ${line.returned}`,
+                orderItems.quantity
+              )
+            )
+          )
+          .returning({ id: orderItems.id });
+
+        if (!bumped) {
+          throw new Error(
+            `${item.productName} has already been returned by someone else — reload the order and try again`
+          );
+        }
+
+        if (line.restocked <= 0 || !item.variantId) continue;
+
+        const [variant] = await tx
+          .select({ stockQuantity: productVariants.stockQuantity })
+          .from(productVariants)
+          .where(eq(productVariants.id, item.variantId))
+          .for("update")
+          .limit(1);
+
+        // The variant may have been deleted since the order was placed.
+        if (!variant) continue;
+
+        const newQuantity = variant.stockQuantity + line.restocked;
+
+        await tx
+          .update(productVariants)
+          .set({ stockQuantity: newQuantity, updatedAt: now })
+          .where(eq(productVariants.id, item.variantId));
+
+        await tx.insert(inventoryLogs).values({
+          variantId: item.variantId,
+          changeType: "return",
+          quantityChange: line.restocked,
+          previousQuantity: variant.stockQuantity,
+          newQuantity,
+          reason: input.reason
+            ? `Order return: ${input.reason}`
+            : "Order return",
+          createdAt: now,
+        });
+      }
+
+      const summary =
+        `Refunded ${amount.toFixed(2)} for ${returnedUnits} unit` +
+        `${returnedUnits === 1 ? "" : "s"}` +
+        `${fullyRefunded ? " (order fully refunded)" : " (partial return)"}` +
+        `${input.reason ? `: ${input.reason}` : ""}`;
+
+      await tx
+        .update(orders)
+        .set({
+          adminNotes: appendAdminNote(existing.adminNotes, summary),
+          // A partial return leaves the order where it is — there is still an
+          // order in the customer's hands, and more of it may come back later.
+          ...(fullyRefunded ? { status: "refunded" as const } : {}),
+          updatedAt: now,
+        })
+        .where(eq(orders.id, orderId));
+
+      if (fullyRefunded) {
+        await tx
+          .update(payments)
+          .set({ paymentStatus: "refunded", updatedAt: now })
+          .where(eq(payments.orderId, orderId));
+      }
+    });
+
+    const updated = await this.findById(orderId);
+    if (!updated) {
+      throw new OrderNotFoundException(orderId);
+    }
+    return updated;
+  }
+
+  /**
+   * Card orders whose payment window has elapsed without being marked paid.
+   *
+   * Deliberately only *finds* them. Whether such an order should be cancelled
+   * cannot be answered from this database alone: the payment may have gone
+   * through with the confirmation never arriving, and cancelling then would
+   * destroy an order the customer has already been charged for. The caller
+   * asks the payment provider before deciding.
+   */
+  async findExpiredCheckouts(
+    olderThan: Date,
+    limit = 20
+  ): Promise<{ orderId: string; sessionId: string | null }[]> {
+    const rows = await db
+      .select({
+        orderId: orders.id,
+        sessionId: payments.transactionId,
+      })
       .from(orders)
       .innerJoin(payments, eq(payments.orderId, orders.id))
       .where(
@@ -489,35 +659,20 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           eq(orders.status, "pending"),
           eq(payments.paymentMethod, "stripe"),
           eq(payments.paymentStatus, "pending"),
-          lte(orders.createdAt, cutoff)
+          lte(orders.createdAt, olderThan)
         )
       )
-      .limit(50);
+      .limit(limit);
 
-    let cancelled = 0;
+    return rows;
+  }
 
-    for (const row of stale) {
-      try {
-        await this.updateStatus(row.id, "cancelled", {
-          reason: "Payment window expired",
-        });
-
-        await db
-          .update(payments)
-          .set({ paymentStatus: "failed", updatedAt: new Date() })
-          .where(eq(payments.orderId, row.id));
-
-        cancelled += 1;
-      } catch (error) {
-        // One bad order must not stop the rest being cleaned up.
-        console.error(
-          `[Orders] Failed to expire unpaid order ${row.id}`,
-          error instanceof Error ? error.message : error
-        );
-      }
-    }
-
-    return cancelled;
+  /** Mark an order's payment as failed, e.g. after an expired checkout. */
+  async markPaymentFailed(orderId: string): Promise<void> {
+    await db
+      .update(payments)
+      .set({ paymentStatus: "failed", updatedAt: new Date() })
+      .where(eq(payments.orderId, orderId));
   }
 
   /**
@@ -735,6 +890,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       variantDetails?: string | null;
       quantity: number;
       unitPrice: string;
+      refundedQuantity?: number;
       product?: {
         images?: Array<{ imageUrl: string; isPrimary: boolean }>;
       } | null;
@@ -763,6 +919,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         variantDetails: item.variantDetails ?? null,
         quantity: item.quantity,
         price: parseFloat(item.unitPrice), // Map unitPrice to price
+        refundedQuantity: item.refundedQuantity ?? 0,
         productImage:
           item.product?.images?.find((img) => img.isPrimary)?.imageUrl ??
           item.product?.images?.[0]?.imageUrl ??
