@@ -43,12 +43,23 @@ export function Navbar() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const isClient = useIsClient();
   const { data: user, isLoading } = trpc.public.user.getSession.useQuery();
-  const { openCart, getItemCount } = useCartStore();
+  const openCart = useCartStore((state) => state.openCart);
+  // Read the count through a selector rather than by calling the store's
+  // `getItemCount()` during render.
+  //
+  // `getItemCount` is a stable function reference, so with the React Compiler
+  // enabled the call gets memoised against dependencies that never change: the
+  // badge froze at whatever the count was on first render and never moved
+  // again — including after checkout emptied the cart. A selector returning a
+  // number re-subscribes properly and is compared by value.
+  const cartItemCount = useCartStore((state) =>
+    state.items.reduce((sum, item) => sum + item.quantity, 0)
+  );
 
   const isLoggedIn = !!user;
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   // Defer to 0 during SSR to prevent hydration mismatch from Zustand localStorage rehydration
-  const itemCount = isClient ? getItemCount() : 0;
+  const itemCount = isClient ? cartItemCount : 0;
   const { data: wishlistCountData } = trpc.public.wishlist.getCount.useQuery(
     undefined,
     {

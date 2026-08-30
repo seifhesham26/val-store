@@ -226,6 +226,72 @@ describe("OrderEntity", () => {
     });
   });
 
+  // Returning more units than were ordered would create stock out of nothing,
+  // so the order itself polices what a restock request may ask for.
+  describe("validateRestock", () => {
+    const order = createTestOrder({
+      items: [
+        {
+          id: "item-a",
+          productId: "p1",
+          variantId: "v1",
+          productName: "Tee",
+          variantDetails: "Black / M",
+          quantity: 2,
+          price: 10,
+        },
+      ],
+    });
+
+    it("accepts returning everything that was ordered", () => {
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-a", quantity: 2 }])
+      ).not.toThrow();
+    });
+
+    it("accepts returning part of a line", () => {
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-a", quantity: 1 }])
+      ).not.toThrow();
+    });
+
+    it("accepts returning nothing", () => {
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-a", quantity: 0 }])
+      ).not.toThrow();
+    });
+
+    it("rejects more than was ordered", () => {
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-a", quantity: 3 }])
+      ).toThrow(/only 2 were ordered/);
+    });
+
+    it("rejects a line from another order", () => {
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-z", quantity: 1 }])
+      ).toThrow(/not part of this order/);
+    });
+
+    it("rejects the same line listed twice", () => {
+      expect(() =>
+        order.validateRestock([
+          { orderItemId: "item-a", quantity: 1 },
+          { orderItemId: "item-a", quantity: 1 },
+        ])
+      ).toThrow(/listed twice/);
+    });
+
+    it("rejects negative and fractional quantities", () => {
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-a", quantity: -1 }])
+      ).toThrow(/whole number/);
+      expect(() =>
+        order.validateRestock([{ orderItemId: "item-a", quantity: 1.5 }])
+      ).toThrow(/whole number/);
+    });
+  });
+
   // An unpaid card order holds reserved stock, so it is kept for a fixed window
   // and then released. While that window is open it must not be cancelled by
   // hand — the customer may be mid-payment on Stripe.

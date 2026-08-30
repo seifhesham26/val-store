@@ -357,6 +357,13 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     // them once — no risk of restoring the same stock twice.
     const isClosing = target === "cancelled" || target === "refunded";
 
+    // Reject a restock that asks for more than was ordered, or names a line
+    // belonging to some other order, before anything is written. The clamp
+    // below still stands as a second line of defence.
+    if (options?.restock) {
+      existing.validateRestock(options.restock);
+    }
+
     // Default to returning everything; an explicit list (even an empty one)
     // means the caller decided line by line — a damaged return should not go
     // back on sale.

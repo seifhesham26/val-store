@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { CheckCircle, Package, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { useCartStore } from "@/lib/stores/cart-store";
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
@@ -18,9 +19,20 @@ function CheckoutSuccessContent() {
   // be delayed, fail, or (in local development) never arrive at all. Confirming
   // here as well means the order is never left stranded at "pending" after a
   // successful payment. The mutation is idempotent.
+  const clearLocalCart = useCartStore((state) => state.clearCart);
+
   const confirmSession = trpc.public.checkout.confirmSession.useMutation({
+    onSuccess: (result) => {
+      // Empty the local cart the moment payment is confirmed, rather than
+      // waiting for the refetch below to report it — otherwise the navbar badge
+      // keeps showing the old count until that lands.
+      //
+      // Guarded on `paid`: an abandoned checkout must keep the customer's cart.
+      if (result.paid) clearLocalCart();
+    },
     onSettled: () => {
       utils.public.cart.get.invalidate();
+      utils.public.cart.stockStatus.invalidate();
       utils.public.orders.getOrderNumberByStripeSession.invalidate();
     },
   });
@@ -48,9 +60,11 @@ function CheckoutSuccessContent() {
     if (sessionId) {
       confirmSession.mutate({ sessionId });
     } else {
-      // Cash on delivery already emptied the cart server-side; just re-sync so
-      // the navbar badge reflects it.
+      // Cash on delivery already emptied the cart server-side. Mirror that
+      // locally straight away, then re-sync to confirm.
+      clearLocalCart();
       utils.public.cart.get.invalidate();
+      utils.public.cart.stockStatus.invalidate();
     }
     // Runs once on mount; the ref guards against re-entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -221,6 +221,47 @@ export class OrderEntity {
   }
 
   /**
+   * Check a proposed restock against what was actually ordered.
+   *
+   * Returning more units than a line contains would invent stock out of
+   * nothing. This rejects rather than silently clamping: a request asking for
+   * more than exists is a bug, and swallowing it hides whatever produced it.
+   *
+   * @throws Error describing the first problem found
+   */
+  validateRestock(lines: { orderItemId: string; quantity: number }[]): void {
+    const seen = new Set<string>();
+
+    for (const line of lines) {
+      if (seen.has(line.orderItemId)) {
+        throw new Error(
+          `The same order line was listed twice in the restock request`
+        );
+      }
+      seen.add(line.orderItemId);
+
+      const item = this.items.find((i) => i.id === line.orderItemId);
+      if (!item) {
+        throw new Error(`That line is not part of this order`);
+      }
+
+      if (!Number.isInteger(line.quantity) || line.quantity < 0) {
+        throw new Error(
+          `Cannot return ${line.quantity} of ${item.productName} — the quantity must be a whole number of units`
+        );
+      }
+
+      if (line.quantity > item.quantity) {
+        throw new Error(
+          `Cannot return ${line.quantity} of ${item.productName} — only ${item.quantity} ${
+            item.quantity === 1 ? "was" : "were"
+          } ordered`
+        );
+      }
+    }
+  }
+
+  /**
    * Check if order can be refunded.
    *
    * Money must have been captured and not already returned. Note this holds for

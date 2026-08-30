@@ -209,15 +209,15 @@ Set up in **Admin → Coupons**: create `TEST20`, percentage, value `20`, active
 
 ### 7b. Card / Stripe
 
-- [ ] Create another coupon (or raise `TEST20`'s per-user limit) and apply it at checkout.
-- [ ] Choose **Card** and continue to Stripe.
-- [ ] **Expected: the Stripe checkout page itself shows the discount** and charges the discounted total. (Stripe can't take negative line items, so the discount is applied as a real Stripe coupon on the session.)
-- [ ] Complete the test payment. **Expected:** back on the success page, and the order in Admin shows the discounted total and status `paid`.
+- ✅ Create another coupon (or raise `TEST20`'s per-user limit) and apply it at checkout.
+- ✅ Choose **Card** and continue to Stripe.
+- ✅ **Expected: the Stripe checkout page itself shows the discount** and charges the discounted total. (Stripe can't take negative line items, so the discount is applied as a real Stripe coupon on the session.)
+- ✅ Complete the test payment. **Expected:** back on the success page, and the order in Admin shows the discounted total and status `paid`.
 
 ### 7c. The discount can't be forged
 
-- [ ] Apply a coupon, then **before** placing the order, go to Admin and deactivate that coupon. Come back and place the order.
-- [ ] **Expected:** the order is refused with a clear message ("This coupon is no longer active") rather than silently charging full price. The server re-validates the code and derives the discount itself — the browser only ever sends the code, never an amount.
+- ✅ Apply a coupon, then **before** placing the order, go to Admin and deactivate that coupon. Come back and place the order.
+- ✅ **Expected:** the order is refused with a clear message ("This coupon is no longer active") rather than silently charging full price. The server re-validates the code and derives the discount itself — the browser only ever sends the code, never an amount.
 
 ---
 
@@ -236,30 +236,50 @@ Set up in **Admin → Coupons**: create `TEST20`, percentage, value `20`, active
 
 The rule changed: **refundability now follows the money, not the order status.** Cancelling does not un-charge a customer, so a paid-then-cancelled order stays refundable.
 
-- [ ] Take an order to **paid** (card), then **shipped**, then **cancelled**. **Expected:** the Refunded option is still selectable and the "Refund Order" button is still shown — because the money was captured.
-- [ ] Take a **pending** order straight to **cancelled** (never paid). **Expected:** Refunded is disabled and the Refund button is hidden — there is nothing to refund.
-- [ ] A **delivered COD** order. **Expected:** refundable (cash was collected on delivery).
-- [ ] A **shipped COD** order. **Expected:** not refundable yet — the courier hasn't collected.
-- [ ] An order already **refunded**. **Expected:** not refundable again.
+- ✅ Take an order to **paid** (card), then **shipped**, then **cancelled**. **Expected:** the Refunded option is still selectable and the "Refund Order" button is still shown — because the money was captured.
+- ✅ Take a **pending** order straight to **cancelled** (never paid). **Expected:** Refunded is disabled and the Refund button is hidden — there is nothing to refund.
+- ✅ A **delivered COD** order. **Expected:** refundable (cash was collected on delivery).
+- ✅ A **shipped COD** order. **Expected:** not refundable yet — the courier hasn't collected.
+- ✅ An order already **refunded**. **Expected:** not refundable again.
 
 ### 9b. Payment card shows the truth
 
-- [ ] Open any order in Admin. **Expected:** Method reads **Cash on Delivery** or **Card (Stripe)** — it used to always say "N/A" because the payment row was never loaded.
-- [ ] **Expected:** Payment Status reads **Awaiting payment / Paid / Paid (on delivery) / Refunded / Failed**, driven by the `payments` row rather than inferred from order status.
+- ✅ Open any order in Admin. **Expected:** Method reads **Cash on Delivery** or **Card (Stripe)** — it used to always say "N/A" because the payment row was never loaded.
+- ✅ **Expected:** Payment Status reads **Awaiting payment / Paid / Paid (on delivery) / Refunded / Failed**, driven by the `payments` row rather than inferred from order status.
 
 ### 9c. Refundable filter on the orders list
 
-- [ ] **Admin → Orders.** The "Filters (coming soon)" button is gone. There is now a working **status dropdown**, a **Refundable** toggle, a working **search** box, and a working **Export**.
-- [ ] Click **Refundable**. **Expected:** only orders where money was captured and not yet returned — including cancelled ones that were paid.
-- [ ] **Expected:** rows that are refundable carry a blue **Refundable** badge next to the payment badge.
-- [ ] Pick a status from the dropdown. **Expected:** the list filters server-side. **Clear** resets everything.
+- ✅ **Admin → Orders.** The "Filters (coming soon)" button is gone. There is now a working **status dropdown**, a **Refundable** toggle, a working **search** box, and a working **Export**.
+- ✅ Click **Refundable**. **Expected:** only orders where money was captured and not yet returned — including cancelled ones that were paid.
+- ✅ **Expected:** rows that are refundable carry a blue **Refundable** badge next to the payment badge.
+- ✅ Pick a status from the dropdown. **Expected:** the list filters server-side. **Clear** resets everything.
 
 ### 9d. Cart badge after checkout
 
 The badge used to keep the old count after ordering.
 
+**Second attempt — the first fix addressed the wrong layer.** Emptying the cart
+server-side was correct but insufficient: the badge could not re-render at all.
+`Navbar` destructured `getItemCount` from the store and called it during
+render. That function reference never changes, so with the React Compiler
+enabled the call was memoised against dependencies that are constant — the
+count froze at whatever it was on first render, no matter what the store did
+afterwards. It now reads through a selector returning a number, which
+subscribes properly.
+
+The success page also clears the local cart directly on confirmation rather
+than waiting for the refetch to report it, so there is no window where the old
+count is still on screen. That is guarded on payment actually being confirmed —
+an abandoned Stripe checkout keeps the customer's cart.
+
 - [ ] Place a **COD** order. **Expected:** the navbar cart badge drops to 0 immediately on the success page. _(The cart is now emptied server-side when a COD order is created, instead of relying on the browser.)_
 - [ ] Place a **Stripe** order and complete payment. **Expected:** badge is 0 when you land back on the success page.
+- [ ] Add items, then change quantities in the drawer. **Expected:** the badge
+      tracks every change live — this is the same freeze, and it would have
+      been broken here too.
+- [ ] Start a **Stripe** checkout and abandon it (back button from Stripe).
+      **Expected:** the badge still shows your items — an unpaid checkout must
+      not empty the cart.
 - [ ] Hard-refresh the success page. **Expected:** still 0 — it is not coming back from localStorage.
 
 ### 9e. Stripe order marked paid without a webhook
@@ -277,45 +297,60 @@ Stock is now fetched once per set of variants, cached by TanStack Query, and
 refreshed every 60 seconds (and on window focus). The UI knows every limit up
 front instead of discovering it from a rejected request.
 
-- [ ] Open a product page. **Expected:** the quantity stepper caps at the
-      variant's stock and "Only N left" appears at 5 or fewer.
-- [ ] Leave the page open, change that variant's stock in **Admin → Inventory**,
-      wait ~60s (or switch tabs and back). **Expected:** the cap updates without
-      a reload.
-- [ ] With the page open, reduce stock to 1 in another tab, then immediately try
-      to add 3 before the refresh lands. **Expected:** a **dialog** — not a
-      toast — showing the product image, name, variant, "You wanted 3",
-      "Available 1", and an **"Add 1 instead"** button.
-- [ ] Click "Add 1 instead". **Expected:** the quantity drops to 1.
-- [ ] Set stock to 0 and retry. **Expected:** the dialog says **Out of stock**
-      and offers no quantity button.
-- [ ] Same checks via the hover **Quick Add** wheels on a product card.
-- [ ] Open the network tab on a product grid. **Expected:** stock is fetched in
-      a single batched request, not one per card.
+- ✅ Open a product page. **Expected:** the quantity stepper caps at the
+  variant's stock and "Only N left" appears at 5 or fewer.
+- ✅ Leave the page open, change that variant's stock in **Admin → Inventory**,
+  wait ~60s (or switch tabs and back). **Expected:** the cap updates without
+  a reload.
+- ✅ With the page open, reduce stock to 1 in another tab, then immediately try
+  to add 3 before the refresh lands. **Expected:** a **dialog** — not a
+  toast — showing the product image, name, variant, "You wanted 3",
+  "Available 1", and an **"Add 1 instead"** button.
+- ✅ Click "Add 1 instead". **Expected:** the quantity drops to 1.
+- ✅ Set stock to 0 and retry. **Expected:** the dialog says **Out of stock**
+  and offers no quantity button.
+- ✅ Same checks via the hover **Quick Add** wheels on a product card.
+- ✅ Open the network tab on a product grid. **Expected:** stock is fetched in
+  a single batched request, not one per card.
 
 ## 11. Cancelling / refunding with a reason and partial restock
 
 Cancel and refund no longer fire immediately — both open a dialog.
 
-- [ ] On an order, choose **Cancelled** from the dropdown (or the Cancel Order
-      button). **Expected:** a dialog listing every item with its image,
-      variant, and a stepper defaulting to the full quantity.
-- [ ] **Expected:** the confirm button is disabled until a **reason** is chosen.
-- [ ] Confirm with everything at full quantity. **Expected:** the order is
-      cancelled and all stock returns, exactly as before.
-- [ ] Cancel another order but set one line's restock to **0** (e.g. a damaged
-      item). **Expected:** an amber warning appears explaining the shortfall
-      stays out of inventory; after confirming, **only the selected units** are
-      returned.
-- [ ] **Admin → Inventory → History.** **Expected:** the restock rows carry your
-      reason, e.g. `Order cancelled: Item arrived damaged`.
-- [ ] Refund a paid order. **Expected:** the same dialog with refund-specific
-      reasons, and log entries of type **return**.
-- [ ] Check the order afterwards. **Expected:** the reason is appended to the
-      order's admin notes with a timestamp.
-- [ ] Cancel an order placed **before** variant tracking. **Expected:** the
-      dialog says none of the items are linked to a stock record — nothing to
-      return.
+- ✅ On an order, choose **Cancelled** from the dropdown (or the Cancel Order
+  button). **Expected:** a dialog listing every item with its image,
+  variant, and a stepper defaulting to the full quantity.
+- ✅ **Expected:** the confirm button is disabled until a **reason** is chosen.
+- ✅ Confirm with everything at full quantity. **Expected:** the order is
+  cancelled and all stock returns, exactly as before.
+- ✅ Cancel another order but set one line's restock to **0** (e.g. a damaged
+  item). **Expected:** an amber warning appears explaining the shortfall
+  stays out of inventory; after confirming, **only the selected units** are
+  returned.
+- ✅ **Admin → Inventory → History.** **Expected:** the restock rows carry your
+  reason, e.g. `Order cancelled: Item arrived damaged`.
+- ✅ Refund a paid order. **Expected:** the same dialog with refund-specific
+  reasons, and log entries of type **return**.
+- ✅ Check the order afterwards. **Expected:** the reason is appended to the
+  order's admin notes with a timestamp.
+- ✅ Cancel an order placed **before** variant tracking. **Expected:** the
+  dialog says none of the items are linked to a stock record — nothing to
+  return.
+
+### Restock quantities are bounded on both sides
+
+Returning more units than were ordered would create stock out of nothing.
+
+- [ ] In the dialog, each line's stepper now reads **`2/3`** — chosen over
+      ordered — and the **+** button stops at the ordered quantity.
+- [ ] Call `admin.orders.updateStatus` directly with a restock quantity higher
+      than the line's, e.g. 99 on a line of 2. **Expected:** rejected with
+      "only 2 were ordered". It used to be silently clamped, which hid the
+      mistake instead of reporting it.
+- [ ] Same with an `orderItemId` from a different order. **Expected:** "that
+      line is not part of this order". Previously ignored in silence.
+- [ ] Same line listed twice, or a negative/fractional quantity.
+      **Expected:** rejected.
 
 ---
 
@@ -341,41 +376,41 @@ Put an item in your cart, then in a second window go to
 
 ### The checks
 
-- [ ] With the cart drawer **open**, drop the stock in Admin. **Expected:**
-      within ~15 seconds the dialog appears by itself — no click needed. It
-      shows the product image, name, variant, "In your cart N", "Available M".
-- [ ] **Expected:** the line in the drawer behind it shows an amber
-      "Only M left", and the green **Checkout** button is replaced by an amber
-      **Review stock changes** button.
-- [ ] Press **Keep M**. **Expected:** the quantity drops to M, the dialog closes
-      by itself, and Checkout returns to normal.
-- [ ] Repeat, but press **Remove**. **Expected:** the line disappears.
-- [ ] Set the variant's stock to **0** in Admin. **Expected:** the dialog title
-      reads "An item sold out", there is no _Keep_ button, and — if the product
-      has other variants in stock — an **Available in** row of chips such as
-      `Black / S · 4 left`, with the chip that matches the size you chose marked
-      **same size** and listed first.
-- [ ] Press one of those chips. **Expected:** the cart line switches to that
-      variant, keeping your quantity (or as much of it as that variant has).
-- [ ] With several broken lines at once, press **Update my cart**.
-      **Expected:** every line is either reduced to what's left or removed, and
-      the dialog closes. It does **not** pick a substitute variant for you —
-      that's a choice, not a correction.
-- [ ] Press **Decide later**. **Expected:** the dialog closes and stays closed —
-      but change the stock again in Admin and it comes back, because the problem
-      is now a different one.
-- [ ] Go to `/cart` (the full page). **Expected:** same behaviour, and the
-      **Proceed to Checkout** button is likewise replaced.
-- [ ] **The original bug.** Load `/checkout`, then drop the stock in Admin, then
-      press **Complete Order**. **Expected:** the button briefly reads
-      "Checking stock...", then the dialog opens. The order is **not** created
-      and you get **no toast**.
-- [ ] Fix it in the dialog, then press **Complete Order** again. **Expected:**
-      the order goes through normally.
-- [ ] Browse a product page (not the cart) while stock changes. **Expected:**
-      **no** dialog interrupts you — the modal only appears where you can act on
-      it. The product page's own quantity ceiling still updates within 15s.
-- [ ] Sanity check that nothing regressed: place an ordinary order with plenty
+- ✅ With the cart drawer **open**, drop the stock in Admin. **Expected:**
+  within ~15 seconds the dialog appears by itself — no click needed. It
+  shows the product image, name, variant, "In your cart N", "Available M".
+- ✅ **Expected:** the line in the drawer behind it shows an amber
+  "Only M left", and the green **Checkout** button is replaced by an amber
+  **Review stock changes** button.
+- ✅ Press **Keep M**. **Expected:** the quantity drops to M, the dialog closes
+  by itself, and Checkout returns to normal.
+- ✅ Repeat, but press **Remove**. **Expected:** the line disappears.
+- ✅ Set the variant's stock to **0** in Admin. **Expected:** the dialog title
+  reads "An item sold out", there is no _Keep_ button, and — if the product
+  has other variants in stock — an **Available in** row of chips such as
+  `Black / S · 4 left`, with the chip that matches the size you chose marked
+  **same size** and listed first.
+- ✅ Press one of those chips. **Expected:** the cart line switches to that
+  variant, keeping your quantity (or as much of it as that variant has).
+- ✅ With several broken lines at once, press **Update my cart**.
+  **Expected:** every line is either reduced to what's left or removed, and
+  the dialog closes. It does **not** pick a substitute variant for you —
+  that's a choice, not a correction.
+- ✅ Press **Decide later**. **Expected:** the dialog closes and stays closed —
+  but change the stock again in Admin and it comes back, because the problem
+  is now a different one.
+- ✅ Go to `/cart` (the full page). **Expected:** same behaviour, and the
+  **Proceed to Checkout** button is likewise replaced.
+- ✅ **The original bug.** Load `/checkout`, then drop the stock in Admin, then
+  press **Complete Order**. **Expected:** the button briefly reads
+  "Checking stock...", then the dialog opens. The order is **not** created
+  and you get **no toast**.
+- ✅ Fix it in the dialog, then press **Complete Order** again. **Expected:**
+  the order goes through normally.
+- ✅ Browse a product page (not the cart) while stock changes. **Expected:**
+  **no** dialog interrupts you — the modal only appears where you can act on
+  it. The product page's own quantity ceiling still updates within 15s.
+- ✅ Sanity check that nothing regressed: place an ordinary order with plenty
       of stock. **Expected:** no dialog, no extra delay.
 
 ### Note on the final gate
@@ -415,33 +450,33 @@ inputs at all and were unreachable from the UI.
 
 ### The checks
 
-- [ ] **Admin → Coupons.** **Expected:** the expired codes now read **Inactive**
-      with **Expired** underneath. `FREESHIP` reads Inactive / **Switched off**.
-      A coupon at its usage limit reads **Usage limit reached**.
-- [ ] Open the **⋯ → Edit** menu on WELCOME10. **Expected:** every field is
-      filled in — code, description, Percentage, 10, min purchase 50, usage
-      limit 1000, per-customer limit 1, and the old expiry date.
-- [ ] Change the expiry to a date next month and save. **Expected:** the row
-      flips to green **Active** with no reason line.
-- [ ] Edit a _fixed_-amount coupon (FLAT20). **Expected:** the type shows
-      **Fixed Amount**, not Percentage — this is what previously reset itself.
-- [ ] Clear the **Max Discount Amount** on SUMMER25 and save, then reopen.
-      **Expected:** it stays empty. (Blank now means "clear it"; previously
-      blank meant "leave whatever was there", so a limit could never be removed.)
-- [ ] Set an expiry of **today** and use the code at checkout. **Expected:** it
-      works. A date input gives a bare day, and that day is now valid to
-      23:59:59 — previously it meant midnight _this morning_, so a coupon
-      expiring today was already dead.
-- [ ] Edit one coupon, close, then edit a different one. **Expected:** the
-      second dialog shows the second coupon's values, not the first's.
+- ✅ **Admin → Coupons.** **Expected:** the expired codes now read **Inactive**
+  with **Expired** underneath. `FREESHIP` reads Inactive / **Switched off**.
+  A coupon at its usage limit reads **Usage limit reached**.
+- ✅ Open the **⋯ → Edit** menu on WELCOME10. **Expected:** every field is
+  filled in — code, description, Percentage, 10, min purchase 50, usage
+  limit 1000, per-customer limit 1, and the old expiry date.
+- ✅ Change the expiry to a date next month and save. **Expected:** the row
+  flips to green **Active** with no reason line.
+- ✅ Edit a _fixed_-amount coupon (FLAT20). **Expected:** the type shows
+  **Fixed Amount**, not Percentage — this is what previously reset itself.
+- ✅ Clear the **Max Discount Amount** on SUMMER25 and save, then reopen.
+  **Expected:** it stays empty. (Blank now means "clear it"; previously
+  blank meant "leave whatever was there", so a limit could never be removed.)
+- ✅ Set an expiry of **today** and use the code at checkout. **Expected:** it
+  works. A date input gives a bare day, and that day is now valid to
+  23:59:59 — previously it meant midnight _this morning_, so a coupon
+  expiring today was already dead.
+- ✅ Edit one coupon, close, then edit a different one. **Expected:** the
+  second dialog shows the second coupon's values, not the first's.
 
 ### Then re-run §7
 
-- [ ] Place a COD order with a live WELCOME10 on a subtotal over $50.
-      **Expected:** 10% comes off, the order stores the discount, and
-      `coupon_usages` gains a row (§7).
-- [ ] Try the same coupon again as the same customer. **Expected:** rejected —
-      per-customer limit is 1.
+- ✅ Place a COD order with a live WELCOME10 on a subtotal over $50.
+  **Expected:** 10% comes off, the order stores the discount, and
+  `coupon_usages` gains a row (§7).
+- ✅ Try the same coupon again as the same customer. **Expected:** rejected —
+  per-customer limit is 1.
 
 **Not done deliberately:** an expired coupon's stored `isActive` flag is left
 alone rather than being flipped to false on read. If it were flipped, pushing
@@ -465,12 +500,12 @@ order and returns its stock.
 
 ### The checks
 
-- [ ] Card checkout **with** a coupon applied. **Expected:** you reach Stripe's
-      hosted page, and the discount is listed there as a line off the total.
-- [ ] Pay with `4242 4242 4242 4242`. **Expected:** the order goes to **paid**
-      and the charge equals the discounted total, not the full one.
-- [ ] Card checkout **without** a coupon. **Expected:** unchanged.
-- [ ] To confirm the unwind: temporarily break the Stripe key in `.env`, try a
+- ✅ Card checkout **with** a coupon applied. **Expected:** you reach Stripe's
+  hosted page, and the discount is listed there as a line off the total.
+- ✅ Pay with `4242 4242 4242 4242`. **Expected:** the order goes to **paid**
+  and the charge equals the discounted total, not the full one.
+- ✅ Card checkout **without** a coupon. **Expected:** unchanged.
+- ✅ To confirm the unwind: temporarily break the Stripe key in `.env`, try a
       card checkout, and check Admin → Orders. **Expected:** an error, and
       **no** lingering `pending` order — it is cancelled, with stock returned
       and the reason "Payment could not be started".
@@ -524,25 +559,25 @@ exactly rather than inventing a second, disagreeing deadline.
 
 ### The checks
 
-- [ ] Start a card checkout, then go to **Admin → Orders → that order**.
-      **Expected:** an amber panel — "Waiting for payment — 29:41 left" — that
-      ticks down every second.
-- [ ] Try to cancel it. **Expected:** the **Cancel Order** button is disabled
-      and `Cancelled` is greyed out in the dropdown. The panel explains why.
-- [ ] Pay it. **Expected:** the panel disappears, the order is **paid**, and
-      only _now_ does the coupon's usage count go up (Admin → Coupons).
-- [ ] Start another card checkout with a coupon and **abandon it** — close the
-      Stripe tab. Wait out the window, then load Admin → Orders.
-      **Expected:** the order is **cancelled** with the note "Payment window
-      expired", the stock is back, and the coupon's usage count is unchanged.
-- [ ] Check the same coupon is usable again by the same customer.
-      **Expected:** yes — the failed attempt did not consume their one use.
-- [ ] Place a **cash on delivery** order. **Expected:** no payment window, no
-      amber panel, cancellable immediately, and the coupon counts straight
-      away.
-- [ ] Cancel a COD order that used a coupon. **Expected:** the usage count goes
-      back down and the customer can use the code again.
-- [ ] Refund a paid order that used a coupon. **Expected:** the usage count
+- ✅ Start a card checkout, then go to **Admin → Orders → that order**.
+  **Expected:** an amber panel — "Waiting for payment — 29:41 left" — that
+  ticks down every second.
+- ✅ Try to cancel it. **Expected:** the **Cancel Order** button is disabled
+  and `Cancelled` is greyed out in the dropdown. The panel explains why.
+- ✅ Pay it. **Expected:** the panel disappears, the order is **paid**, and
+  only _now_ does the coupon's usage count go up (Admin → Coupons).
+- ✅ Start another card checkout with a coupon and **abandon it** — close the
+  Stripe tab. Wait out the window, then load Admin → Orders.
+  **Expected:** the order is **cancelled** with the note "Payment window
+  expired", the stock is back, and the coupon's usage count is unchanged.
+- ✅ Check the same coupon is usable again by the same customer.
+  **Expected:** yes — the failed attempt did not consume their one use.
+- ✅ Place a **cash on delivery** order. **Expected:** no payment window, no
+  amber panel, cancellable immediately, and the coupon counts straight
+  away.
+- ✅ Cancel a COD order that used a coupon. **Expected:** the usage count goes
+  back down and the customer can use the code again.
+- ✅ Refund a paid order that used a coupon. **Expected:** the usage count
       stays where it is.
 
 ### How the expiry actually fires

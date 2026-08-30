@@ -112,7 +112,9 @@ export function CloseOrderDialog({
       reason: combined,
       restock: trackedItems.map((item) => ({
         orderItemId: item.id,
-        quantity: restock[item.id] ?? 0,
+        // Never send more than was ordered — the server rejects it outright
+        // rather than clamping, so a bad value here would fail the whole action.
+        quantity: Math.min(Math.max(0, restock[item.id] ?? 0), item.quantity),
       })),
     });
   };
@@ -225,8 +227,11 @@ export function CloseOrderDialog({
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <span className="w-7 text-center text-sm font-medium tabular-nums">
+                        <span className="w-12 text-center text-sm font-medium tabular-nums">
                           {value}
+                          <span className="text-muted-foreground">
+                            /{item.quantity}
+                          </span>
                         </span>
                         <Button
                           type="button"
