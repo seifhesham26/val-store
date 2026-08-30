@@ -624,31 +624,84 @@ alongside them, so the two cannot drift apart.
 
 Use a **delivered, paid** order with at least two lines, one of quantity 3.
 
-- [ ] Choose **Refunded**. **Expected:** the dialog is titled "Record a return"
-      and each line has **two** steppers — "Refund the customer for" and "Of
-      those, put back on sale" — both showing `n/max`.
-- [ ] Set the 3-unit line to return **1**. **Expected:** the header total and
-      the confirm button both read the value of one unit, not the order total.
-- [ ] Try to put more back on sale than you are returning. **Expected:**
-      impossible — the second stepper's ceiling follows the first, and lowering
-      the first drags the second down with it.
-- [ ] Confirm. **Expected:** toast says _"Refunded $X — order stays open"_, the
-      order status is **still delivered**, and the Payment card shows
-      **Refunded −$X**, a **Net** line, and "Partly returned — the rest can
-      still be returned."
-- [ ] Reopen the refund dialog. **Expected:** that line now reads
-      "1 already returned" and its ceiling is **2**, not 3.
-- [ ] Return the remaining 2 and the other line. **Expected:** toast says
-      "Order fully refunded", status becomes **refunded**, payment shows
-      **refunded**.
-- [ ] Try to refund it again. **Expected:** no Refund button — there is nothing
-      left to return.
-- [ ] Return 2 units but put **0** back on sale. **Expected:** an amber note
-      says they will not go back on sale but the customer is still refunded —
-      stock does not move, the refund total does.
-- [ ] Check **Admin → Inventory → History**. **Expected:** a **return** entry
-      only for the units you marked resellable, carrying your reason.
-- [ ] Cancelling is unchanged: one stepper per line, still "Cancel order".
+- ✅ Choose **Refunded**. **Expected:** the dialog is titled "Record a return"
+  and each line has **two** steppers — "Refund the customer for" and "Of
+  those, put back on sale" — both showing `n/max`.
+- ✅ Set the 3-unit line to return **1**. **Expected:** the header total and
+  the confirm button both read the value of one unit, not the order total.
+- ✅ Try to put more back on sale than you are returning. **Expected:**
+  impossible — the second stepper's ceiling follows the first, and lowering
+  the first drags the second down with it.
+- ✅ Confirm. **Expected:** toast says _"Refunded $X — order stays open"_, the
+  order status is **still delivered**, and the Payment card shows
+  **Refunded −$X**, a **Net** line, and "Partly returned — the rest can
+  still be returned."
+- ✅ Reopen the refund dialog. **Expected:** that line now reads
+  "1 already returned" and its ceiling is **2**, not 3.
+- ✅ Return the remaining 2 and the other line. **Expected:** toast says
+  "Order fully refunded", status becomes **refunded**, payment shows
+  **refunded**.
+- ✅ Try to refund it again. **Expected:** no Refund button — there is nothing
+  left to return.
+- ✅ Return 2 units but put **0** back on sale. **Expected:** an amber note
+  says they will not go back on sale but the customer is still refunded —
+  stock does not move, the refund total does.
+- ✅ Check **Admin → Inventory → History**. **Expected:** a **return** entry
+  only for the units you marked resellable, carrying your reason.
+- ✅ Cancelling is unchanged: one stepper per line, still "Cancel order".
+
+### The orders list
+
+A return does not change the order's status, so **Admin → Orders** used to give
+no sign one had happened — a partly returned order looked identical to an
+untouched one. The list now carries the return state itself.
+
+- [ ] Open **Admin → Orders**. There is a new **Returned** column between Total
+      and Payment. Orders with nothing returned show an em dash.
+- [ ] Find the order you partly returned above. **Expected:** a **Partial**
+      badge (amber), the refunded amount as **-$X**, and **`n` of `m` units**.
+- [ ] **Expected:** its **Total** cell now shows the order total struck through
+      with the **net** figure underneath — what the store actually kept.
+- [ ] Fully return an order. **Expected:** the badge turns to **Full** (slate),
+      units read `m of m`, and the net figure drops to $0.00.
+- [ ] The amounts must match the order's Payment card exactly, discount and all.
+      On a coupon order the refund is scaled by what the customer really paid,
+      so **-$X here should equal -$X there** — not the list price of the goods.
+- [ ] Click the new **Has returns** filter in the toolbar. **Expected:** only
+      orders with at least one unit back, whatever their status — a partly
+      returned _delivered_ order and a fully returned one both qualify.
+- [ ] **Expected:** it composes with the other filters, "Showing n of N"
+      reflects the filtered count, and **Clear** resets it along with the rest.
+- [ ] It is independent of **Refundable**: an order can be both (partly
+      returned, money still recoverable) or neither.
+- [ ] Hit **Export**. **Expected:** the CSV gained _Returned Units_, _Refunded
+      Amount_, _Net Total_ and _Return State_ (`None` / `Partly returned` /
+      `Fully returned`) columns, matching what the rows show.
+
+### Order numbers and customer names
+
+The list showed the first 8 characters of two UUIDs where the order number and
+the customer belonged. Neither was in the list payload: `orderNumber` was
+generated on insert and never read back onto the entity, and there is no
+`orders → user` relation, so nobody had joined the name. Both are now resolved
+by the repository — the customer in one batched query per page, not one per row.
+
+- [ ] **Admin → Orders**. **Expected: Order #** reads `VLK-20260830-XXXXXX`,
+      the same string the customer saw on the checkout success page and in
+      their confirmation email.
+- [ ] **Expected: Customer** shows the account's **name** with its **email**
+      beneath, not a UUID fragment.
+- [ ] Search a **full or partial order number**. **Expected:** the order.
+      Search a customer's **name**, then their **email**. **Expected:** their
+      orders in both cases. (The order id still matches too.)
+- [ ] Open any order. **Expected:** the **Order Summary** card is headed with
+      the real order number and carries a new **Customer** row (name + email).
+- [ ] Cross-check one order against **Drizzle Studio**: its `orders.order_number`
+      and the `user` row behind `orders.user_id` must match what is displayed.
+- [ ] Export. **Expected:** _Order Number_ and _Email_ columns, with _Order ID_
+      kept alongside for support lookups.
+- [ ] An order whose account was deleted (if you have one) reads **Deleted
+      account** rather than crashing or showing a blank cell.
 
 ### Still bookkeeping only
 
@@ -666,19 +719,19 @@ changes — nothing to push.
 
 ### Money
 
-- [ ] **Refunds now use what the customer paid, not list price.** Place an
-      order with a coupon (say 20% off), mark it delivered, then return one
-      line. **Expected:** the confirm button shows the _discounted_ value.
-      Returning everything refunds exactly the order total, never the
-      undiscounted subtotal. _Previously a full return on a discounted order
-      handed back the coupon's value as well as the goods._
-- [ ] **Cancel then refund no longer double-restocks.** Cancel a paid order
-      (stock returns), then press **Record a return**. **Expected:** the
-      "put back on sale" column reads "already back in stock", a note explains
-      this records the money only, and stock does **not** move again.
-- [ ] **Concurrent returns can't over-refund.** The increment is now guarded in
-      SQL: if two admins return the same units at once, the second is rejected
-      with "already been returned by someone else" rather than both succeeding.
+- ✅ **Refunds now use what the customer paid, not list price.** Place an
+  order with a coupon (say 20% off), mark it delivered, then return one
+  line. **Expected:** the confirm button shows the _discounted_ value.
+  Returning everything refunds exactly the order total, never the
+  undiscounted subtotal. _Previously a full return on a discounted order
+  handed back the coupon's value as well as the goods._
+- ✅ **Cancel then refund no longer double-restocks.** Cancel a paid order
+  (stock returns), then press **Record a return**. **Expected:** the
+  "put back on sale" column reads "already back in stock", a note explains
+  this records the money only, and stock does **not** move again.
+- ✅ **Concurrent returns can't over-refund.** The increment is now guarded in
+  SQL: if two admins return the same units at once, the second is rejected
+  with "already been returned by someone else" rather than both succeeding.
 
 ### The expiry sweep — the one that was live
 
@@ -689,13 +742,13 @@ changes — nothing to push.
       first: paid → recover it; unpaid → cancel it; **unreachable → leave it
       alone and look again later**. It never destroys an order on a failed
       lookup.
-- [ ] **Coupons can't be spent twice while in flight.** With a
-      one-per-customer coupon, start a card checkout and abandon it, then try
-      to use the same coupon again immediately. **Expected:** refused, with
-      "You already have an unpaid order using this coupon…". Wait for that
-      order to expire and it works again. _Deferring redemption to payment —
-      correct — had opened a window where several checkouts could each carry
-      the same code._
+- ✅ **Coupons can't be spent twice while in flight.** With a
+  one-per-customer coupon, start a card checkout and abandon it, then try
+  to use the same coupon again immediately. **Expected:** refused, with
+  "You already have an unpaid order using this coupon…". Wait for that
+  order to expire and it works again. _Deferring redemption to payment —
+  correct — had opened a window where several checkouts could each carry
+  the same code._
 
 ### Correctness and consistency
 

@@ -73,6 +73,19 @@ export type OrderPaymentStatus =
  */
 export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 
+/**
+ * Who placed the order.
+ *
+ * Resolved by the repository from the auth `user` table — there is no
+ * `orders → user` relation, so this is a deliberate join rather than something
+ * the order row carries.
+ */
+export interface OrderCustomer {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface OrderAddress {
   fullName: string;
   addressLine1: string;
@@ -119,7 +132,16 @@ export class OrderEntity {
     public readonly shippingAddress: OrderAddress | null = null,
     public readonly billingAddress: OrderAddress | null = null,
     /** Internal notes, including cancellation and refund reasons. */
-    public readonly adminNotes: string | null = null
+    public readonly adminNotes: string | null = null,
+    /**
+     * The human-facing `VLK-YYYYMMDD-XXXXXX` identifier.
+     *
+     * Assigned by the repository at insert time, so it is null on the entity
+     * being written and populated on every read.
+     */
+    public readonly orderNumber: string | null = null,
+    /** Resolved customer, populated by the repository when it joins them. */
+    public readonly customer: OrderCustomer | null = null
   ) {}
 
   /**
@@ -186,6 +208,16 @@ export class OrderEntity {
    */
   getTotalItems(): number {
     return this.items.reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  /**
+   * Units the customer has sent back, across every line.
+   *
+   * Derived from the lines for the same reason `refundedAmount` is: a stored
+   * copy could disagree with them.
+   */
+  getRefundedItems(): number {
+    return this.items.reduce((sum, item) => sum + item.refundedQuantity, 0);
   }
 
   /**

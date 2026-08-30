@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, FileDown, RotateCcw, X } from "lucide-react";
+import { Search, FileDown, RotateCcw, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
 
@@ -17,6 +17,7 @@ export interface OrderFilters {
   search: string;
   status: string | "all";
   refundableOnly: boolean;
+  returnedOnly: boolean;
 }
 
 interface OrdersListHeaderProps {
@@ -31,7 +32,10 @@ export function OrdersListHeader({
   onExport,
 }: OrdersListHeaderProps) {
   const hasActiveFilters =
-    filters.search !== "" || filters.status !== "all" || filters.refundableOnly;
+    filters.search !== "" ||
+    filters.status !== "all" ||
+    filters.refundableOnly ||
+    filters.returnedOnly;
 
   return (
     <>
@@ -90,6 +94,22 @@ export function OrdersListHeader({
           Refundable
         </Button>
 
+        {/* Returned = at least one unit has come back. Independent of status:
+            a partly returned order is still delivered. */}
+        <Button
+          variant={filters.returnedOnly ? "default" : "outline"}
+          onClick={() =>
+            onFiltersChange({
+              ...filters,
+              returnedOnly: !filters.returnedOnly,
+            })
+          }
+          aria-pressed={filters.returnedOnly}
+        >
+          <Undo2 className="mr-2 h-4 w-4" />
+          Has returns
+        </Button>
+
         {hasActiveFilters && (
           <Button
             variant="ghost"
@@ -98,6 +118,7 @@ export function OrdersListHeader({
                 search: "",
                 status: "all",
                 refundableOnly: false,
+                returnedOnly: false,
               })
             }
           >

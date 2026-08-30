@@ -16,6 +16,7 @@ export default function OrdersPage() {
     search: "",
     status: "all",
     refundableOnly: false,
+    returnedOnly: false,
   });
   const tableRef = useRef<OrdersTableHandle | null>(null);
 
@@ -27,11 +28,17 @@ export default function OrdersPage() {
     }
 
     const headers = [
+      "Order Number",
       "Order ID",
       "Customer",
+      "Email",
       "Date",
       "Items",
       "Total",
+      "Returned Units",
+      "Refunded Amount",
+      "Net Total",
+      "Return State",
       "Payment Method",
       "Payment Status",
       "Status",
@@ -39,11 +46,21 @@ export default function OrdersPage() {
     ];
 
     const rows = orders.map((order) => [
+      order.orderNumber ?? "",
       order.id,
-      order.userId,
+      order.customerName ?? "",
+      order.customerEmail ?? "",
       new Date(order.createdAt).toISOString().slice(0, 10),
       String(order.totalItems),
       order.totalAmount.toFixed(2),
+      String(order.refundedItems),
+      order.refundedAmount.toFixed(2),
+      order.netAmount.toFixed(2),
+      order.fullyRefunded
+        ? "Fully returned"
+        : order.partiallyRefunded
+          ? "Partly returned"
+          : "None",
       order.paymentMethod ?? "",
       order.paymentStatus ?? "",
       order.status,

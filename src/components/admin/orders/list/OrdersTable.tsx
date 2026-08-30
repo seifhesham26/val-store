@@ -66,6 +66,7 @@ export function OrdersTable({
         limit: ITEMS_PER_PAGE,
         status: filters.status === "all" ? undefined : filters.status,
         refundableOnly: filters.refundableOnly || undefined,
+        returnedOnly: filters.returnedOnly || undefined,
       },
       {
         getNextPageParam: (lastPage) => {
@@ -81,14 +82,17 @@ export function OrdersTable({
   // Flatten all pages
   const allOrders = data?.pages.flatMap((page) => page.orders) || [];
 
-  // Order number is not returned by the list endpoint, so the free-text search
-  // matches on the id and customer fragments the table actually displays.
+  // Client-side because the list endpoint has no search argument. Matches
+  // everything the row displays, so what you type finds what you can see.
   const search = filters.search.trim().toLowerCase();
   const orders = search
-    ? allOrders.filter(
-        (order) =>
-          order.id.toLowerCase().includes(search) ||
-          order.userId.toLowerCase().includes(search)
+    ? allOrders.filter((order) =>
+        [
+          order.orderNumber,
+          order.customerName,
+          order.customerEmail,
+          order.id,
+        ].some((field) => field?.toLowerCase().includes(search))
       )
     : allOrders;
 
@@ -126,6 +130,7 @@ export function OrdersTable({
               <TableHead>Date</TableHead>
               <TableHead>Items</TableHead>
               <TableHead>Total</TableHead>
+              <TableHead>Returned</TableHead>
               <TableHead>Payment</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-[100px]">Actions</TableHead>
@@ -136,14 +141,74 @@ export function OrdersTable({
               orders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">
-                    {order.id.slice(0, 8)}
+                    {/* Pre-`orderNumber` rows fall back to the id so the cell is
+                        never blank. */}
+                    {order.orderNumber ?? order.id.slice(0, 8).toUpperCase()}
                   </TableCell>
-                  <TableCell>{order.userId.slice(0, 8)}...</TableCell>
+                  <TableCell>
+                    {order.customerName ? (
+                      <div className="leading-tight">
+                        <div className="font-medium">{order.customerName}</div>
+                        {order.customerEmail && (
+                          <div className="text-xs text-muted-foreground">
+                            {order.customerEmail}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Deleted account
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {new Date(order.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>{order.totalItems}</TableCell>
-                  <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
+                  <TableCell>
+                    {/* Once something has come back, the order total is no
+                        longer what the store kept — show both. */}
+                    {order.refundedAmount > 0 ? (
+                      <div className="leading-tight">
+                        <span className="text-muted-foreground line-through">
+                          ${order.totalAmount.toFixed(2)}
+                        </span>
+                        <div className="font-medium">
+                          ${order.netAmount.toFixed(2)}{" "}
+                          <span className="text-xs font-normal text-muted-foreground">
+                            net
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>${order.totalAmount.toFixed(2)}</>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {order.refundedItems > 0 ? (
+                      <div className="leading-tight">
+                        <Badge
+                          variant="outline"
+                          className={
+                            order.fullyRefunded
+                              ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+                          }
+                        >
+                          {order.fullyRefunded ? "Full" : "Partial"}
+                        </Badge>
+                        <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                          -${order.refundedAmount.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {order.refundedItems} of {order.totalItems}{" "}
+                          {order.totalItems === 1 ? "unit" : "units"}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">&mdash;</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -183,7 +248,7 @@ export function OrdersTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={9} className="text-center py-8">
                   <p className="text-muted-foreground">No orders found</p>
                 </TableCell>
               </TableRow>

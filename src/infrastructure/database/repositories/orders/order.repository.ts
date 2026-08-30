@@ -7,6 +7,7 @@ import {
   couponUsages,
   productVariants,
   inventoryLogs,
+  user,
 } from "@/db/schema";
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import {
@@ -17,6 +18,7 @@ import {
 import {
   OrderEntity,
   type OrderAddress,
+  type OrderCustomer,
   type OrderPaymentStatus,
   type RefundLine,
 } from "@/domain/orders/entities/order.entity";
@@ -71,6 +73,26 @@ function toOrderAddress(
 }
 
 /**
+ * Resolve the customers behind a set of orders in one query.
+ *
+ * There is no `orders → user` relation to lean on, so the join is manual —
+ * batched rather than per-row to keep the admin list at two queries.
+ */
+async function loadCustomers(
+  userIds: (string | null)[]
+): Promise<Map<string, OrderCustomer>> {
+  const ids = [...new Set(userIds.filter((id): id is string => !!id))];
+  if (ids.length === 0) return new Map();
+
+  const rows = await db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(inArray(user.id, ids));
+
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+/**
  * Order Repository Implementation using Drizzle ORM
  * Aligned with actual database schema
  */
@@ -95,7 +117,12 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       return null;
     }
 
-    return this.mapToEntity(order);
+    const customers = await loadCustomers([order.userId]);
+
+    return this.mapToEntity(
+      order,
+      order.userId ? (customers.get(order.userId) ?? null) : null
+    );
   }
 
   /**
@@ -122,7 +149,11 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       orderBy: [desc(orders.createdAt)],
     });
 
-    return ordersList.map((o) => this.mapToEntity(o));
+    const customers = await loadCustomers(ordersList.map((o) => o.userId));
+
+    return ordersList.map((o) =>
+      this.mapToEntity(o, o.userId ? (customers.get(o.userId) ?? null) : null)
+    );
   }
 
   /**
@@ -865,44 +896,48 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
    * Map database result to OrderEntity
    * Maps actual database schema fields to entity expectations
    */
-  private mapToEntity(dbOrder: {
-    id: string;
-    userId: string | null;
-    status: OrderEntity["status"]; // Use entity's OrderStatus type
-    subtotal: string;
-    taxAmount: string;
-    shippingAmount: string;
-    totalAmount: string;
-    shippingAddressId: string | null;
-    billingAddressId: string | null;
-    discountAmount?: string;
-    couponId?: string | null;
-    adminNotes?: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    shippedAt: Date | null;
-    deliveredAt: Date | null;
-    items?: Array<{
+  private mapToEntity(
+    dbOrder: {
       id: string;
-      productId: string | null;
-      variantId?: string | null;
-      productName: string;
-      variantDetails?: string | null;
-      quantity: number;
-      unitPrice: string;
-      refundedQuantity?: number;
-      product?: {
-        images?: Array<{ imageUrl: string; isPrimary: boolean }>;
-      } | null;
-    }>;
-    shippingAddress?: DbAddress | null;
-    billingAddress?: DbAddress | null;
-    payments?: Array<{
-      paymentMethod: string;
-      paymentStatus: OrderPaymentStatus;
+      orderNumber?: string | null;
+      userId: string | null;
+      status: OrderEntity["status"]; // Use entity's OrderStatus type
+      subtotal: string;
+      taxAmount: string;
+      shippingAmount: string;
+      totalAmount: string;
+      shippingAddressId: string | null;
+      billingAddressId: string | null;
+      discountAmount?: string;
+      couponId?: string | null;
+      adminNotes?: string | null;
+      createdAt: Date;
       updatedAt: Date;
-    }> | null;
-  }): OrderEntity {
+      shippedAt: Date | null;
+      deliveredAt: Date | null;
+      items?: Array<{
+        id: string;
+        productId: string | null;
+        variantId?: string | null;
+        productName: string;
+        variantDetails?: string | null;
+        quantity: number;
+        unitPrice: string;
+        refundedQuantity?: number;
+        product?: {
+          images?: Array<{ imageUrl: string; isPrimary: boolean }>;
+        } | null;
+      }>;
+      shippingAddress?: DbAddress | null;
+      billingAddress?: DbAddress | null;
+      payments?: Array<{
+        paymentMethod: string;
+        paymentStatus: OrderPaymentStatus;
+        updatedAt: Date;
+      }> | null;
+    },
+    customer: OrderCustomer | null = null
+  ): OrderEntity {
     // One payment row is written per order at creation. If that ever changes,
     // the most recently updated row is the authoritative one.
     const payment = dbOrder.payments?.length
@@ -950,7 +985,9 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       dbOrder.couponId ?? null,
       toOrderAddress(dbOrder.shippingAddress),
       toOrderAddress(dbOrder.billingAddress),
-      dbOrder.adminNotes ?? null
+      dbOrder.adminNotes ?? null,
+      dbOrder.orderNumber ?? null,
+      customer
     );
   }
 }

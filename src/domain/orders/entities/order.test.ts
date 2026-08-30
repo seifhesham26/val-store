@@ -286,6 +286,14 @@ describe("OrderEntity", () => {
       expect(order.refundedAmount()).toBe(75);
     });
 
+    it("counts returned units across every line", () => {
+      expect(twoLineOrder().getRefundedItems()).toBe(0);
+      expect(twoLineOrder([1, 0]).getRefundedItems()).toBe(1);
+      expect(twoLineOrder([3, 1]).getRefundedItems()).toBe(
+        twoLineOrder().getTotalItems()
+      );
+    });
+
     it("counts down what is left to return", () => {
       const order = twoLineOrder([1, 0]);
       expect(order.refundableQuantity("item-a")).toBe(2);

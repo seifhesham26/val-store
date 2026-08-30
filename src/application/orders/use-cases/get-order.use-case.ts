@@ -1,6 +1,7 @@
 import {
   OrderEntity,
   type OrderAddress,
+  type OrderCustomer,
   type OrderItem,
 } from "@/domain/orders/entities/order.entity";
 import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
@@ -16,7 +17,11 @@ export interface GetOrderInput {
 
 export interface GetOrderOutput {
   id: string;
+  /** `VLK-…`, the number the customer sees. */
+  orderNumber: string | null;
   userId: string;
+  /** Resolved from the auth `user` table; null for an orphaned or guest order. */
+  customer: OrderCustomer | null;
   status: string;
   items: OrderItem[];
   subtotal: number;
@@ -68,7 +73,9 @@ export class GetOrderUseCase {
   private mapToDTO(order: OrderEntity): GetOrderOutput {
     return {
       id: order.id,
+      orderNumber: order.orderNumber,
       userId: order.userId,
+      customer: order.customer,
       status: order.status,
       items: order.items,
       subtotal: order.subtotal,
