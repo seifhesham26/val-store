@@ -21,6 +21,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -70,7 +71,7 @@ export function CartStockProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const isAuthenticated = !!session?.user;
 
-  const itemCount = useCartStore((state) => state.items.length);
+  const items = useCartStore((state) => state.items);
   const isCartOpen = useCartStore((state) => state.isOpen);
   const pathname = usePathname();
 
@@ -85,14 +86,52 @@ export function CartStockProvider({ children }: { children: React.ReactNode }) {
   const { data, isFetching } = trpc.public.cart.stockStatus.useQuery(
     undefined,
     {
-      enabled: isAuthenticated && itemCount > 0,
+      enabled: isAuthenticated && items.length > 0,
       staleTime: STOCK_CHECK_MS,
       refetchInterval: isWatching ? STOCK_CHECK_MS : false,
       refetchOnWindowFocus: true,
     }
   );
 
-  const lines = useMemo(() => data?.lines ?? [], [data]);
+  // Turning the poll on does not itself fetch, and cached data inside its
+  // staleness window is left alone — so without this, opening the drawer could
+  // sit on a stale answer for a full interval before noticing anything.
+  useEffect(() => {
+    if (!isWatching) return;
+    utils.public.cart.stockStatus.invalidate();
+  }, [isWatching, utils]);
+
+  /**
+   * The server supplies what is *available*; the quantity being asked for comes
+   * from the local cart.
+   *
+   * That split is what makes this feel immediate. Cart edits are optimistic and
+   * the server write is debounced, so judging against the server's snapshot of
+   * the quantity meant reducing a line to what was in stock left it flagged as
+   * broken until the next poll caught up. Comparing against the live local
+   * quantity resolves it the moment the customer acts.
+   */
+  const lines = useMemo(() => {
+    const quantityById = new Map(items.map((item) => [item.id, item.quantity]));
+
+    return (
+      (data?.lines ?? [])
+        // A line removed locally is gone, whatever the last check still lists.
+        .filter((line) => quantityById.has(line.cartItemId))
+        .map((line) => {
+          const requested = quantityById.get(line.cartItemId) ?? line.requested;
+          const status =
+            line.available <= 0
+              ? ("unavailable" as const)
+              : requested > line.available
+                ? ("reduced" as const)
+                : ("ok" as const);
+
+          return { ...line, requested, status };
+        })
+    );
+  }, [data, items]);
+
   const problems = useMemo(
     () => lines.filter((line) => line.status !== "ok"),
     [lines]

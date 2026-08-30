@@ -22,6 +22,14 @@ export interface UpdateOrderStatusOptions {
    * part of the order, e.g. when a returned item comes back damaged.
    */
   restock?: RestockLine[];
+  /**
+   * Bypass the payment-window guard.
+   *
+   * Only for the system unwinding its own failure — a Stripe hand-off that
+   * never got off the ground. An admin must not be able to cancel an order
+   * while the customer may still be entering their card.
+   */
+  force?: boolean;
 }
 
 export interface OrderFilters {
@@ -77,6 +85,22 @@ export interface OrderRepositoryInterface {
     status: string,
     options?: UpdateOrderStatusOptions
   ): Promise<OrderEntity>;
+
+  /**
+   * Cancel every card order whose payment window has elapsed, returning their
+   * stock and releasing their coupons. Returns how many were cancelled.
+   */
+  cancelExpiredCheckouts(): Promise<number>;
+
+  /**
+   * Recognise payment for an order: advance it to `paid`, complete its payment
+   * row and redeem any coupon. Idempotent — safe to call from both the webhook
+   * and the success page.
+   */
+  markAsPaid(
+    orderId: string,
+    options?: { transactionId?: string; gatewayResponse?: unknown }
+  ): Promise<{ transitioned: boolean }>;
 
   /**
    * Delete an order

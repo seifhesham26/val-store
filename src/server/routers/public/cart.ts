@@ -82,6 +82,10 @@ export const cartRouter = router({
    * variant read, and a third query only when something is actually wrong.
    */
   stockStatus: protectedProcedure.query(async ({ ctx }) => {
+    // Release abandoned checkouts before reporting availability, so stock held
+    // by an expired payment window is counted as free. Throttled internally.
+    await container.getCancelExpiredCheckoutsUseCase().execute();
+
     const useCase = container.getCheckCartStockUseCase();
     return useCase.execute(ctx.user.id);
   }),

@@ -27,6 +27,7 @@ const createTestOrder = (
     shippedAt: Date | null;
     deliveredAt: Date | null;
     discount: number;
+    createdAt: Date;
   }> = {}
 ) => {
   const defaults = {
@@ -222,6 +223,70 @@ describe("OrderEntity", () => {
     it("returns false for pending orders", () => {
       const order = createTestOrder({ status: "pending" });
       expect(order.isFinalState()).toBe(false);
+    });
+  });
+
+  // An unpaid card order holds reserved stock, so it is kept for a fixed window
+  // and then released. While that window is open it must not be cancelled by
+  // hand — the customer may be mid-payment on Stripe.
+  describe("payment window", () => {
+    const minutesAgo = (minutes: number) =>
+      new Date(Date.now() - minutes * 60 * 1000);
+
+    it("holds a freshly created card order", () => {
+      const order = createTestOrder({
+        status: "pending",
+        paymentMethod: "stripe",
+        paymentStatus: "pending",
+        createdAt: minutesAgo(1),
+      });
+      expect(order.isAwaitingPayment()).toBe(true);
+      expect(order.canCancel()).toBe(false);
+    });
+
+    it("releases a card order once the window has elapsed", () => {
+      const order = createTestOrder({
+        status: "pending",
+        paymentMethod: "stripe",
+        paymentStatus: "pending",
+        createdAt: minutesAgo(31),
+      });
+      expect(order.isAwaitingPayment()).toBe(false);
+      expect(order.canCancel()).toBe(true);
+    });
+
+    it("never holds a cash-on-delivery order", () => {
+      // There is no payment in flight to protect — the courier collects later.
+      const order = createTestOrder({
+        status: "pending",
+        paymentMethod: "cash_on_delivery",
+        createdAt: minutesAgo(1),
+      });
+      expect(order.paymentDeadline()).toBeNull();
+      expect(order.canCancel()).toBe(true);
+    });
+
+    it("stops holding a card order the moment it is paid", () => {
+      const order = createTestOrder({
+        status: "pending",
+        paymentMethod: "stripe",
+        paymentStatus: "completed",
+        createdAt: minutesAgo(1),
+      });
+      expect(order.isAwaitingPayment()).toBe(false);
+    });
+
+    it("reports a deadline one window after creation", () => {
+      const createdAt = minutesAgo(5);
+      const order = createTestOrder({
+        status: "pending",
+        paymentMethod: "stripe",
+        paymentStatus: "pending",
+        createdAt,
+      });
+      expect(order.paymentDeadline()?.getTime()).toBe(
+        createdAt.getTime() + 30 * 60 * 1000
+      );
     });
   });
 

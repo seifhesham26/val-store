@@ -8,6 +8,7 @@ import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/o
 import { ListOrdersUseCase } from "./use-cases/list-orders.use-case";
 import { GetOrderUseCase } from "./use-cases/get-order.use-case";
 import { UpdateOrderStatusUseCase } from "./use-cases/update-order-status.use-case";
+import { CancelExpiredCheckoutsUseCase } from "./use-cases/cancel-expired-checkouts.use-case";
 
 export function createOrderModule() {
   let repo: DrizzleOrderRepository | undefined;
@@ -16,6 +17,7 @@ export function createOrderModule() {
   let listOrders: ListOrdersUseCase | undefined;
   let getOrder: GetOrderUseCase | undefined;
   let updateOrderStatus: UpdateOrderStatusUseCase | undefined;
+  let cancelExpiredCheckouts: CancelExpiredCheckoutsUseCase | undefined;
 
   return {
     getOrderRepository,
@@ -25,6 +27,10 @@ export function createOrderModule() {
       (getOrder ??= new GetOrderUseCase(getOrderRepository())),
     getUpdateOrderStatusUseCase: () =>
       (updateOrderStatus ??= new UpdateOrderStatusUseCase(
+        getOrderRepository()
+      )),
+    getCancelExpiredCheckoutsUseCase: () =>
+      (cancelExpiredCheckouts ??= new CancelExpiredCheckoutsUseCase(
         getOrderRepository()
       )),
   };

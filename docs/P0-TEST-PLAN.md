@@ -170,11 +170,11 @@ Previously `maxStock` was always 0 because no variant was ever recorded.
 
 ### 6d. Overselling is blocked
 
-- [ ] Set a variant's stock to **1**.
-- [ ] Add **2** of it to your cart (add it, then increase quantity — or set stock to 1 _after_ adding 2).
-- [ ] Try to check out. **Expected:** the order is refused with a message like _"Not enough stock for <product> (Black / M). Only 1 left."_ and **no order is created** — check Admin → Orders.
-- [ ] **Expected:** stock is still 1, and no `sale` row was added to the inventory log. The whole thing rolls back together.
-- [ ] **Expected:** if a coupon was applied, it is **not** consumed either — the coupon usage rolls back with the order.
+- ✅ Set a variant's stock to **1**.
+- ✅ Add **2** of it to your cart (add it, then increase quantity — or set stock to 1 _after_ adding 2).
+- ✅ Try to check out. **Expected:** the order is refused with a message like _"Not enough stock for <product> (Black / M). Only 1 left."_ and **no order is created** — check Admin → Orders.
+- ✅ **Expected:** stock is still 1, and no `sale` row was added to the inventory log. The whole thing rolls back together.
+- ✅ **Expected:** if a coupon was applied, it is **not** consumed either — the coupon usage rolls back with the order.
 
 ### 6e. Cancelling restores stock
 
@@ -199,13 +199,13 @@ Set up in **Admin → Coupons**: create `TEST20`, percentage, value `20`, active
 
 ### 7a. Cash on Delivery
 
-- [ ] Add items totalling a known amount (say 100).
-- [ ] At checkout enter `TEST20`, Apply. **Expected:** green chip, Discount line `-20.00`, Total `80.00`.
-- [ ] Place the order with **Cash on Delivery**.
-- [ ] **Admin → Orders → that order.** **Expected: the stored total is 80.00, not 100.00.** This is the fix — previously the order saved as 100.
-- [ ] **Admin → Coupons.** **Expected:** `TEST20` usage count went from 0 to **1**.
-- [ ] Open that order under **Account → Orders**. **Expected:** the summary shows a **Discount** line, so Subtotal − Discount = Total actually adds up. (Without it a customer sees Subtotal 100 / Total 80 with no explanation.)
-- [ ] Place a _second_ order with `TEST20` as the same customer. **Expected:** applying the coupon now fails with _"You have already used this coupon the maximum number of times"_ — the per-user limit works now that usage is recorded.
+- ✅ Add items totalling a known amount (say 100).
+- ✅ At checkout enter `TEST20`, Apply. **Expected:** green chip, Discount line `-20.00`, Total `80.00`.
+- ✅ Place the order with **Cash on Delivery**.
+- ✅ **Admin → Orders → that order.** **Expected: the stored total is 80.00, not 100.00.** This is the fix — previously the order saved as 100.
+- ✅ **Admin → Coupons.** **Expected:** `TEST20` usage count went from 0 to **1**.
+- ✅ Open that order under **Account → Orders**. **Expected:** the summary shows a **Discount** line, so Subtotal − Discount = Total actually adds up. (Without it a customer sees Subtotal 100 / Total 80 with no explanation.)
+- ✅ Place a _second_ order with `TEST20` as the same customer. **Expected:** applying the coupon now fails with _"You have already used this coupon the maximum number of times"_ — the per-user limit works now that usage is recorded.
 
 ### 7b. Card / Stripe
 
@@ -447,6 +447,116 @@ inputs at all and were unreachable from the UI.
 alone rather than being flipped to false on read. If it were flipped, pushing
 the expiry date out later would silently leave the coupon switched off. Say the
 word if you would rather it were persisted.
+
+---
+
+## 14. Stripe checkout with a coupon
+
+**What broke:** the per-session Stripe coupon was named
+`Order <uuid> discount` — 51 characters against Stripe's 40-character limit, so
+**every** card checkout carrying a discount failed with a 500. Card checkout
+without a coupon was unaffected, which is why this only appeared now. The order
+id has moved to the coupon's metadata and the name is now the coupon code.
+
+**What it exposed:** the order and its stock reservation are created _before_
+the Stripe call. When Stripe threw, the order stayed `pending` and kept holding
+stock nobody was buying. That is now unwound — a failed hand-off cancels the
+order and returns its stock.
+
+### The checks
+
+- [ ] Card checkout **with** a coupon applied. **Expected:** you reach Stripe's
+      hosted page, and the discount is listed there as a line off the total.
+- [ ] Pay with `4242 4242 4242 4242`. **Expected:** the order goes to **paid**
+      and the charge equals the discounted total, not the full one.
+- [ ] Card checkout **without** a coupon. **Expected:** unchanged.
+- [ ] To confirm the unwind: temporarily break the Stripe key in `.env`, try a
+      card checkout, and check Admin → Orders. **Expected:** an error, and
+      **no** lingering `pending` order — it is cancelled, with stock returned
+      and the reason "Payment could not be started".
+
+### Clean-up you may want
+
+Your two failed attempts this morning left orders holding stock:
+
+- `VLK-20260830-ZYECIS` — 2 units
+- `VLK-20260830-C4Q0L8` — 2 units
+
+Both are `pending` and never reached Stripe. Cancel them in **Admin → Orders**
+and the 4 units come back (this also exercises §11). Older `pending` orders
+predate stock reservation and hold nothing.
+
+---
+
+## 15. Unpaid card orders: the 30-minute payment window
+
+**Run `pnpm db:push` first** — `orders` gained a `coupon_id` column. Answer
+**"Yes, I want to execute all statements"**; it is one nullable column plus its
+foreign key, and no existing data is touched.
+
+### What changed and why
+
+**The coupon was being redeemed at the wrong moment.** Usage was recorded when
+the order row was created — before the customer had paid anything — so two
+failed Stripe attempts consumed a one-per-customer code without ever charging
+you. Card orders now redeem their coupon in `markAsPaid`, which is the single
+place a payment is recognised and is shared by the webhook and the success
+page. Cash on delivery still redeems at creation, because that order _is_ a
+commitment; the courier simply collects later.
+
+Making that possible needed the `coupon_id` column: the order previously had no
+idea which coupon produced its discount, since only `coupon_usages` knew — and
+that row is exactly what we were trying to stop writing early.
+
+**Cancelling releases the coupon.** A cancelled order returns its stock, and now
+its coupon too. Refunds deliberately do not, or a code could be recycled through
+repeated returns.
+
+**The order is held for 30 minutes, then releases itself.** It reserves stock
+before the Stripe redirect, so an abandoned checkout takes inventory out of
+circulation. 30 minutes is Stripe's minimum session expiry, so ours matches it
+exactly rather than inventing a second, disagreeing deadline.
+
+> **On showing a countdown on Stripe's page: not possible.** That page is
+> Stripe's own hosted UI — we can't render anything into it. The countdown
+> lives on our side. Stripe's session does expire on its own schedule, which is
+> why the two deadlines are now the same number.
+
+### The checks
+
+- [ ] Start a card checkout, then go to **Admin → Orders → that order**.
+      **Expected:** an amber panel — "Waiting for payment — 29:41 left" — that
+      ticks down every second.
+- [ ] Try to cancel it. **Expected:** the **Cancel Order** button is disabled
+      and `Cancelled` is greyed out in the dropdown. The panel explains why.
+- [ ] Pay it. **Expected:** the panel disappears, the order is **paid**, and
+      only _now_ does the coupon's usage count go up (Admin → Coupons).
+- [ ] Start another card checkout with a coupon and **abandon it** — close the
+      Stripe tab. Wait out the window, then load Admin → Orders.
+      **Expected:** the order is **cancelled** with the note "Payment window
+      expired", the stock is back, and the coupon's usage count is unchanged.
+- [ ] Check the same coupon is usable again by the same customer.
+      **Expected:** yes — the failed attempt did not consume their one use.
+- [ ] Place a **cash on delivery** order. **Expected:** no payment window, no
+      amber panel, cancellable immediately, and the coupon counts straight
+      away.
+- [ ] Cancel a COD order that used a coupon. **Expected:** the usage count goes
+      back down and the customer can use the code again.
+- [ ] Refund a paid order that used a coupon. **Expected:** the usage count
+      stays where it is.
+
+### How the expiry actually fires
+
+Two independent routes, because neither alone is reliable:
+
+1. **Stripe's `checkout.session.expired` webhook** — the proper path in
+   production. It never fires locally unless `stripe listen` is forwarding.
+2. **A lazy sweep** on the storefront stock check, the customer's order list and
+   the admin order list, throttled to once a minute per server process, running
+   a minute behind the deadline so Stripe's own event gets first go.
+
+So in local development route 2 is what you will see, and it needs a page load
+to trigger — the order will not vanish while you stare at an idle screen.
 
 ---
 

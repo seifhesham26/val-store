@@ -49,6 +49,8 @@ export interface CreateCheckoutSessionInput {
   metadata?: Record<string, string>;
   /** Discount to apply, in major units (e.g. 12.50). Omit or 0 for none. */
   discountAmount?: number;
+  /** Coupon code behind the discount, used to name it in the Stripe dashboard. */
+  discountLabel?: string;
 }
 
 export interface CreateCheckoutSessionResult {
@@ -101,6 +103,7 @@ export class StripeService {
       cancelUrl,
       metadata = {},
       discountAmount = 0,
+      discountLabel,
     } = input;
 
     // Stripe rejects negative line items, so a coupon discount has to be applied
@@ -109,11 +112,19 @@ export class StripeService {
     let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
 
     if (discountMinorUnits > 0) {
+      // Stripe caps a coupon name at 40 characters and an order id alone is 36,
+      // so the id belongs in metadata; the name stays short and readable in the
+      // Stripe dashboard.
+      const label = discountLabel
+        ? `Coupon ${discountLabel}`
+        : "Order discount";
+
       const stripeCoupon = await stripe.coupons.create({
         amount_off: discountMinorUnits,
         currency: CHECKOUT_CURRENCY,
         duration: "once",
-        name: `Order ${orderId} discount`,
+        name: label.slice(0, 40),
+        metadata: { orderId },
       });
       discounts = [{ coupon: stripeCoupon.id }];
     }
@@ -137,6 +148,11 @@ export class StripeService {
       })),
       customer_email: customerEmail,
       discounts,
+      // The order reserves its stock before this redirect, so an abandoned
+      // checkout holds inventory. Stripe's default window is 24 hours; 30
+      // minutes is its minimum and far more appropriate here. Expiry fires
+      // `checkout.session.expired`, which cancels the order and returns stock.
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {

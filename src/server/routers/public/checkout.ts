@@ -9,8 +9,8 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { db } from "@/db";
-import { cartItems, orders, payments } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { cartItems, orders } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { TRPCError } from "@trpc/server";
 
@@ -95,27 +95,9 @@ export const checkoutRouter = router({
         return { paid: false, orderId: order.id, status: order.status };
       }
 
-      // Same guard as the webhook: only advance an order still awaiting payment,
-      // so a cancelled order is never resurrected.
-      await db
-        .update(orders)
-        .set({ status: "paid", updatedAt: new Date() })
-        .where(
-          and(
-            eq(orders.id, orderId),
-            inArray(orders.status, ["pending", "processing"])
-          )
-        );
-
-      await db
-        .update(payments)
-        .set({ paymentStatus: "completed", updatedAt: new Date() })
-        .where(
-          and(
-            eq(payments.orderId, orderId),
-            eq(payments.paymentStatus, "pending")
-          )
-        );
+      // One shared path with the webhook — it advances the order, completes the
+      // payment row and redeems the coupon, and is safe if both arrive.
+      await container.getOrderRepository().markAsPaid(orderId);
 
       await db.delete(cartItems).where(eq(cartItems.userId, ctx.user.id));
 

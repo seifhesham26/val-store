@@ -334,6 +334,12 @@ export const orders = pgTable(
       .notNull(),
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    // Which coupon produced `discountAmount`. Previously only `coupon_usages`
+    // knew, which made it impossible to record the redemption *after* payment
+    // — the order had no idea what to credit.
+    couponId: uuid("coupon_id").references(() => coupons.id, {
+      onDelete: "set null",
+    }),
     shippingAddressId: uuid("shipping_address_id").references(
       () => addresses.id
     ),

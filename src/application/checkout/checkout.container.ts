@@ -30,7 +30,8 @@ export function createCheckoutModule(deps: {
     getCreateCheckoutSessionUseCase: () =>
       (createCheckoutSession ??= new CreateCheckoutSessionUseCase(
         deps.getCartRepository(),
-        getCreateOrderUseCase()
+        getCreateOrderUseCase(),
+        deps.getOrderRepository()
       )),
     getCreateOrderUseCase,
   };

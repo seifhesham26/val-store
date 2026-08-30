@@ -27,6 +27,10 @@ export const ordersRouter = router({
         .optional()
     )
     .query(async ({ ctx, input }) => {
+      // Sweep abandoned checkouts first, so a customer never sees their own
+      // dead "pending" order still sitting there.
+      await container.getCancelExpiredCheckoutsUseCase().execute();
+
       const orderRepository = container.getOrderRepository();
       const page = input?.cursor ?? 1;
       const limit = input?.limit ?? 10;

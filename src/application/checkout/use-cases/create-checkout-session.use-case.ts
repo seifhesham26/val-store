@@ -6,6 +6,7 @@
  */
 
 import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
+import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { CreateOrderUseCase } from "./create-order.use-case";
 import { db } from "@/db";
@@ -27,7 +28,8 @@ export interface CreateCheckoutSessionOutput {
 export class CreateCheckoutSessionUseCase {
   constructor(
     private readonly cartRepository: CartRepositoryInterface,
-    private readonly createOrderUseCase: CreateOrderUseCase
+    private readonly createOrderUseCase: CreateOrderUseCase,
+    private readonly orderRepository: OrderRepositoryInterface
   ) {}
 
   async execute(
@@ -56,25 +58,36 @@ export class CreateCheckoutSessionUseCase {
     const cancelUrl = `${baseUrl}/cart`;
 
     // Create Stripe Checkout Session
-    const session = await stripeService.createCheckoutSession({
-      lineItems: cartItems.map((item) => ({
-        productName: item.productName,
-        productId: item.productId,
-        unitAmount: Math.round(item.productPrice * 100), // Convert to cents
-        quantity: item.quantity,
-        imageUrl: item.productImage || undefined,
-      })),
-      orderId: order.id,
-      customerEmail: email,
-      successUrl,
-      cancelUrl,
-      // Taken from the persisted order, not from the request, so Stripe always
-      // charges exactly what the order says.
-      discountAmount: order.discount,
-      metadata: {
-        userId,
-      },
-    });
+    let session;
+    try {
+      session = await stripeService.createCheckoutSession({
+        lineItems: cartItems.map((item) => ({
+          productName: item.productName,
+          productId: item.productId,
+          unitAmount: Math.round(item.productPrice * 100), // Convert to cents
+          quantity: item.quantity,
+          imageUrl: item.productImage || undefined,
+        })),
+        orderId: order.id,
+        customerEmail: email,
+        successUrl,
+        cancelUrl,
+        // Taken from the persisted order, not from the request, so Stripe always
+        // charges exactly what the order says.
+        discountAmount: order.discount,
+        discountLabel: couponCode,
+        metadata: {
+          userId,
+        },
+      });
+    } catch (error) {
+      // The order exists by this point and has already reserved its stock. If
+      // Stripe never gets off the ground, leaving it behind holds inventory
+      // nobody is buying and shows the customer a phantom pending order — so
+      // unwind it before surfacing the failure.
+      await this.cancelUnstartedOrder(order.id);
+      throw error;
+    }
 
     await db
       .update(payments)
@@ -91,5 +104,23 @@ export class CreateCheckoutSessionUseCase {
       sessionId: session.sessionId,
       url: session.url,
     };
+  }
+
+  /** Cancel an order whose payment never started, returning its stock. */
+  private async cancelUnstartedOrder(orderId: string): Promise<void> {
+    try {
+      await this.orderRepository.updateStatus(orderId, "cancelled", {
+        reason: "Payment could not be started",
+        // The payment window is still open, but nothing was ever handed to
+        // Stripe — there is no in-flight payment to protect here.
+        force: true,
+      });
+    } catch (cleanupError) {
+      // Cleanup must never mask the failure that caused it.
+      console.error(
+        `Failed to cancel order ${orderId} after a checkout error`,
+        cleanupError
+      );
+    }
   }
 }

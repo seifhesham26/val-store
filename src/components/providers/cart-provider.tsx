@@ -72,29 +72,30 @@ export function useCart() {
     {}
   );
 
-  // Server mutations
+  // Server mutations.
+  //
+  // Every cart write also refreshes the stock check: what is available depends
+  // on what the cart is holding, so a stale check would keep reporting a
+  // problem the customer has already fixed.
+  const invalidateCart = useCallback(() => {
+    utils.public.cart.get.invalidate();
+    utils.public.cart.stockStatus.invalidate();
+  }, [utils]);
+
   const addMutation = trpc.public.cart.add.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   const updateMutation = trpc.public.cart.updateQuantity.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   const removeMutation = trpc.public.cart.remove.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   const clearMutation = trpc.public.cart.clear.useMutation({
-    onSuccess: () => {
-      utils.public.cart.get.invalidate();
-    },
+    onSuccess: invalidateCart,
   });
 
   // Add item - sync with server if authenticated

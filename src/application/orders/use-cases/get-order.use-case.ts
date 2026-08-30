@@ -36,6 +36,10 @@ export interface GetOrderOutput {
   isDelivered: boolean;
   canCancel: boolean;
   canRefund: boolean;
+  /** Still inside the card-payment window, so held rather than cancellable. */
+  awaitingPayment: boolean;
+  /** When that window closes and the order releases itself. */
+  paymentDeadline: Date | null;
   paidAt: Date | null;
   shippedAt: Date | null;
   deliveredAt: Date | null;
@@ -79,6 +83,8 @@ export class GetOrderUseCase {
       isDelivered: order.isDelivered(),
       canCancel: order.canCancel(),
       canRefund: order.canRefund(),
+      awaitingPayment: order.isAwaitingPayment(),
+      paymentDeadline: order.paymentDeadline(),
       paidAt: order.paidAt,
       shippedAt: order.shippedAt,
       deliveredAt: order.deliveredAt,

@@ -48,6 +48,10 @@ const updateOrderStatusSchema = z.object({
 export const ordersRouter = router({
   // List orders with filtering and pagination
   list: adminProcedure.input(listOrdersSchema).query(async ({ input }) => {
+    // Sweep abandoned checkouts so the list never shows a stale "pending" card
+    // order that should already have released its stock.
+    await container.getCancelExpiredCheckoutsUseCase().execute();
+
     const useCase = container.getListOrdersUseCase();
     const page = input?.cursor ?? 1;
     return useCase.execute({

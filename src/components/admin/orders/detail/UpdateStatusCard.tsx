@@ -1,4 +1,5 @@
 import { OrderData } from "./types";
+import { PaymentWindowNotice } from "./PaymentWindowNotice";
 import { Loader2 } from "lucide-react";
 import {
   Card,
@@ -38,7 +39,11 @@ export function UpdateStatusCard({
         <CardTitle>Update Status</CardTitle>
         <CardDescription>Change the order status</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {order.awaitingPayment && order.paymentDeadline && (
+          <PaymentWindowNotice deadline={order.paymentDeadline} />
+        )}
+
         <div className="flex items-center gap-4">
           <Select
             value={order.status}
@@ -60,9 +65,11 @@ export function UpdateStatusCard({
                     value={status}
                     disabled={
                       !isCurrent &&
-                      !OrderStatus.canTransition(order.status, status, {
+                      (!OrderStatus.canTransition(order.status, status, {
                         paymentCaptured: order.hasCapturedPayment,
-                      })
+                      }) ||
+                        // Held while the customer may still be paying.
+                        (status === "cancelled" && order.awaitingPayment))
                     }
                   >
                     {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -73,13 +80,13 @@ export function UpdateStatusCard({
           </Select>
           {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
         </div>
-        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+        <div className="flex gap-2 text-xs text-muted-foreground">
           {OrderStatus.canTransition(order.status, "cancelled") && (
             <Button
               variant="destructive"
               size="sm"
               onClick={() => onStatusChange("cancelled")}
-              disabled={isPending}
+              disabled={isPending || order.awaitingPayment}
             >
               Cancel Order
             </Button>

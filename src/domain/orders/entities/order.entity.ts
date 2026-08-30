@@ -42,6 +42,19 @@ export type OrderPaymentStatus =
   | "failed"
   | "refunded";
 
+/**
+ * How long an unpaid card order is held before it is cancelled automatically.
+ *
+ * The order reserves its stock the moment it is created, before the customer
+ * is handed to Stripe — so an abandoned checkout takes inventory out of
+ * circulation. This is the window we are willing to hold it for.
+ *
+ * Set to match the Stripe Checkout session's own expiry exactly, so there is
+ * one deadline rather than two that disagree. 30 minutes is Stripe's minimum,
+ * which is what pins the number.
+ */
+export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
+
 export interface OrderAddress {
   fullName: string;
   addressLine1: string;
@@ -100,9 +113,14 @@ export class OrderEntity {
   }
 
   /**
-   * Check if order can be cancelled
+   * Check if order can be cancelled.
+   *
+   * An unpaid card order inside its payment window is excluded: the customer
+   * may be on Stripe's page entering a card, and it will release itself if
+   * they do not.
    */
   canCancel(): boolean {
+    if (this.isAwaitingPayment()) return false;
     return this.status === "pending" || this.status === "processing";
   }
 
@@ -177,6 +195,29 @@ export class OrderEntity {
       return true;
     }
     return false;
+  }
+
+  /**
+   * When this order stops being held for an unpaid card payment, or null if it
+   * is not waiting on one.
+   */
+  paymentDeadline(): Date | null {
+    if (this.paymentMethod !== "stripe") return null;
+    if (this.status !== "pending") return null;
+    if (this.hasCapturedPayment()) return null;
+    return new Date(this.createdAt.getTime() + PAYMENT_WINDOW_MS);
+  }
+
+  /**
+   * Is this order still inside its payment window?
+   *
+   * While it is, the order is genuinely in flight — the customer may be on
+   * Stripe's page entering a card — so it must not be cancelled out from under
+   * them.
+   */
+  isAwaitingPayment(at: Date = new Date()): boolean {
+    const deadline = this.paymentDeadline();
+    return deadline !== null && deadline.getTime() > at.getTime();
   }
 
   /**

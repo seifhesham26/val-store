@@ -8,7 +8,7 @@ import {
   productVariants,
   inventoryLogs,
 } from "@/db/schema";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import {
   OrderRepositoryInterface,
   OrderFilters,
@@ -16,6 +16,7 @@ import {
 } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import {
   OrderEntity,
+  PAYMENT_WINDOW_MS,
   type OrderAddress,
   type OrderPaymentStatus,
 } from "@/domain/orders/entities/order.entity";
@@ -25,6 +26,10 @@ import {
 } from "@/domain/orders/value-objects/order-status.value-object";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import { InvalidOrderStatusException } from "@/domain/orders/exceptions/invalid-order-status.exception";
+
+/** How often the lazy expiry sweep is allowed to run, per server process. */
+const EXPIRY_SWEEP_INTERVAL_MS = 60_000;
+let lastExpirySweep = 0;
 
 /** Append a timestamped line to the order's admin notes, preserving history. */
 function appendAdminNote(existing: string | null, note: string): string {
@@ -153,6 +158,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         discountAmount: order.discount.toFixed(2),
         totalAmount: order.totalAmount.toFixed(2),
         currency: "EGP",
+        couponId: order.couponId,
         shippingAddressId: order.shippingAddressId,
         billingAddressId: order.billingAddressId,
         createdAt: now,
@@ -249,10 +255,14 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         });
       }
 
-      // Record coupon consumption in the same transaction as the order.
-      // Doing this afterwards would leave a discounted order whose coupon was
-      // never marked used, letting the same code be redeemed again.
-      if (order.couponId) {
+      // Redeem the coupon only when the order is already a real commitment.
+      //
+      // Cash on delivery is: the customer has ordered, and the courier collects
+      // later. A card order is not — it is a session the customer may never
+      // pay for, and counting that as a redemption burned a one-per-customer
+      // code on an attempt that never charged anyone. Card orders redeem in
+      // `markAsPaid` instead.
+      if (order.couponId && order.paymentMethod === "cash_on_delivery") {
         await tx.insert(couponUsages).values({
           couponId: order.couponId,
           userId: order.userId,
@@ -327,6 +337,22 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     }
 
     const target = newStatus.getValue();
+
+    // An unpaid card order inside its payment window is genuinely in flight —
+    // the customer may be on Stripe's page entering a card right now. Pulling
+    // it out from under them would take the stock back mid-payment and leave
+    // Stripe to charge for an order that no longer exists.
+    if (
+      target === "cancelled" &&
+      !options?.force &&
+      existing.isAwaitingPayment()
+    ) {
+      const deadline = existing.paymentDeadline();
+      throw new Error(
+        `This order is still within its payment window and cannot be cancelled yet. ` +
+          `It will be cancelled automatically at ${deadline?.toISOString()} if it is not paid.`
+      );
+    }
     // `cancelled` and `refunded` are final states, so an order can only reach
     // them once — no risk of restoring the same stock twice.
     const isClosing = target === "cancelled" || target === "refunded";
@@ -392,6 +418,32 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           createdAt: now,
         });
       }
+
+      // Cancelling releases the coupon. The sale never happened, so it must not
+      // keep counting against the customer's per-user allowance or the code's
+      // total — otherwise a checkout that failed before payment silently burns
+      // a one-per-customer coupon.
+      //
+      // Refunds deliberately do not release it: there the purchase did happen,
+      // and handing the coupon back would let it be recycled through repeated
+      // returns.
+      if (target === "cancelled") {
+        const [released] = await tx
+          .delete(couponUsages)
+          .where(eq(couponUsages.orderId, orderId))
+          .returning({ couponId: couponUsages.couponId });
+
+        if (released) {
+          await tx
+            .update(coupons)
+            .set({
+              // Floored, so a hand-edited counter can never go negative.
+              usageCount: sql`GREATEST(${coupons.usageCount} - 1, 0)`,
+              updatedAt: now,
+            })
+            .where(eq(coupons.id, released.couponId));
+        }
+      }
     });
 
     // Fetch with items
@@ -401,6 +453,147 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     }
 
     return orderWithItems;
+  }
+
+  /**
+   * Cancel card orders whose payment window has elapsed.
+   *
+   * There is no scheduler in this app, so this is swept lazily from a few read
+   * paths rather than run on a timer. It is throttled per process so those
+   * reads do not each pay for it.
+   */
+  async cancelExpiredCheckouts(): Promise<number> {
+    const now = Date.now();
+    if (now - lastExpirySweep < EXPIRY_SWEEP_INTERVAL_MS) return 0;
+    lastExpirySweep = now;
+
+    // A minute's grace past the deadline, so Stripe's own `checkout.session
+    // .expired` event — which expires at the same instant — gets first go at
+    // cancelling. This sweep is the fallback for when that webhook is not
+    // being delivered, which is always the case in local development.
+    const cutoff = new Date(now - PAYMENT_WINDOW_MS - 60_000);
+
+    const stale = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .innerJoin(payments, eq(payments.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.status, "pending"),
+          eq(payments.paymentMethod, "stripe"),
+          eq(payments.paymentStatus, "pending"),
+          lte(orders.createdAt, cutoff)
+        )
+      )
+      .limit(50);
+
+    let cancelled = 0;
+
+    for (const row of stale) {
+      try {
+        await this.updateStatus(row.id, "cancelled", {
+          reason: "Payment window expired",
+        });
+
+        await db
+          .update(payments)
+          .set({ paymentStatus: "failed", updatedAt: new Date() })
+          .where(eq(payments.orderId, row.id));
+
+        cancelled += 1;
+      } catch (error) {
+        // One bad order must not stop the rest being cleaned up.
+        console.error(
+          `[Orders] Failed to expire unpaid order ${row.id}`,
+          error instanceof Error ? error.message : error
+        );
+      }
+    }
+
+    return cancelled;
+  }
+
+  /**
+   * Move an order to `paid` — the single place a payment is recognised.
+   *
+   * Both the Stripe webhook and the success page call this, either may arrive
+   * first, and either may arrive twice, so the conditional order update is the
+   * gate: only the caller that actually moves the row out of `pending` does the
+   * rest. Everything runs in one transaction.
+   */
+  async markAsPaid(
+    orderId: string,
+    options?: { transactionId?: string; gatewayResponse?: unknown }
+  ): Promise<{ transitioned: boolean }> {
+    return db.transaction(async (tx) => {
+      const now = new Date();
+
+      // Only advance an order still awaiting payment. Without this a late
+      // webhook could resurrect an order an admin had already cancelled — and
+      // cancelling returns the reserved stock, so it would end up "paid" with
+      // nothing held for it.
+      const [updated] = await tx
+        .update(orders)
+        .set({ status: "paid", updatedAt: now })
+        .where(
+          and(
+            eq(orders.id, orderId),
+            inArray(orders.status, ["pending", "processing"])
+          )
+        )
+        .returning({
+          id: orders.id,
+          userId: orders.userId,
+          couponId: orders.couponId,
+        });
+
+      if (!updated) return { transitioned: false };
+
+      await tx
+        .update(payments)
+        .set({
+          paymentStatus: "completed",
+          ...(options?.transactionId
+            ? { transactionId: options.transactionId }
+            : {}),
+          ...(options?.gatewayResponse
+            ? {
+                paymentGatewayResponse: JSON.stringify(options.gatewayResponse),
+              }
+            : {}),
+          updatedAt: now,
+        })
+        .where(eq(payments.orderId, orderId));
+
+      // Redeem the coupon now that money has actually changed hands. Guarded on
+      // the usage row not already existing, so a cash-on-delivery order — which
+      // redeems at creation — can never be counted twice.
+      if (updated.couponId && updated.userId) {
+        const [alreadyRecorded] = await tx
+          .select({ id: couponUsages.id })
+          .from(couponUsages)
+          .where(eq(couponUsages.orderId, orderId))
+          .limit(1);
+
+        if (!alreadyRecorded) {
+          await tx.insert(couponUsages).values({
+            couponId: updated.couponId,
+            userId: updated.userId,
+            orderId,
+          });
+
+          await tx
+            .update(coupons)
+            .set({
+              usageCount: sql`${coupons.usageCount} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(coupons.id, updated.couponId));
+        }
+      }
+
+      return { transitioned: true };
+    });
   }
 
   /**
@@ -521,6 +714,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     shippingAddressId: string | null;
     billingAddressId: string | null;
     discountAmount?: string;
+    couponId?: string | null;
     adminNotes?: string | null;
     createdAt: Date;
     updatedAt: Date;
@@ -589,7 +783,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       new Date(dbOrder.createdAt),
       new Date(dbOrder.updatedAt),
       dbOrder.discountAmount ? parseFloat(dbOrder.discountAmount) : 0,
-      null, // couponId is recorded in coupon_usages, not on the order row
+      dbOrder.couponId ?? null,
       toOrderAddress(dbOrder.shippingAddress),
       toOrderAddress(dbOrder.billingAddress),
       dbOrder.adminNotes ?? null
