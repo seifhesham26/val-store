@@ -11,18 +11,21 @@ import { TRPCError } from "@trpc/server";
 
 const couponRepo = new DrizzleCouponRepository();
 
+// Optional fields are `nullish`, not merely optional: the admin form has to be
+// able to *clear* a limit or an expiry, and Drizzle skips undefined keys in
+// `.set()` — so "omitted" has to stay distinct from "explicitly emptied".
 const couponSchema = z.object({
   code: z.string().min(3).max(50),
-  description: z.string().optional(),
+  description: z.string().nullish(),
   discountType: z.enum(["percentage", "fixed"]),
   discountValue: z.string(),
-  minPurchaseAmount: z.string().optional(),
-  maxDiscountAmount: z.string().optional(),
-  usageLimit: z.number().int().positive().optional(),
+  minPurchaseAmount: z.string().nullish(),
+  maxDiscountAmount: z.string().nullish(),
+  usageLimit: z.number().int().positive().nullish(),
   perUserLimit: z.number().int().positive().default(1),
   isActive: z.boolean().default(true),
-  startsAt: z.coerce.date().optional(),
-  expiresAt: z.coerce.date().optional(),
+  startsAt: z.coerce.date().nullish(),
+  expiresAt: z.coerce.date().nullish(),
 });
 
 export const adminCouponsRouter = router({

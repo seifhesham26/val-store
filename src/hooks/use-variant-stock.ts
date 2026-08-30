@@ -17,7 +17,7 @@ import { useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 
 /** How long a cached stock figure is trusted before a background refresh. */
-export const STOCK_STALE_MS = 60_000;
+export const STOCK_STALE_MS = 15_000;
 
 export interface VariantStock {
   /** Units available for a variant, or null while unknown. */

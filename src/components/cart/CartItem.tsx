@@ -7,8 +7,9 @@
 "use client";
 
 import Image from "next/image";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCartStock } from "@/components/providers/cart-stock-provider";
 import type { CartItem as CartItemType } from "@/lib/stores/cart-store";
 
 interface CartItemProps {
@@ -24,8 +25,18 @@ export function CartItem({
   onRemove,
   disabled = false,
 }: CartItemProps) {
+  const { availableFor } = useCartStock();
+
+  // The live figure wins; the quantity baked into the cart payload is only a
+  // fallback for the moment before the first check lands.
+  const ceiling = availableFor(item.id) ?? item.maxStock;
+  const soldOut = ceiling <= 0;
+  const overCeiling = !soldOut && item.quantity > ceiling;
+
   const canDecrease = item.quantity > 1;
-  const canIncrease = item.maxStock === 0 || item.quantity < item.maxStock;
+  // Previously `maxStock === 0` was read as "no limit", which let a sold-out
+  // line be incremented freely.
+  const canIncrease = item.quantity < ceiling;
 
   const handleDecrease = () => {
     if (canDecrease) {
@@ -68,6 +79,12 @@ export function CartItem({
           </h3>
           {item.variantLabel && (
             <p className="mt-0.5 text-xs text-gray-500">{item.variantLabel}</p>
+          )}
+          {(soldOut || overCeiling) && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-amber-400">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              {soldOut ? "Out of stock" : `Only ${ceiling} left`}
+            </p>
           )}
           <p className="mt-1 text-sm text-gray-400">
             ${item.productPrice.toFixed(2)}

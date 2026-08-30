@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCartStore } from "@/lib/stores/cart-store";
+import { useCartStock } from "@/components/providers/cart-stock-provider";
 import { CheckoutOrderSummary } from "@/components/checkout/CheckoutOrderSummary";
 import { CheckoutAddressSelection } from "@/components/checkout/CheckoutAddressSelection";
 import {
@@ -37,6 +38,9 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
   const [couponError, setCouponError] = useState<string | null>(null);
 
   const subtotal = useCartStore((state) => state.getSubtotal());
+
+  const { hasProblems, revalidate, openDialog } = useCartStock();
+  const [isVerifyingStock, setIsVerifyingStock] = useState(false);
 
   const validateCoupon = trpc.public.coupons.validate.useMutation({
     onSuccess: (result) => {
@@ -97,12 +101,31 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
   });
 
   const isPlacingOrder =
-    createStripeSession.isPending || createCodOrder.isPending;
+    createStripeSession.isPending ||
+    createCodOrder.isPending ||
+    isVerifyingStock;
 
   const placeOrder = async () => {
     if (!effectiveSelectedAddressId) {
       toast.error("Please select an address");
       return;
+    }
+
+    // Last checkpoint before money moves. The order transaction still holds the
+    // authoritative lock, but reaching it with a cart we already know is
+    // unfillable means the customer gets an error instead of a choice.
+    setIsVerifyingStock(true);
+    try {
+      const problems = await revalidate();
+      if (problems.length > 0) {
+        openDialog();
+        return;
+      }
+    } catch {
+      // A failed check must not block a valid order — the transaction below is
+      // still authoritative.
+    } finally {
+      setIsVerifyingStock(false);
     }
 
     // Only the code is sent — the server re-validates it and derives the
@@ -162,13 +185,26 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
               >
                 Return to Cart
               </Button>
-              <Button
-                onClick={placeOrder}
-                disabled={isPlacingOrder}
-                className="h-14 flex-1 bg-val-accent text-white hover:bg-val-accent/90 text-lg font-medium"
-              >
-                {isPlacingOrder ? "Processing..." : "Complete Order"}
-              </Button>
+              {hasProblems ? (
+                <Button
+                  onClick={openDialog}
+                  className="h-14 flex-1 bg-amber-500 text-black hover:bg-amber-500/90 text-lg font-medium"
+                >
+                  Review stock changes
+                </Button>
+              ) : (
+                <Button
+                  onClick={placeOrder}
+                  disabled={isPlacingOrder}
+                  className="h-14 flex-1 bg-val-accent text-white hover:bg-val-accent/90 text-lg font-medium"
+                >
+                  {isVerifyingStock
+                    ? "Checking stock..."
+                    : isPlacingOrder
+                      ? "Processing..."
+                      : "Complete Order"}
+                </Button>
+              )}
             </div>
           </div>
 

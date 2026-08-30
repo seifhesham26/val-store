@@ -8,7 +8,12 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingBag, ArrowRight, ShoppingCart } from "lucide-react";
+import {
+  ShoppingBag,
+  ArrowRight,
+  ShoppingCart,
+  AlertTriangle,
+} from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -20,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CartItem } from "./CartItem";
 import { useCart } from "@/components/providers/cart-provider";
+import { useCartStock } from "@/components/providers/cart-stock-provider";
 
 export function CartDrawer() {
   const {
@@ -34,6 +40,10 @@ export function CartDrawer() {
     removeItem,
     closeCart,
   } = useCart();
+
+  // Opening the drawer is an action, so the check runs here too — the customer
+  // should not be able to look straight at a cart that cannot be ordered.
+  const { hasProblems, openDialog } = useCartStock();
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closeCart()}>
@@ -103,19 +113,30 @@ export function CartDrawer() {
                   Shipping and taxes calculated at checkout
                 </p>
 
-                {/* Checkout Button */}
-                <Button
-                  className="w-full bg-val-accent hover:bg-val-accent/90 text-black font-medium"
-                  size="lg"
-                  asChild
-                  disabled={isSyncing}
-                >
-                  <Link href="/checkout" onClick={closeCart}>
-                    <ShoppingBag className="mr-2 h-4 w-4" />
-                    Checkout
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
+                {/* Checkout Button — blocked while the cart cannot be filled */}
+                {hasProblems ? (
+                  <Button
+                    className="w-full bg-amber-500 text-black font-medium hover:bg-amber-500/90"
+                    size="lg"
+                    onClick={openDialog}
+                  >
+                    <AlertTriangle className="mr-2 h-4 w-4" />
+                    Review stock changes
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full bg-val-accent hover:bg-val-accent/90 text-black font-medium"
+                    size="lg"
+                    asChild
+                    disabled={isSyncing}
+                  >
+                    <Link href="/checkout" onClick={closeCart}>
+                      <ShoppingBag className="mr-2 h-4 w-4" />
+                      Checkout
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
 
                 {/* View Cart Button */}
                 <Button

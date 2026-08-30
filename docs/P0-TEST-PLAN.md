@@ -319,6 +319,137 @@ Cancel and refund no longer fire immediately — both open a dialog.
 
 ---
 
+## 12. Cart is reconciled against live stock (the mid-journey gap)
+
+**What was wrong:** stock was checked when an item was added, and again inside
+the order transaction — with nothing in between. Anything that moved while the
+item sat in the cart (someone else buying the last one, an admin adjustment, a
+variant withdrawn) stayed invisible until the final button, and then arrived as
+a toast you couldn't act on. That is exactly what you hit.
+
+**What happens now:** while you are looking at the cart — drawer open, `/cart`,
+or anywhere under `/checkout` — the cart is re-checked against live stock every
+**15 seconds**, on window focus, and on demand before the order is placed. A
+problem opens a dialog naming the item, the variant, how many are actually left,
+and every route out: keep what's left, remove it, or switch to a variant that
+is in stock.
+
+### Setup
+
+Put an item in your cart, then in a second window go to
+**Admin → Inventory** and drop that variant's stock below what you're holding.
+
+### The checks
+
+- [ ] With the cart drawer **open**, drop the stock in Admin. **Expected:**
+      within ~15 seconds the dialog appears by itself — no click needed. It
+      shows the product image, name, variant, "In your cart N", "Available M".
+- [ ] **Expected:** the line in the drawer behind it shows an amber
+      "Only M left", and the green **Checkout** button is replaced by an amber
+      **Review stock changes** button.
+- [ ] Press **Keep M**. **Expected:** the quantity drops to M, the dialog closes
+      by itself, and Checkout returns to normal.
+- [ ] Repeat, but press **Remove**. **Expected:** the line disappears.
+- [ ] Set the variant's stock to **0** in Admin. **Expected:** the dialog title
+      reads "An item sold out", there is no _Keep_ button, and — if the product
+      has other variants in stock — an **Available in** row of chips such as
+      `Black / S · 4 left`, with the chip that matches the size you chose marked
+      **same size** and listed first.
+- [ ] Press one of those chips. **Expected:** the cart line switches to that
+      variant, keeping your quantity (or as much of it as that variant has).
+- [ ] With several broken lines at once, press **Update my cart**.
+      **Expected:** every line is either reduced to what's left or removed, and
+      the dialog closes. It does **not** pick a substitute variant for you —
+      that's a choice, not a correction.
+- [ ] Press **Decide later**. **Expected:** the dialog closes and stays closed —
+      but change the stock again in Admin and it comes back, because the problem
+      is now a different one.
+- [ ] Go to `/cart` (the full page). **Expected:** same behaviour, and the
+      **Proceed to Checkout** button is likewise replaced.
+- [ ] **The original bug.** Load `/checkout`, then drop the stock in Admin, then
+      press **Complete Order**. **Expected:** the button briefly reads
+      "Checking stock...", then the dialog opens. The order is **not** created
+      and you get **no toast**.
+- [ ] Fix it in the dialog, then press **Complete Order** again. **Expected:**
+      the order goes through normally.
+- [ ] Browse a product page (not the cart) while stock changes. **Expected:**
+      **no** dialog interrupts you — the modal only appears where you can act on
+      it. The product page's own quantity ceiling still updates within 15s.
+- [ ] Sanity check that nothing regressed: place an ordinary order with plenty
+      of stock. **Expected:** no dialog, no extra delay.
+
+### Note on the final gate
+
+The `SELECT … FOR UPDATE` check inside the order transaction is still there and
+still authoritative — two people racing for the same last unit is decided there,
+not in the browser. What changed is that you should now essentially never reach
+it, and if the pre-check itself fails for any reason the order is still allowed
+through to that lock rather than being blocked by a broken check.
+
+---
+
+## 13. Coupons: editing, and why WELCOME10 was rejected
+
+**The expiry was real, not a bug.** Every seeded coupon in your database had
+already expired — they were seeded around February with 60–90 day windows, so
+the latest of them died on 25 May. Validation was doing its job:
+
+| Code      | Expired    |
+| --------- | ---------- |
+| VIP50     | 2026-03-10 |
+| FLAT20    | 2026-03-26 |
+| FREESHIP  | 2026-04-10 |
+| SUMMER25  | 2026-04-25 |
+| WELCOME10 | 2026-05-25 |
+
+The admin table hid this: it showed the stored `isActive` flag, so all of them
+displayed a healthy green **Active** while checkout refused them. That was the
+actually misleading part.
+
+**The edit dialog was a real bug.** It was a pure uncontrolled form that never
+received the coupon — only a boolean saying "you are editing". So Edit opened a
+blank Create form, and saving it re-sent whatever was on screen: the discount
+type silently reset to **Percentage**, the Active switch reset to **on**, and
+the code had to be retyped from memory. `perUserLimit` and `startsAt` had no
+inputs at all and were unreachable from the UI.
+
+### The checks
+
+- [ ] **Admin → Coupons.** **Expected:** the expired codes now read **Inactive**
+      with **Expired** underneath. `FREESHIP` reads Inactive / **Switched off**.
+      A coupon at its usage limit reads **Usage limit reached**.
+- [ ] Open the **⋯ → Edit** menu on WELCOME10. **Expected:** every field is
+      filled in — code, description, Percentage, 10, min purchase 50, usage
+      limit 1000, per-customer limit 1, and the old expiry date.
+- [ ] Change the expiry to a date next month and save. **Expected:** the row
+      flips to green **Active** with no reason line.
+- [ ] Edit a _fixed_-amount coupon (FLAT20). **Expected:** the type shows
+      **Fixed Amount**, not Percentage — this is what previously reset itself.
+- [ ] Clear the **Max Discount Amount** on SUMMER25 and save, then reopen.
+      **Expected:** it stays empty. (Blank now means "clear it"; previously
+      blank meant "leave whatever was there", so a limit could never be removed.)
+- [ ] Set an expiry of **today** and use the code at checkout. **Expected:** it
+      works. A date input gives a bare day, and that day is now valid to
+      23:59:59 — previously it meant midnight _this morning_, so a coupon
+      expiring today was already dead.
+- [ ] Edit one coupon, close, then edit a different one. **Expected:** the
+      second dialog shows the second coupon's values, not the first's.
+
+### Then re-run §7
+
+- [ ] Place a COD order with a live WELCOME10 on a subtotal over $50.
+      **Expected:** 10% comes off, the order stores the discount, and
+      `coupon_usages` gains a row (§7).
+- [ ] Try the same coupon again as the same customer. **Expected:** rejected —
+      per-customer limit is 1.
+
+**Not done deliberately:** an expired coupon's stored `isActive` flag is left
+alone rather than being flipped to false on read. If it were flipped, pushing
+the expiry date out later would silently leave the coupon switched off. Say the
+word if you would rather it were persisted.
+
+---
+
 ## Known limitations (by design, not bugs)
 
 - **Stripe abandonment holds stock.** Stock is reserved when the order is created, before the Stripe redirect. If a customer abandons payment, that stock stays on a `pending` order. Recovery today is manual: cancel the order in Admin and the stock comes back (§6e). A scheduled job to auto-cancel stale pending orders would be the proper fix — say the word and I'll add one.

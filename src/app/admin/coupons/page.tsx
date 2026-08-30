@@ -10,12 +10,15 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { CouponsHeader } from "@/components/admin/coupons/CouponsHeader";
-import { CouponsTable } from "@/components/admin/coupons/CouponsTable";
+import {
+  CouponsTable,
+  type CouponRow,
+} from "@/components/admin/coupons/CouponsTable";
 import { CouponFormDialog } from "@/components/admin/coupons/CouponFormDialog";
 
 export default function AdminCouponsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingCoupon, setEditingCoupon] = useState<string | null>(null);
+  const [editingCoupon, setEditingCoupon] = useState<CouponRow | null>(null);
 
   const { data: coupons, isLoading } = trpc.admin.coupons.list.useQuery();
   const utils = trpc.useUtils();
@@ -54,30 +57,45 @@ export default function AdminCouponsPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  /** Blank optional field means "clear it", not "leave it alone". */
+  const text = (form: FormData, name: string) => {
+    const value = (form.get(name) as string | null)?.trim();
+    return value ? value : null;
+  };
+
+  const wholeNumber = (form: FormData, name: string) => {
+    const value = text(form, name);
+    if (value === null) return null;
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
 
+    const startsAt = text(formData, "startsAt");
+    const expiresAt = text(formData, "expiresAt");
+
     const data = {
       code: formData.get("code") as string,
-      description: (formData.get("description") as string) || undefined,
+      description: text(formData, "description"),
       discountType: formData.get("discountType") as "percentage" | "fixed",
       discountValue: formData.get("discountValue") as string,
-      minPurchaseAmount:
-        (formData.get("minPurchaseAmount") as string) || undefined,
-      maxDiscountAmount:
-        (formData.get("maxDiscountAmount") as string) || undefined,
-      usageLimit: formData.get("usageLimit")
-        ? parseInt(formData.get("usageLimit") as string)
-        : undefined,
+      minPurchaseAmount: text(formData, "minPurchaseAmount"),
+      maxDiscountAmount: text(formData, "maxDiscountAmount"),
+      usageLimit: wholeNumber(formData, "usageLimit"),
+      perUserLimit: wholeNumber(formData, "perUserLimit") ?? 1,
       isActive: formData.get("isActive") === "on",
-      expiresAt: formData.get("expiresAt")
-        ? new Date(formData.get("expiresAt") as string)
-        : undefined,
+      // A date input gives a bare day. Start of that day for "starts", end of
+      // it for "expires" — otherwise a coupon dated today expires at midnight
+      // this morning, i.e. before the day it is supposed to cover.
+      startsAt: startsAt ? new Date(`${startsAt}T00:00:00`) : null,
+      expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59.999`) : null,
     };
 
     if (editingCoupon) {
-      updateMutation.mutate({ id: editingCoupon, data });
+      updateMutation.mutate({ id: editingCoupon.id, data });
     } else {
       createMutation.mutate(data);
     }
@@ -104,8 +122,8 @@ export default function AdminCouponsPage() {
       />
       <CouponsTable
         coupons={coupons ?? []}
-        onEdit={(id) => {
-          setEditingCoupon(id);
+        onEdit={(coupon) => {
+          setEditingCoupon(coupon);
           setDialogOpen(true);
         }}
         onToggle={(id) => toggleMutation.mutate({ id })}
@@ -113,8 +131,11 @@ export default function AdminCouponsPage() {
       />
       <CouponFormDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        isEditing={!!editingCoupon}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditingCoupon(null);
+        }}
+        coupon={editingCoupon}
         isPending={createMutation.isPending || updateMutation.isPending}
         onSubmit={handleSubmit}
       />

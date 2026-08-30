@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CartItem } from "@/components/cart/CartItem";
 import { CartSummary } from "@/components/cart/CartSummary";
 import { useCart } from "@/components/providers/cart-provider";
+import { useCartStock } from "@/components/providers/cart-stock-provider";
 
 export function CartPopulated() {
   const {
@@ -17,6 +18,8 @@ export function CartPopulated() {
     removeItem,
     clearCart,
   } = useCart();
+
+  const { hasProblems, openDialog } = useCartStock();
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
@@ -69,6 +72,8 @@ export function CartPopulated() {
             subtotal={subtotal}
             itemCount={itemCount}
             isLoading={isSyncing}
+            stockBlocked={hasProblems}
+            onReviewStock={openDialog}
           />
         </div>
       </div>

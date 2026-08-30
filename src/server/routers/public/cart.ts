@@ -76,6 +76,37 @@ export const cartRouter = router({
     }),
 
   /**
+   * Live stock reconciliation for the cart.
+   *
+   * Cheap enough to call on any interaction: one cart read plus one batched
+   * variant read, and a third query only when something is actually wrong.
+   */
+  stockStatus: protectedProcedure.query(async ({ ctx }) => {
+    const useCase = container.getCheckCartStockUseCase();
+    return useCase.execute(ctx.user.id);
+  }),
+
+  /**
+   * Move a cart line onto a different variant of the same product — the
+   * "take this colour instead" route out of a stock problem.
+   */
+  changeVariant: protectedProcedure
+    .input(
+      z.object({
+        cartItemId: z.string().uuid(),
+        variantId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const useCase = container.getChangeCartItemVariantUseCase();
+      return useCase.execute({
+        userId: ctx.user.id,
+        cartItemId: input.cartItemId,
+        variantId: input.variantId,
+      });
+    }),
+
+  /**
    * Clear entire cart
    */
   clear: protectedProcedure.mutation(async ({ ctx }) => {

@@ -23,7 +23,9 @@ function createContainer() {
   const orders = createOrderModule();
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
-  const cart = createCartModule();
+  const cart = createCartModule({
+    getProductVariantRepository: products.getProductVariantRepository,
+  });
   const couponsModule = createCouponModule();
   const checkout = createCheckoutModule({
     getOrderRepository: orders.getOrderRepository,
