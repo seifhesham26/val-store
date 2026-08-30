@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check: `type-check` clean, `lint` 0 errors / 7 unused-var warnings, 33 tests passing.
+Baseline as of last check (2026-08-30): `type-check` clean, `lint` 0 errors / 7 unused-var warnings, 67 tests passing.
 
 ## Commands
 
@@ -21,14 +21,14 @@ pnpm test             # vitest run
 pnpm vitest run src/domain/orders/entities/order.test.ts   # single test file
 pnpm vitest run -t "canTransitionTo"                        # single test by name
 
-pnpm db:push          # THE schema workflow — see warning below
+pnpm db:push          # the day-to-day schema workflow — see the note below
 pnpm db:studio        # Drizzle Studio
 pnpm seed             # admin user, 12 categories, 35+ products, orders, reviews, coupons, CMS content
 pnpm seed:basic       # minimal seed
 npx tsx scripts/set-admin.ts <email>   # promote a user to super_admin
 ```
 
-**Do not run `db:migrate`.** The `drizzle/` migrations are stale from Dec 2025 and describe an abandoned schema (a uuid-keyed `users` table and `password_reset_tokens`, neither of which exists now). None of the ~20 business tables are in any migration, and `0002` re-creates tables `0000` already made. `db:push` is the only working path. If migrations are ever needed, the chain has to be regenerated from scratch.
+**Migrations were regenerated and are current.** `drizzle/` used to hold three stale files describing an abandoned schema; it is now a single baseline, `0000_long_ultragirl.sql`, covering all 27 tables in `src/db/schema.ts`, with one matching entry in `meta/_journal.json`. Day-to-day schema work still goes through `db:push`; `db:generate`/`db:migrate` are real commands again for a deploy. **On a database that was built with `db:push`, mark the baseline as applied rather than running it** — the tables are already there.
 
 CI (`.github/workflows/ci.yml`) runs lint → type-check → vitest on push to `main`/`feature/*` and on PRs.
 
@@ -114,28 +114,25 @@ Both payment paths create a `pending` order plus a `pending` `payments` row **fi
 - **COD** → redirect to `/checkout/success?order_id=…`
 - **Stripe** → hosted Checkout Session; session id stored in `payments.transactionId`; `/api/webhook/stripe` verifies the signature, sets order `paid` + payment `completed`, sends the confirmation email, clears the cart.
 
-Order numbers are `VLK-YYYYMMDD-XXXXXX`, generated in `DrizzleOrderRepository.create` inside a transaction that writes order + items + payment together.
+Order numbers are `VLK-YYYYMMDD-XXXXXX`, generated in `DrizzleOrderRepository.create` inside a transaction that writes order + items + payment together — and that also decrements variant stock, logs a `sale` row in `inventory_logs`, and records coupon usage, so an order never commits without its side effects.
+
+Some of `OrderEntity` is resolved by the repository rather than carried on the row: `orderNumber` (assigned at insert, null on the entity being written), `shippingAddress`/`billingAddress` (joined `OrderAddress` values alongside the raw ids), and `customer` (there is no `orders → user` relation, so `loadCustomers()` does one batched `inArray` query per call — never one per row). All are null on write and populated on read.
+
+Returns are **partial and derived**: `order_items.refundedQuantity` is the only stored fact, and `refundedAmount()` / `getRefundedItems()` compute from it, scaled by `paidFraction()` so a coupon order refunds what the customer actually paid. Nothing caches a refund total that could drift.
 
 Status changes go through the `OrderStatus` value object's transition table — the repository rejects invalid transitions, so a new status must be added to the DB enum, the entity's `OrderStatus` union, the value object's `transitions` map, and the admin dropdown together.
 
 ## Known gaps
 
-Verified against the code. Read this before touching the relevant area. **`docs/ISSUES.md` has the full catalogue** — exact file:line locations, root cause, and a concrete fix for each, plus a suggested order of work. The summary below is the index.
+Verified against the code. Read this before touching the relevant area. **`docs/ISSUES.md` has the full catalogue** — exact file:line locations, root cause, and a concrete fix for each, plus a suggested order of work and a `Resolved` section recording what the P0 fixes actually did and what stays easy to break again. The summary below is the index.
 
 ### Data-loss / correctness bugs
 
-- **Editing a product wipes its detail fields.** `UpdateProductUseCase` builds a fresh `ProductEntity` with only 13 positional args, so `gender`, `material`, `careInstructions`, `metaTitle`, `metaDescription` default to `null` — and `DrizzleProductRepository.update()` writes those columns. The edit form and the router's `createProductSchema.partial()` don't carry them either, so they are unreachable and destroyed on every save.
-- **Sale price can't be cleared.** The edit form sends `salePrice ?? undefined`, and the use case treats `undefined` as "keep existing".
 - **The SKU field is a lie.** `DrizzleProductRepository.create()` does `sku: product.slug` (`ProductEntity` has no `sku` at all), so the admin-entered SKU is discarded. Renaming a slug later doesn't update the sku, so the two drift apart.
-- **Admin order detail shows a UUID instead of an address.** `mapToEntity` maps `shippingAddressId`/`billingAddressId` straight into the entity's `shippingAddress`/`billingAddress` strings, and `AddressesCard` renders them raw.
-- **Store/Appearance settings can't save with blank fields.** Both tabs POST their whole form state including `""`, and `updateSiteSettingsSchema` validates those fields with `.url()` / `.email()`, which reject empty strings.
-- **Order status dropdown is broken.** `UpdateStatusCard` offers `confirmed`, which is in neither the DB enum nor the value object — selecting it throws. `paid` is missing from the list.
+- **Stock can still be written without an audit row.** `admin.variants.update` sets `stockQuantity` directly, while `admin.inventory.adjustStock` goes through `AdjustStockUseCase` and logs. Purchases, cancellations and refunds all log correctly; this one admin path does not.
 
 ### Features that exist but do nothing
 
-- **Coupons are cosmetic.** Validated and displayed, but `CreateOrderUseCase` never receives the coupon: orders always store `discountAmount: "0"`, `coupon_usages` is never written, Stripe charges undiscounted line items.
-- **Purchases don't decrement stock.** `inventory_logs` has a `sale` change type that is never written. Only manual admin adjustments log — and `admin.variants.update` can change `stockQuantity` directly, bypassing the log entirely, while `admin.inventory.adjustStock` does log.
-- **Cart ignores variants.** `variantId` is hardcoded `null` on insert, so the selected size/color is lost and `maxStock` resolves to 0.
 - **Notifications are read-only.** Both tables have full read/mark/delete APIs and UI bells, but nothing anywhere creates a notification.
 - **Featured items are write-only.** The admin Featured tab writes `featured_items`, but the storefront ignores it: `ServerFeaturedProducts` uses the `products.isFeatured` boolean and `ServerFeaturedCategories` just takes the first 3 active categories. The tab's "Add Product" button has no handler, and the "drag to reorder" tip is aspirational.
 - **CMS version history has no UI.** `content_sections_history`, the repository methods, and `revertToVersion` all work; nothing calls them.
@@ -146,7 +143,7 @@ Verified against the code. Read this before touching the relevant area. **`docs/
 ### Dead code
 
 - Value objects written but never used anywhere: `Money`, `Email`, `PasswordValueObject` (enforces strong-password rules the signup form doesn't apply — it only checks length ≥ 8), `ProductSKU`, `AddressValueObject`. Only `PhoneValueObject`, `CategorySlug`, and `OrderStatus` are wired in.
-- Unused components: `ProductSidebar` and `AdditionalDetailsSection` (leftover mockups with dead buttons and unwired SEO/material inputs — the origin of the missing product fields), `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout`.
+- Unused components: `ProductSidebar` (a mockup with dead buttons), `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout`. Its old twin `AdditionalDetailsSection` was salvaged and is now imported by both product forms.
 - `src/components/account/AddressList.tsx` and `AddressFormDialog.tsx` are byte-identical duplicates of the versions in `account/addresses/`; only the nested ones are imported.
 - `DrizzleProductRepository.search()` does a proper SQL `ILIKE` query — and is never called. `public.products.search` loads all products and filters in JS instead.
 - Committed build artifacts: `build_output.log`, `build_output3.log`, `type_output.log`, `tmp/tsc_errors.txt`.

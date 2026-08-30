@@ -656,25 +656,25 @@ A return does not change the order's status, so **Admin → Orders** used to giv
 no sign one had happened — a partly returned order looked identical to an
 untouched one. The list now carries the return state itself.
 
-- [ ] Open **Admin → Orders**. There is a new **Returned** column between Total
+- ✅ Open **Admin → Orders**. There is a new **Returned** column between Total
       and Payment. Orders with nothing returned show an em dash.
-- [ ] Find the order you partly returned above. **Expected:** a **Partial**
+- ✅ Find the order you partly returned above. **Expected:** a **Partial**
       badge (amber), the refunded amount as **-$X**, and **`n` of `m` units**.
-- [ ] **Expected:** its **Total** cell now shows the order total struck through
+- ✅ **Expected:** its **Total** cell now shows the order total struck through
       with the **net** figure underneath — what the store actually kept.
-- [ ] Fully return an order. **Expected:** the badge turns to **Full** (slate),
+- ✅ Fully return an order. **Expected:** the badge turns to **Full** (slate),
       units read `m of m`, and the net figure drops to $0.00.
-- [ ] The amounts must match the order's Payment card exactly, discount and all.
+- ✅ The amounts must match the order's Payment card exactly, discount and all.
       On a coupon order the refund is scaled by what the customer really paid,
       so **-$X here should equal -$X there** — not the list price of the goods.
-- [ ] Click the new **Has returns** filter in the toolbar. **Expected:** only
+- ✅ Click the new **Has returns** filter in the toolbar. **Expected:** only
       orders with at least one unit back, whatever their status — a partly
       returned _delivered_ order and a fully returned one both qualify.
-- [ ] **Expected:** it composes with the other filters, "Showing n of N"
+- ✅ **Expected:** it composes with the other filters, "Showing n of N"
       reflects the filtered count, and **Clear** resets it along with the rest.
 - [ ] It is independent of **Refundable**: an order can be both (partly
       returned, money still recoverable) or neither.
-- [ ] Hit **Export**. **Expected:** the CSV gained _Returned Units_, _Refunded
+- ✅ Hit **Export**. **Expected:** the CSV gained _Returned Units_, _Refunded
       Amount_, _Net Total_ and _Return State_ (`None` / `Partly returned` /
       `Fully returned`) columns, matching what the rows show.
 
@@ -686,21 +686,21 @@ generated on insert and never read back onto the entity, and there is no
 `orders → user` relation, so nobody had joined the name. Both are now resolved
 by the repository — the customer in one batched query per page, not one per row.
 
-- [ ] **Admin → Orders**. **Expected: Order #** reads `VLK-20260830-XXXXXX`,
+- ✅ **Admin → Orders**. **Expected: Order #** reads `VLK-20260830-XXXXXX`,
       the same string the customer saw on the checkout success page and in
       their confirmation email.
-- [ ] **Expected: Customer** shows the account's **name** with its **email**
+- ✅ **Expected: Customer** shows the account's **name** with its **email**
       beneath, not a UUID fragment.
-- [ ] Search a **full or partial order number**. **Expected:** the order.
+- ✅ Search a **full or partial order number**. **Expected:** the order.
       Search a customer's **name**, then their **email**. **Expected:** their
       orders in both cases. (The order id still matches too.)
-- [ ] Open any order. **Expected:** the **Order Summary** card is headed with
+- ✅ Open any order. **Expected:** the **Order Summary** card is headed with
       the real order number and carries a new **Customer** row (name + email).
-- [ ] Cross-check one order against **Drizzle Studio**: its `orders.order_number`
+- ✅ Cross-check one order against **Drizzle Studio**: its `orders.order_number`
       and the `user` row behind `orders.user_id` must match what is displayed.
-- [ ] Export. **Expected:** _Order Number_ and _Email_ columns, with _Order ID_
+- ✅ Export. **Expected:** _Order Number_ and _Email_ columns, with _Order ID_
       kept alongside for support lookups.
-- [ ] An order whose account was deleted (if you have one) reads **Deleted
+- ✅ An order whose account was deleted (if you have one) reads **Deleted
       account** rather than crashing or showing a blank cell.
 
 ### Still bookkeeping only
@@ -755,31 +755,31 @@ changes — nothing to push.
 - [ ] **Deadlocks.** Variant rows are now locked in the same order on every
       path that touches them (creation, cancellation, returns). Nothing to see;
       it just stops two concurrent operations wedging each other.
-- [ ] **The Refund button is gated on refundability, not on a status
+- ✅ **The Refund button is gated on refundability, not on a status
       transition.** A `shipped` order can now take a partial return — it
       previously could not, because a partial return doesn't change status at
       all. The button reads **Record a return**, or **Record another return**
       once something has already come back.
-- [ ] **The countdown now actually expires.** Open an order inside its payment
+- ✅ **The countdown now actually expires.** Open an order inside its payment
       window and let the timer run to zero without touching anything.
       **Expected:** the notice changes and **Cancel Order** becomes enabled by
       itself. _It used to stay disabled until you reloaded, because the flag
       came from the server._
-- [ ] **Coupon dates no longer shift by time zone.** Set an expiry, save,
+- ✅ **Coupon dates no longer shift by time zone.** Set an expiry, save,
       reopen. **Expected:** the same date, regardless of where the admin is.
       Dates are anchored to UTC on both write and read now.
 
 ### Visibility and cost
 
-- [ ] **Customers see the payment window.** Start a card checkout, abandon it,
+- ✅ **Customers see the payment window.** Start a card checkout, abandon it,
       go to **Account → Orders**. **Expected:** the order shows "Waiting for
       payment — 28:14 left before this order is released", ticking. A refunded
       order shows how much came back. `paid` and `refunded` also have proper
       status colours now, instead of falling through to grey.
-- [ ] **Order lines show what came back.** After a partial return, Admin →
+- ✅ **Order lines show what came back.** After a partial return, Admin →
       order → Items. **Expected:** "1 of 3 returned · 2 still with the
       customer". _It used to read "Qty: 3" with no sign anything had happened._
-- [ ] **The sweep is off the shopper's path.** It runs unawaited from the cart
+- [✅] **The sweep is off the shopper's path.** It runs unawaited from the cart
       stock check, so nobody waits on Stripe lookups for other people's orders,
       and the batch is capped at 20. Order lists still await it, since a stale
       row there is the thing being looked at. **Expected:** no change you can

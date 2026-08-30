@@ -4,206 +4,103 @@ A catalogue of defects and gaps found by reading the codebase in full. Unlike th
 
 Each entry gives the location, what actually happens, why, and a concrete fix.
 
-Verified baseline when this was written: `pnpm type-check` clean, `pnpm lint` 0 errors / 7 warnings, 33/33 tests pass. Every issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
+Verified baseline, re-checked 2026-08-30 on `main`: `pnpm type-check` clean, `pnpm lint` 0 errors / 7 warnings, 67/67 tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
 
 **Contents**
 
-- [P0 — Data loss and broken core flows](#p0--data-loss-and-broken-core-flows) (7)
-- [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (13)
+- [Resolved](#resolved) (9)
+- [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (11)
 - [P2 — Performance](#p2--performance) (5)
 - [P3 — Cleanup](#p3--cleanup) (12)
 - [Suggested order of work](#suggested-order-of-work)
 
 ---
 
-## P0 — Data loss and broken core flows
+## Resolved
 
-### 1. Editing a product silently wipes its detail fields
+Every P0 is fixed and verified against the code on `main`. They keep their original numbers so older references still resolve, and they stay in this file because each one names a trap the architecture makes easy to fall into again — the **Still true** notes are the part worth re-reading before working nearby.
 
-**Where** `src/application/products/use-cases/update-product.use-case.ts:50-66`
+### 1. Editing a product silently wiped its detail fields ✅
 
-**What happens** Every save from the admin product edit page sets `gender`, `material`, `careInstructions`, `metaTitle`, and `metaDescription` to `NULL`. The data is gone with no warning. On the storefront this empties the "Details" list on the product page (`transformProductForDetail` builds it from `careInstructions`/`material`) and removes the product from `/collections/men` and `/collections/women`, which filter on `gender`.
+`UpdateProductUseCase` built a fresh `ProductEntity` from 13 positional arguments, so `gender`, `material`, `careInstructions`, `metaTitle` and `metaDescription` were written back as `NULL` on every save.
 
-**Why** `ProductEntity`'s constructor takes 18 parameters; the last five (`product.entity.ts:27-31`) default to `null`. `UpdateProductUseCase` passes only 13, ending at `new Date()`. `DrizzleProductRepository.update()` (`product.repository.ts:157-180`) then writes all five columns from that entity. The fields are also absent from `createProductSchema` (used by the router as `.partial()`) and from `ProductEditForm`, so they can never be set back through the UI.
+**Fixed** in `a75d98e`. The use case now passes all 18 and distinguishes the two meanings of "absent" — `input.data.x !== undefined ? input.data.x : existing.x` (`update-product.use-case.ts:81-90`) — so `undefined` keeps the stored value and `null` clears it. The five fields were added to the router schema and to `ProductEditForm`, so they are settable again.
 
-**Fix**
-
-1. Preserve them in the use case:
-
-   ```ts
-   const updatedProduct = new ProductEntity(
-     // ...existing 13 args...
-     existingProduct.createdAt,
-     new Date(),
-     input.data.gender ?? existingProduct.gender,
-     input.data.material ?? existingProduct.material,
-     input.data.careInstructions ?? existingProduct.careInstructions,
-     input.data.metaTitle ?? existingProduct.metaTitle,
-     input.data.metaDescription ?? existingProduct.metaDescription
-   );
-   ```
-
-2. Add the five fields to `createProductSchema` (`src/components/admin/products/create/schema.ts`) and to the router's update input (`src/server/routers/admin/products.ts`).
-3. Wire them into `ProductEditForm`. `ProductSidebar` and `AdditionalDetailsSection` (both unused — see #30) already contain exactly these inputs as unwired mockups; salvage or delete them.
-
-**Prevent the recurrence** A positional 18-arg constructor makes this class of bug invisible to the type checker. Either give `ProductEntity` an object-shaped constructor, or have the repository accept a partial patch (`Partial<NewProduct>`) instead of a whole entity, so unspecified columns are simply not written.
+**Still true** The 18-argument positional constructor is what hid this from the type checker. Nothing stops the next field from being dropped the same way; an object-shaped constructor or a partial patch at the repository boundary would.
 
 ---
 
-### 2. The admin order status dropdown offers an invalid status and omits a valid one
+### 2. The admin order status dropdown offered an invalid status and omitted a valid one ✅
 
-**Where** `src/components/admin/orders/detail/UpdateStatusCard.tsx:19-27` and `src/server/routers/admin/orders.ts:26-35`
+The dropdown listed `confirmed`, which exists in neither the Postgres enum nor `OrderStatus`, and omitted `paid`, which the Stripe webhook sets.
 
-**What happens** The dropdown lists `confirmed`, which is in neither the `order_status` Postgres enum nor `OrderStatus`. Selecting it throws `Invalid order status: confirmed` from `OrderStatus.create()`. Meanwhile `paid` — a real status the Stripe webhook sets — is missing from the list, so an admin can never move an order into it manually.
-
-**Why** The dropdown and the router's Zod enum were written from a different status vocabulary than the domain. `OrdersTable` (`src/components/admin/orders/list/OrdersTable.tsx:18-25`) already has the correct seven, so the three lists have drifted apart.
-
-**Fix** Export the canonical list once and consume it everywhere:
-
-```ts
-// src/domain/orders/value-objects/order-status.value-object.ts
-export const ORDER_STATUSES = [
-  "pending",
-  "processing",
-  "paid",
-  "shipped",
-  "delivered",
-  "cancelled",
-  "refunded",
-] as const satisfies readonly OrderStatusValue[];
-```
-
-Then use `z.enum(ORDER_STATUSES)` in the router and `ORDER_STATUSES` in `UpdateStatusCard` and `OrdersTable`.
-
-**Worth doing at the same time** `OrderStatus.canTransitionTo()` already encodes the legal state machine. Expose it so the dropdown only renders reachable statuses, instead of letting an admin pick one that throws (e.g. `pending → delivered`).
+**Fixed** in `c62da0b`. `ORDER_STATUSES` is exported from `order-status.value-object.ts:23` and is now the only list: the router validates with `z.enum(ORDER_STATUSES)`, and `UpdateStatusCard`, `OrdersListHeader` and `OrderDetail` all render from it. Four consumers, one source.
 
 ---
 
-### 3. The admin order detail shows a UUID where the shipping address should be
+### 3. The admin order detail showed a UUID where the shipping address should be ✅
 
-**Where** `src/infrastructure/database/repositories/orders/order.repository.ts:332-333`, rendered by `src/components/admin/orders/detail/AddressesCard.tsx:17,31`
+`mapToEntity` put the address id straight back into the entity's address field, and `AddressesCard` rendered it raw.
 
-**What happens** The Shipping Address and Billing Address cards on `/admin/orders/[id]` display a raw address UUID. There is no way to see where an order should actually ship, which blocks fulfilment.
-
-**Why** `OrderEntity.shippingAddress` is typed `string` and used for two different things: on write, `create()` (`order.repository.ts:92-93`) stores it into the `shipping_address_id` column; on read, `mapToEntity` puts the id straight back into the same field. Nothing ever resolves the id to an address row.
-
-**Fix** The `orders → addresses` relations already exist in `src/db/relations.ts:120-127`, so the join is one line:
-
-```ts
-const order = await db.query.orders.findFirst({
-  where: eq(orders.id, orderId),
-  with: { items: true, shippingAddress: true, billingAddress: true },
-});
-```
-
-Then either format the joined row into a multi-line string (`AddressesCard` already uses `whitespace-pre-line`, so this works with no UI change), or — better — split the entity's single field into `shippingAddressId: string` plus `shippingAddress: Address | null` and update `GetOrderOutput` and the card to render the structured value. The second option removes the id/text overloading that caused the bug.
+**Fixed** by taking the second of the two options originally suggested — the structured one. The repository joins `shippingAddress`/`billingAddress` (`order.repository.ts:110,145,803`) and the entity now carries `shippingAddressId` **plus** a resolved `OrderAddress`, so the id/text overloading that caused the bug is gone rather than papered over.
 
 ---
 
-### 4. Store and Appearance settings refuse to save when any field is blank
+### 4. Store and Appearance settings refused to save when any field was blank ✅
 
-**Where** `src/components/admin/settings/StoreSettings.tsx:91`, `src/components/admin/settings/AppearanceSettings.tsx:80`, schema at `src/server/routers/admin/settings/site-settings.ts:12-19`
+Both tabs POSTed `""` into fields validated with `.url()` / `.email()`.
 
-**What happens** Both settings tabs fail with a Zod validation error unless every URL and email field is filled with a valid value. A fresh install cannot save the Store tab at all, because `contactEmail` starts empty.
-
-**Why** Both components hold their form state as strings initialised to `""` and POST the whole object with `updateSettings.mutateAsync(form)`. The schema validates those fields with `.url()` / `.email()`, which reject `""`. The fields are `.nullable().optional()`, so `null` or omission would be accepted — but the form never sends either.
-
-**Fix** Normalise empty strings to `null` at the schema boundary so it holds for every caller:
-
-```ts
-const emptyToNull = <T extends z.ZodTypeAny>(schema: T) =>
-  z.preprocess((v) => (v === "" ? null : v), schema.nullable().optional());
-
-export const updateSiteSettingsSchema = z.object({
-  logoUrl: emptyToNull(z.string().url()),
-  contactEmail: emptyToNull(z.string().email()),
-  // ...same for faviconUrl and the four social URLs
-});
-```
+**Fixed** in `c9f214a` at the schema boundary, not in the two forms: an `emptyToNull` preprocessor (`site-settings.ts:18`) wraps every optional string field, so the rule holds for any future caller too.
 
 ---
 
-### 5. `pnpm db:migrate` would build the wrong database
+### 5. `pnpm db:migrate` would have built the wrong database ✅
 
-**Where** `drizzle/0000_*.sql`, `0001_*.sql`, `0002_*.sql`, `drizzle/meta/_journal.json`
+The chain dated from before the app schema existed: a uuid-keyed `users` table, a `password_reset_tokens` table, none of the ~20 business tables, and an `0002` that re-created what `0000` had already made.
 
-**What happens** The migration chain does not describe this application. It creates a uuid-keyed `users` table and a `password_reset_tokens` table, neither of which exists in `src/db/schema.ts` any more, and contains **none** of the ~20 business tables (products, orders, cart, reviews, coupons, CMS, newsletter). `0002` also re-creates the auth tables `0000` already created, so the chain cannot run cleanly on an empty database regardless.
+**Fixed** in `a75d98e` by regenerating rather than deleting. `drizzle/` is now a single baseline — `0000_long_ultragirl.sql`, 27 tables, one journal entry — matching `src/db/schema.ts`. `db:generate` and `db:migrate` are real commands again.
 
-**Why** The migrations date from mid-December 2025, before the app schema was written. Development moved to `pnpm db:push` and the migration folder was never regenerated.
-
-**Fix** Pick one and make it true:
-
-- **Staying on push (simplest, matches the README):** delete `drizzle/` and drop `db:generate`/`db:migrate` from `package.json` so nobody runs them by accident.
-- **Adopting migrations (needed before a real deploy):** delete `drizzle/`, run `pnpm db:generate` against the current schema to produce a single baseline migration, and — if a populated database already exists — mark that baseline as applied rather than running it.
+**Still true** An already-pushed database has those tables without the journal row. Mark the baseline as applied there; do not run it.
 
 ---
 
-### 6. Buying something never reduces stock
+### 6. Buying something never reduced stock ✅
 
-**Where** `src/application/checkout/use-cases/create-order.use-case.ts`, `src/app/api/webhook/stripe/route.ts`
+Nothing decremented `product_variants.stockQuantity`, and the `sale` value in `inventory_change_type` was defined and never written.
 
-**What happens** Stock is only ever changed by an admin editing it. A variant with 1 unit can be ordered any number of times, and `inventory_logs` never records a sale, so the movement history is incomplete.
-
-**Why** No code path decrements `product_variants.stockQuantity` on order creation or payment. The `sale` value in `inventory_change_type` is defined and never written.
-
-**Fix** Decrement inside the existing order-creation transaction in `DrizzleOrderRepository.create()`, so stock and order rows commit together:
-
-```ts
-await tx
-  .update(productVariants)
-  .set({
-    stockQuantity: sql`GREATEST(0, ${productVariants.stockQuantity} - ${item.quantity})`,
-  })
-  .where(eq(productVariants.id, item.variantId));
-
-await tx.insert(inventoryLogs).values({
-  variantId: item.variantId,
-  changeType: "sale",
-  quantityChange: -item.quantity,
-  previousQuantity: before,
-  newQuantity: before - item.quantity,
-  reason: `Order ${orderNumber}`,
-});
-```
-
-Decide deliberately whether COD orders reserve stock at creation (recommended) or only on delivery, and restore stock when an order moves to `cancelled` or `refunded`.
-
-> **Blocked by #8** — order items currently carry no `variantId`, so there is nothing to decrement. Fix that first.
+**Fixed** inside the existing order transaction (`order.repository.ts:248-280`), so stock, the `sale` log row and the order commit together or not at all. Cancellation and refund restock through the same path. Variants are sorted by id before locking, so two concurrent orders touching the same pair cannot deadlock.
 
 ---
 
-### 7. Coupons are validated, displayed, and then thrown away
+### 7. Coupons were validated, displayed, and then thrown away ✅
 
-**Where** `src/components/checkout/CheckoutForm.tsx`, `src/application/checkout/use-cases/create-order.use-case.ts`, `src/infrastructure/database/repositories/orders/order.repository.ts:89`
+The coupon lived only in React state; orders always stored `discountAmount: "0"` and Stripe charged full price.
 
-**What happens** A customer applies a coupon, sees the discount in the summary, and is charged the full price. `orders.discountAmount` is always `"0"`, `coupon_usages` is never written, and `coupons.usageCount` never increments — so per-user and global usage limits never take effect either.
+**Fixed** end to end. `couponCode` is an input to both checkout paths, `CreateOrderUseCase` **re-runs validation server-side** and computes the discount itself (a client-sent amount is never trusted), and the discount, the `coupon_usages` row and the `usageCount` increment are written in the order transaction — and reversed on cancel or refund. The Stripe session carries the discount too.
 
-**Why** `validateCoupon` is a standalone mutation whose result lives only in React state. Neither checkout mutation accepts a coupon, and `CreateOrderUseCase` has no coupon parameter.
+---
 
-**Fix**
+### 8. The cart discarded the selected size and colour ✅
 
-1. Add `couponCode?: string` to the inputs of `checkout.createSession` and `checkout.createCodOrder`.
-2. In `CreateOrderUseCase`, **re-run `ValidateCouponUseCase` server-side** and compute the discount from the result. Never accept a discount amount from the client.
-3. Persist `discountAmount`, insert a `coupon_usages` row, and increment `coupons.usageCount` inside the same transaction as the order.
-4. Apply the discount to the Stripe session — either via a Stripe coupon on the session, or by reducing line-item amounts — otherwise the customer is still charged full price.
+`variantId` was hardcoded `null` on insert, so the chosen variant never reached the database, `maxStock` resolved to 0, and adding size M then size L produced one row of quantity 2.
+
+**Fixed** by threading `variantId` through the whole path: the cart insert (`cart.repository.ts:200`), `findByUserAndProduct` matching on `(userId, productId, variantId)`, `maxStock` read from the joined variant, and `order_items.variantId` (`order.repository.ts:200`). This is what unblocked #6.
+
+---
+
+### 10. A sale price could never be removed ✅
+
+The edit form sent `salePrice ?? undefined`, and `undefined` correctly means "keep existing" in a partial update.
+
+**Fixed** on both sides: the form sends `null` (`ProductEditForm.tsx:128`), and the router's update schema widened to `z.number().positive().nullable().optional()` (`products.ts:81`) so `null` survives validation and reaches the use case as "clear it".
+
+---
+
+Work done in the same period that this file never catalogued — partial returns with derived refund totals, the payment expiry window and stale-checkout sweep, coupon-scaled refunds, and order numbers and customer names in the admin — is documented in `docs/P0-TEST-PLAN.md` instead.
 
 ---
 
 ## P1 — Features that are broken or missing
-
-### 8. The cart discards the selected size and colour
-
-**Where** `src/infrastructure/database/repositories/cart/cart.repository.ts:137`
-
-**What happens** `variantId` is hardcoded `null` on insert, so the size and colour the customer picked (on the product page or via the Quick Add wheels) never reach the database. Consequences cascade:
-
-- `maxStock` resolves from the null variant to `0` (`cart.repository.ts:229`), so the stock ceiling in `UpdateCartItemUseCase` is meaningless and `canIncrease()` is always false.
-- `order_items.variantId` is likewise `null` (`order.repository.ts:103`), so orders don't record which variant was bought — blocking #6 and leaving fulfilment guessing.
-- `addItem` merges by `productId` alone, so adding size M and then size L produces one row of quantity 2.
-
-**Fix** Thread `variantId` through the whole path: `cart.add` input → `AddToCartUseCase` → `CartItemEntity` → the insert; make `findByUserAndProduct` match on `(userId, productId, variantId)`; read `maxStock` from the joined variant; and carry `variantId` into `orderItems` in `DrizzleOrderRepository.create`. On the client, `useCart().addItem` and both call sites (`ProductDetail`, `QuickAddSliderBar`) need to pass the resolved variant.
-
----
 
 ### 9. The SKU an admin types is discarded
 
@@ -214,18 +111,6 @@ Decide deliberately whether COD orders reserve stock at creation (recommended) o
 **Why** `ProductEntity` has no `sku` property at all, so the value has nowhere to travel between the use case and the repository. The uniqueness check also runs twice on different values — `CreateProductUseCase` checks the user's SKU, the repository re-checks the slug — meaning a slug collision reports a misleading `DuplicateSKUException` naming the slug.
 
 **Fix** Add `sku` to `ProductEntity` and to `CreateProductUseCase`'s entity construction, write `sku: product.sku` in the repository, and delete the duplicate check at line 125. Also surface SKU as an editable field on the edit form (it currently cannot be changed at all).
-
----
-
-### 10. A sale price can never be removed
-
-**Where** `src/components/admin/products/ProductEditForm.tsx:111`
-
-**What happens** Clearing the sale price field and saving leaves the old sale price in place, so a product stays discounted forever.
-
-**Why** The form sends `salePrice: values.salePrice ?? undefined`, and `UpdateProductUseCase:56-58` treats `undefined` as "keep existing" — correctly, since that is how partial updates work. `null` is the value that means "clear", and the form converts it away.
-
-**Fix** Send `null` rather than `undefined`, and widen the router's schema field to `z.number().positive().nullable().optional()`.
 
 ---
 
@@ -307,7 +192,7 @@ The second is less work and less machinery; the first is what the schema and adm
 
 **Why** The handler builds the email from the Stripe session rather than from the order it just updated — even though `metadata.orderId` is right there.
 
-**Fix** Load the order by `metadata.orderId` (with items and shipping address) and send the real `orderNumber`, real line items, and formatted address. Move the send into a small `SendOrderConfirmation` helper and call it from the COD path too, so both payment methods behave the same.
+**Fix** Load the order by `metadata.orderId` and send the real `orderNumber`, real line items, and formatted address. Both halves are already on the entity — `orderNumber` is read back on every load and `shippingAddress` is a resolved `OrderAddress`, not an id — so this is now a matter of using them. Move the send into a small `SendOrderConfirmation` helper and call it from the COD path too, so both payment methods behave the same.
 
 ---
 
@@ -408,7 +293,7 @@ Either adopt them or delete them. Two are worth adopting:
 
 ### 27. Dead components
 
-- `ProductSidebar` and `AdditionalDetailsSection` — mockups with dead buttons and unwired inputs for exactly the fields lost in issue #1.
+- `ProductSidebar` — a mockup with dead buttons. `AdditionalDetailsSection` was the other half of this pair and has since been salvaged: it is imported by both `CreateProductForm` and `ProductEditForm`, and its inputs are the fields that #1 used to destroy.
 - `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout` — no importers.
 - `src/components/account/AddressList.tsx` and `AddressFormDialog.tsx` are **byte-identical** duplicates of the copies in `account/addresses/`; only the nested pair is imported. Delete the flat pair.
 
@@ -469,19 +354,23 @@ Add a billing-address choice at checkout, or drop the distinction from the schem
 - `NEXT_PUBLIC_APP_NAME` is read by `ResendEmailService` but appears in neither `.env` nor `.env.example`; it silently falls back to "Valkyrie". Add it to `.env.example`.
 - `zod` is imported as both `"zod"` and `"zod/v4"` across the codebase. Pick one.
 - `DrizzleOrderRepository.update()` throws "not implemented" — fine, but it satisfies an interface method that therefore lies about the contract. Remove it from `OrderRepositoryInterface`.
-- The contact form is a placeholder (`ContactFormPlaceholder.tsx`) and the admin orders list has a filter button that only toasts "coming soon" (`OrdersListHeader.tsx:30`).
+- The contact form is a placeholder (`ContactFormPlaceholder.tsx`). The admin orders list's "coming soon" filter button is gone — the toolbar's buttons all do something now.
 - `src/domain/customers/entities/customer.entity.ts` and the phone-keyed `customers` table are written by the signup hook and read by nothing; `GetOrCreateCustomerUseCase` has no callers. Decide whether the phone-identity model is still wanted before building on it.
 
 ---
 
 ## Suggested order of work
 
-**First — stop the bleeding.** #1 (product update wipes fields) and #5 (migration folder) are the two that can destroy data. Both are small.
+The whole P0 cluster is done — see [Resolved](#resolved). Everything left is P1 or below, and nothing left destroys data.
 
-**Then — make the order pipeline honest.** #8 (cart variants) unblocks #6 (stock), and #7 (coupons), #3 (addresses), #16 (emails), and #2 (status dropdown) together turn checkout from a demo into something that could take a real order. This is the largest cluster and the one worth the most.
+**First — finish the order pipeline.** #16 (confirmation email) is the last dishonest thing in checkout and it just got cheap: the real order number and the resolved shipping address are both on the entity already. #9 (SKU) and #15 (stock audit bypass) close the two remaining places where a write lands somewhere other than where the admin thinks it did.
 
-**Then — close the admin gaps.** #13 (categories), #4 (settings saving), #15 (stock audit), #12 (decide on featured), #11 (notifications).
+**Then — the missing pages.** #14 (`/forgot-password`) is two pages over a backend that is already written, and it is linked from two live buttons, so every visitor who clicks either gets a 404. #13 (categories) is the largest admin gap.
 
-**Then — performance,** #21-25, which is mostly mechanical once the repositories accept offsets.
+**Then — the half-features.** #11 (notifications), #19 (verified reviews), #18 (wishlist stock), #20 (transactional product create). #12 is a decision before it is a fix: adopt `featured_items` or delete it in favour of the `isFeatured` boolean, but stop maintaining both.
+
+**#17 (currency) when there is appetite.** It is the largest single change in this file — roughly 40 hardcoded `$` sites — and it stays cosmetic until the store charges in more than one currency.
+
+**Then — performance,** #21-25, mostly mechanical once the repositories accept limit and offset. Do #21 first: the admin orders list still loads every order and slices in the use case, and the customer join layered on top of it inherits that shape.
 
 **Cleanup last,** except #27's duplicate address components and #31's build artifacts, which take a minute each and are worth doing whenever you are next in those directories.
