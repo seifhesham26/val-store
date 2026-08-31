@@ -69,6 +69,13 @@ export function VariantsSection({
     onError: (error) => toast.error(error.message),
   });
 
+  // Stock is a separate mutation from the rest of the variant: it writes an
+  // inventory_logs row, so it has to say who changed it and why. Saving a row
+  // whose stock is untouched does not call this at all.
+  const updateStockMutation = trpc.admin.variants.updateStock.useMutation({
+    onError: (error) => toast.error(error.message),
+  });
+
   const deleteMutation = trpc.admin.variants.delete.useMutation({
     onSuccess: () => {
       toast.success("Variant deleted");
@@ -165,13 +172,25 @@ export function VariantsSection({
         priceAdjustment: variant.priceAdjustment,
       });
     } else {
+      const stored = existingVariants?.find((v) => v.id === variant.id);
+      const stockChanged =
+        !!stored && stored.stockQuantity !== variant.stockQuantity;
+
+      if (stockChanged) {
+        await updateStockMutation.mutateAsync({
+          id: variant.id,
+          quantity: variant.stockQuantity,
+          changeType: "adjustment",
+          reason: "Edited on the product page",
+        });
+      }
+
       await updateMutation.mutateAsync({
         id: variant.id,
         data: {
           sku: variant.sku,
           size: variant.size || null,
           color: variant.color || null,
-          stockQuantity: variant.stockQuantity,
           priceAdjustment: variant.priceAdjustment,
         },
       });

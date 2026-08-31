@@ -7,6 +7,28 @@
 
 import { ProductEntity } from "@/domain/products/entities/product.entity";
 
+/**
+ * Images and variants supplied at creation time.
+ *
+ * They belong to the same write as the product: a product that exists with none
+ * of its images, because a second request failed, is not a product anyone asked
+ * for. Passing them here lets the repository commit all three together.
+ */
+export interface NewProductRelations {
+  images?: {
+    imageUrl: string;
+    altText?: string | null;
+    isPrimary?: boolean;
+  }[];
+  variants?: {
+    sku: string;
+    size?: string | null;
+    color?: string | null;
+    stockQuantity: number;
+    priceAdjustment: number;
+  }[];
+}
+
 export interface ProductFilters {
   isActive?: boolean;
   isFeatured?: boolean;
@@ -32,6 +54,14 @@ export interface ProductRepositoryInterface {
   findBySlug(slug: string): Promise<ProductEntity | null>;
 
   /**
+   * Find several products by id, in one query.
+   *
+   * Order is not guaranteed — a caller that curates an order (the homepage's
+   * featured list) must re-apply it itself.
+   */
+  findByIds(productIds: string[]): Promise<ProductEntity[]>;
+
+  /**
    * Find all products with optional filters
    */
   findAll(filters?: ProductFilters): Promise<ProductEntity[]>;
@@ -54,7 +84,10 @@ export interface ProductRepositoryInterface {
   /**
    * Create a new product
    */
-  create(product: ProductEntity): Promise<ProductEntity>;
+  create(
+    product: ProductEntity,
+    relations?: NewProductRelations
+  ): Promise<ProductEntity>;
 
   /**
    * Update an existing product

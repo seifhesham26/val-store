@@ -41,4 +41,13 @@ export interface InventoryRepositoryInterface {
   getAllVariantsWithStock(): Promise<VariantWithStock[]>;
   updateVariantStock(variantId: string, newStock: number): Promise<void>;
   getVariantStock(variantId: string): Promise<number | null>;
+  /**
+   * Stock and SKU for several variants at once.
+   *
+   * Used by the low-stock notifier, which needs a human-readable SKU to say
+   * what ran low and would otherwise query per variant.
+   */
+  getVariantsStock(
+    variantIds: string[]
+  ): Promise<{ id: string; sku: string; stockQuantity: number }[]>;
 }

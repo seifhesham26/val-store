@@ -4,6 +4,14 @@
  * Product Reviews Component
  *
  * Displays reviews for a product and allows authenticated users to submit reviews.
+ *
+ * Styled with explicit storefront colours rather than theme tokens. `:root`
+ * holds the *light* palette and the storefront overrides only `<body>`, so the
+ * tokens this used to reach for resolved the wrong way round on a black page:
+ * `bg-muted` skeletons and panels came out near-white, a bare `border` drew a
+ * light grey line, and — worst of the set — the default Button variant is
+ * `bg-primary text-primary-foreground`, which is near-black on near-white, so
+ * "Write a Review" and "Submit Review" were all but invisible here.
  */
 
 import { useState } from "react";
@@ -16,6 +24,10 @@ import { Label } from "@/components/ui/label";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+
+/** Shared by both inputs so the form matches the rest of the storefront. */
+const FIELD_CLASSES =
+  "border-white/10 bg-white/[0.04] text-white placeholder:text-gray-500";
 
 function StarRating({
   rating,
@@ -36,9 +48,7 @@ function StarRating({
         <Star
           key={star}
           className={`${sizeClasses[size]} ${
-            star <= rating
-              ? "fill-yellow-400 text-yellow-400"
-              : "text-muted-foreground"
+            star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-600"
           }`}
         />
       ))}
@@ -70,7 +80,7 @@ function InteractiveStarRating({
             className={`h-6 w-6 transition-colors ${
               star <= (hoveredRating || rating)
                 ? "fill-yellow-400 text-yellow-400"
-                : "text-muted-foreground hover:text-yellow-300"
+                : "text-gray-600 hover:text-yellow-300"
             }`}
           />
         </button>
@@ -121,9 +131,9 @@ export function ProductReviews({ productId }: { productId: string }) {
 
   if (isLoading) {
     return (
-      <div className="animate-pulse space-y-4">
-        <div className="h-6 w-32 bg-muted rounded" />
-        <div className="h-24 bg-muted rounded" />
+      <div className="space-y-4">
+        <div className="val-skeleton h-6 w-32 rounded" />
+        <div className="val-skeleton h-24 rounded" />
       </div>
     );
   }
@@ -132,13 +142,15 @@ export function ProductReviews({ productId }: { productId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold">Customer Reviews</h2>
+          <h2 className="text-2xl font-semibold text-white">
+            Customer Reviews
+          </h2>
           {count > 0 && (
             <div className="flex items-center gap-2 mt-1">
               <StarRating rating={Math.round(average)} size="md" />
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-gray-400">
                 {average.toFixed(1)} out of 5 ({count} review
                 {count !== 1 ? "s" : ""})
               </span>
@@ -146,7 +158,12 @@ export function ProductReviews({ productId }: { productId: string }) {
           )}
         </div>
         {session?.user && !hasReviewed && !showForm && (
-          <Button onClick={() => setShowForm(true)}>Write a Review</Button>
+          <Button
+            onClick={() => setShowForm(true)}
+            className="shrink-0 bg-val-accent text-black font-medium hover:bg-val-accent/90"
+          >
+            Write a Review
+          </Button>
         )}
       </div>
 
@@ -154,24 +171,29 @@ export function ProductReviews({ productId }: { productId: string }) {
       {showForm && (
         <form
           onSubmit={handleSubmit}
-          className="border rounded-lg p-4 space-y-4 bg-muted/30"
+          className="space-y-4 rounded-lg border border-white/10 bg-zinc-900 p-5"
         >
           <div className="space-y-2">
-            <Label>Your Rating</Label>
+            <Label className="text-white">Your Rating</Label>
             <InteractiveStarRating rating={rating} onChange={setRating} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="title">Title (optional)</Label>
+            <Label htmlFor="title" className="text-white">
+              Title (optional)
+            </Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Sum up your review"
               maxLength={255}
+              className={FIELD_CLASSES}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="comment">Review (optional)</Label>
+            <Label htmlFor="comment" className="text-white">
+              Review (optional)
+            </Label>
             <Textarea
               id="comment"
               value={comment}
@@ -179,16 +201,22 @@ export function ProductReviews({ productId }: { productId: string }) {
               placeholder="Share your thoughts about this product"
               rows={4}
               maxLength={2000}
+              className={FIELD_CLASSES}
             />
           </div>
           <div className="flex gap-2">
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              type="submit"
+              disabled={createMutation.isPending}
+              className="bg-val-accent text-black font-medium hover:bg-val-accent/90"
+            >
               {createMutation.isPending ? "Submitting..." : "Submit Review"}
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => setShowForm(false)}
+              className="border-white/10 bg-transparent text-gray-300 hover:bg-white/10 hover:text-white"
             >
               Cancel
             </Button>
@@ -198,12 +226,12 @@ export function ProductReviews({ productId }: { productId: string }) {
 
       {/* Reviews List */}
       {reviews.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 px-4 border rounded-xl bg-muted/10 text-center space-y-3">
-          <div className="h-14 w-14 rounded-full bg-muted/30 flex items-center justify-center mb-2">
-            <Star className="h-7 w-7 text-muted-foreground stroke-[1.5]" />
+        <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-12 text-center">
+          <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.06]">
+            <Star className="h-7 w-7 text-gray-500 stroke-[1.5]" />
           </div>
-          <h3 className="font-medium text-lg text-white">No reviews yet</h3>
-          <p className="text-muted-foreground text-sm max-w-sm">
+          <h3 className="text-lg font-medium text-white">No reviews yet</h3>
+          <p className="max-w-sm text-sm text-gray-400">
             Be the first to review this product and share your thoughts with
             other customers!
           </p>
@@ -211,33 +239,36 @@ export function ProductReviews({ productId }: { productId: string }) {
       ) : (
         <div className="space-y-4">
           {reviews.map((review) => (
-            <div key={review.id} className="border rounded-lg p-4">
-              <div className="flex items-start justify-between">
-                <div>
+            <div
+              key={review.id}
+              className="rounded-lg border border-white/10 bg-zinc-900 p-5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <StarRating rating={review.rating} size="sm" />
                     {review.isVerifiedPurchase && (
-                      <span className="text-xs text-green-600 font-medium">
+                      <span className="text-xs font-medium text-green-400">
                         Verified Purchase
                       </span>
                     )}
                   </div>
                   {review.title && (
-                    <h3 className="font-medium mt-1">{review.title}</h3>
+                    <h3 className="mt-1 font-medium text-white">
+                      {review.title}
+                    </h3>
                   )}
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="shrink-0 text-xs text-gray-500">
                   {formatDistanceToNow(new Date(review.createdAt), {
                     addSuffix: true,
                   })}
                 </span>
               </div>
               {review.comment && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  {review.comment}
-                </p>
+                <p className="mt-2 text-sm text-gray-300">{review.comment}</p>
               )}
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="mt-2 text-xs text-gray-500">
                 — {review.userName ?? "Anonymous"}
               </p>
             </div>

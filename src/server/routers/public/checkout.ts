@@ -97,7 +97,18 @@ export const checkoutRouter = router({
 
       // One shared path with the webhook — it advances the order, completes the
       // payment row and redeems the coupon, and is safe if both arrive.
-      await container.getOrderRepository().markAsPaid(orderId);
+      const paid = await container.getOrderRepository().markAsPaid(orderId);
+
+      // Whichever of this and the webhook gets there first notifies; the other
+      // sees `transitioned: false` and stays quiet.
+      if (paid.transitioned) {
+        await container.getNotificationService().orderStatusChanged({
+          orderId,
+          orderNumber: paid.orderNumber,
+          userId: paid.userId ?? ctx.user.id,
+          status: "paid",
+        });
+      }
 
       await db.delete(cartItems).where(eq(cartItems.userId, ctx.user.id));
 

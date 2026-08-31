@@ -4,6 +4,8 @@
  * Generates and validates URL-friendly category slugs.
  */
 
+import { slugify } from "@/domain/shared/slug";
+
 export class CategorySlug {
   private constructor(private readonly value: string) {}
 
@@ -11,11 +13,7 @@ export class CategorySlug {
    * Create from category name
    */
   static fromName(name: string): CategorySlug {
-    const slug = name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+    const slug = slugify(name);
 
     if (!slug) {
       throw new Error("Cannot create slug from empty string");

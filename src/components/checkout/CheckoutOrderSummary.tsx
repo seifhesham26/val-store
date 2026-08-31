@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useCartStore } from "@/lib/stores/cart-store";
+import { formatCurrency } from "@/lib/currency";
 
 export function CheckoutOrderSummary({
   couponCode,
@@ -76,8 +77,8 @@ export function CheckoutOrderSummary({
                   className="object-cover"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-muted">
-                  <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                <div className="flex h-full w-full items-center justify-center bg-white/[0.06]">
+                  <ShoppingBag className="h-6 w-6 text-gray-500" />
                 </div>
               )}
             </div>
@@ -89,11 +90,11 @@ export function CheckoutOrderSummary({
                 <p className="text-xs text-gray-500">{item.variantLabel}</p>
               )}
               <p className="text-sm text-gray-400 mt-1">
-                Qty: {item.quantity} × ${item.productPrice.toFixed(2)}
+                Qty: {item.quantity} × {formatCurrency(item.productPrice)}
               </p>
             </div>
             <div className="flex items-center font-bold text-white">
-              ${(item.quantity * item.productPrice).toFixed(2)}
+              {formatCurrency(item.quantity * item.productPrice)}
             </div>
           </div>
         ))}
@@ -103,17 +104,21 @@ export function CheckoutOrderSummary({
           <Label className="text-sm font-medium text-white mb-2 block">
             Coupon Code
           </Label>
+          {/* The `dark:` half of this chip's colour pairs never applied — the
+              storefront sets no `.dark` class, so it rendered in light green on
+              the dark summary card. Fixed colours now, and the fixed-amount
+              discount goes through formatCurrency like every other price. */}
           {appliedCoupon ? (
-            <div className="flex items-center justify-between mt-2 p-2 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
+            <div className="mt-2 flex items-center justify-between rounded-md border border-green-500/20 bg-green-500/10 p-2">
               <div className="flex items-center gap-2">
-                <span className="font-mono font-semibold text-green-700 dark:text-green-400">
+                <span className="font-mono font-semibold text-green-400">
                   {appliedCoupon.code}
                 </span>
-                <span className="text-sm text-green-600 dark:text-green-500">
+                <span className="text-sm text-green-500">
                   (
                   {appliedCoupon.discountType === "percentage"
                     ? `${appliedCoupon.discountValue}% off`
-                    : `-$${appliedCoupon.discountValue}`}
+                    : `-${formatCurrency(Number(appliedCoupon.discountValue))}`}
                   )
                 </span>
               </div>
@@ -157,12 +162,12 @@ export function CheckoutOrderSummary({
         <div className="border-t border-white/10 pt-4 space-y-3 mt-4">
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Subtotal</span>
-            <span className="text-white">${subtotal.toFixed(2)}</span>
+            <span className="text-white">{formatCurrency(subtotal)}</span>
           </div>
           {appliedCoupon && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Discount</span>
-              <span>-${discount.toFixed(2)}</span>
+              <span>-{formatCurrency(discount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm">
@@ -171,7 +176,7 @@ export function CheckoutOrderSummary({
           </div>
           <div className="flex justify-between font-bold text-xl pt-4 border-t border-white/10 mt-4">
             <span>Total</span>
-            <span className="text-white">${total.toFixed(2)}</span>
+            <span className="text-white">{formatCurrency(total)}</span>
           </div>
         </div>
       </CardContent>

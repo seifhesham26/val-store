@@ -8,6 +8,8 @@ import { CategorySlug } from "@/domain/categories/value-objects/category-slug.va
 
 export interface CreateCategoryInput {
   name: string;
+  /** Omit to derive it from the name. Sent only when an admin typed one. */
+  slug?: string;
   description?: string;
   parentId?: string;
   imageUrl?: string;
@@ -27,8 +29,11 @@ export class CreateCategoryUseCase {
   ) {}
 
   async execute(input: CreateCategoryInput): Promise<CreateCategoryOutput> {
-    // Generate slug from name
-    const slug = CategorySlug.fromName(input.name);
+    // An admin-typed slug is validated rather than regenerated — the whole
+    // point of typing one is that it is not what the name would produce.
+    const slug = input.slug
+      ? CategorySlug.create(input.slug)
+      : CategorySlug.fromName(input.name);
 
     // Check if slug already exists
     const existingCategory = await this.categoryRepository.findBySlug(

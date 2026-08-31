@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { categories } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { categories, products } from "@/db/schema";
+import { eq, desc, sql, count as countRows, inArray } from "drizzle-orm";
 import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
 import { CategoryEntity } from "@/domain/categories/entities/category.entity";
 import { CategoryNotFoundException } from "@/domain/categories/exceptions/category-not-found.exception";
@@ -125,6 +125,67 @@ export class DrizzleCategoryRepository implements CategoryRepositoryInterface {
       columns: { id: true },
     });
     return !!category;
+  }
+
+  async findByIds(categoryIds: string[]): Promise<CategoryEntity[]> {
+    const ids = [...new Set(categoryIds)];
+    if (ids.length === 0) return [];
+
+    const rows = await db.query.categories.findMany({
+      where: inArray(categories.id, ids),
+    });
+
+    return rows.map((row) => this.mapToEntity(row));
+  }
+
+  async countProductsByCategory(options?: {
+    activeOnly?: boolean;
+  }): Promise<Map<string, number>> {
+    const activeOnly = options?.activeOnly ?? true;
+
+    const rows = await db
+      .select({
+        categoryId: products.categoryId,
+        total: countRows(),
+      })
+      .from(products)
+      .where(activeOnly ? eq(products.isActive, true) : undefined)
+      .groupBy(products.categoryId);
+
+    return new Map(
+      rows
+        .filter((row): row is { categoryId: string; total: number } =>
+          Boolean(row.categoryId)
+        )
+        .map((row) => [row.categoryId, Number(row.total)])
+    );
+  }
+
+  async countChildrenByCategory(): Promise<Map<string, number>> {
+    const rows = await db
+      .select({
+        parentId: categories.parentId,
+        total: countRows(),
+      })
+      .from(categories)
+      .groupBy(categories.parentId);
+
+    return new Map(
+      rows
+        .filter((row): row is { parentId: string; total: number } =>
+          Boolean(row.parentId)
+        )
+        .map((row) => [row.parentId, Number(row.total)])
+    );
+  }
+
+  async countProducts(categoryId: string): Promise<number> {
+    const [row] = await db
+      .select({ total: countRows() })
+      .from(products)
+      .where(eq(products.categoryId, categoryId));
+
+    return Number(row?.total ?? 0);
   }
 
   /**

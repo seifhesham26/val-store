@@ -21,6 +21,7 @@ import { AddressesCard } from "./detail/AddressesCard";
 import { UpdateStatusCard } from "./detail/UpdateStatusCard";
 import { CloseOrderDialog, type CloseAction } from "./detail/CloseOrderDialog";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
+import { formatCurrency } from "@/lib/currency";
 
 interface OrderDetailProps {
   orderId: string;
@@ -55,8 +56,8 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
     onSuccess: (result) => {
       toast.success(
         result.fullyRefunded
-          ? `Order fully refunded ($${result.refundedTotal.toFixed(2)})`
-          : `Refunded $${result.amount.toFixed(2)} — order stays open`
+          ? `Order fully refunded (${formatCurrency(result.refundedTotal)})`
+          : `Refunded ${formatCurrency(result.amount)} — order stays open`
       );
       setCloseAction(null);
       utils.admin.orders.getById.invalidate({ id: orderId });

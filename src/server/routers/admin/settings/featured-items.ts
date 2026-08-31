@@ -1,6 +1,16 @@
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 import { adminProcedure } from "../../../trpc";
 import { container } from "@/application/container";
+
+/**
+ * The homepage reads these lists through `unstable_cache`, so a write here is
+ * invisible for up to 60 seconds unless the tags are dropped.
+ */
+function revalidateFeatured() {
+  revalidateTag("featured-products", "max");
+  revalidateTag("featured-categories", "max");
+}
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -40,6 +50,7 @@ export const featuredItemsProcedures = {
         input.section,
         input.items
       );
+      revalidateFeatured();
       return updated.map((i) => i.toObject());
     }),
 
@@ -48,6 +59,7 @@ export const featuredItemsProcedures = {
     .mutation(async ({ input }) => {
       const repo = container.getSiteConfigRepository();
       const added = await repo.addFeaturedItem(input);
+      revalidateFeatured();
       return added.toObject();
     }),
 
@@ -56,6 +68,7 @@ export const featuredItemsProcedures = {
     .mutation(async ({ input }) => {
       const repo = container.getSiteConfigRepository();
       await repo.removeFeaturedItem(input.id);
+      revalidateFeatured();
       return { success: true };
     }),
 
@@ -69,6 +82,7 @@ export const featuredItemsProcedures = {
     .mutation(async ({ input }) => {
       const repo = container.getSiteConfigRepository();
       await repo.reorderFeaturedItems(input.section, input.orderedIds);
+      revalidateFeatured();
       return { success: true };
     }),
 };

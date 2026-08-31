@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Eye } from "lucide-react";
 import { format } from "date-fns";
+import { formatCurrency } from "@/lib/currency";
 
 export interface CustomerRow {
   id: string;
@@ -76,7 +77,7 @@ export function CustomersTable({
                 <Badge variant="outline">{c.orderCount}</Badge>
               </TableCell>
               <TableCell className="text-right font-medium">
-                ${c.totalSpent.toFixed(2)}
+                {formatCurrency(c.totalSpent)}
               </TableCell>
               <TableCell>
                 <Button

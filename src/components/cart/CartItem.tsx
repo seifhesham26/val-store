@@ -11,6 +11,7 @@ import { AlertTriangle, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import type { CartItem as CartItemType } from "@/lib/stores/cart-store";
+import { formatCurrency } from "@/lib/currency";
 
 interface CartItemProps {
   item: CartItemType;
@@ -87,7 +88,7 @@ export function CartItem({
             </p>
           )}
           <p className="mt-1 text-sm text-gray-400">
-            ${item.productPrice.toFixed(2)}
+            {formatCurrency(item.productPrice)}
           </p>
         </div>
 
@@ -122,7 +123,7 @@ export function CartItem({
           {/* Subtotal & Remove */}
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-white">
-              ${subtotal.toFixed(2)}
+              {formatCurrency(subtotal)}
             </span>
             <Button
               variant="ghost"

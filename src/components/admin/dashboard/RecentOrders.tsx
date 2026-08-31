@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 export function RecentOrders() {
   const { data: orders, isLoading } =
@@ -61,7 +62,7 @@ export function RecentOrders() {
                   </p>
                 </div>
                 <span className="font-medium text-sm">
-                  ${parseFloat(order.totalAmount).toFixed(2)}
+                  {formatCurrency(parseFloat(order.totalAmount))}
                 </span>
               </Link>
             ))

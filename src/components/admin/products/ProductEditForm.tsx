@@ -7,6 +7,7 @@
  * Uses react-hook-form with zod validation.
  */
 
+import { slugify } from "@/domain/shared/slug";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -43,6 +44,7 @@ import { VariantsSection } from "@/components/admin/products/create/VariantsSect
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   slug: z.string().min(1, "Slug is required"),
+  sku: z.string().min(1, "SKU is required").max(100),
   description: z.string(),
   basePrice: z.number().positive("Price must be positive"),
   salePrice: z.number().positive().nullable(),
@@ -88,6 +90,7 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
     defaultValues: {
       name: "",
       slug: "",
+      sku: "",
       description: "",
       basePrice: 0,
       salePrice: null,
@@ -103,6 +106,7 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
       ? {
           name: product.name,
           slug: product.slug,
+          sku: product.sku,
           description: product.description || "",
           basePrice: product.basePrice,
           salePrice: product.salePrice,
@@ -126,6 +130,7 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
         // null (not undefined) so clearing the field actually removes the sale
         // price — the use case treats undefined as "leave unchanged".
         salePrice: values.salePrice ?? null,
+        sku: values.sku.trim(),
         // Blank optional text fields are stored as null rather than "".
         material: values.material.trim() || null,
         careInstructions: values.careInstructions.trim() || null,
@@ -139,11 +144,7 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
   const generateSlug = () => {
     const name = form.getValues("name");
     if (name) {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      form.setValue("slug", slug);
+      form.setValue("slug", slugify(name));
     }
   };
 
@@ -228,6 +229,25 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="sku"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    SKU{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      (warehouse identifier — unrelated to the slug)
+                    </span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="VLK-TSHIRT-001" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

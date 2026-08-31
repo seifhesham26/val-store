@@ -8,7 +8,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, Package, MapPin, Heart, Settings, LogOut } from "lucide-react";
+import {
+  User,
+  Package,
+  MapPin,
+  Heart,
+  Bell,
+  Settings,
+  LogOut,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 
@@ -17,6 +25,7 @@ const accountLinks = [
   { href: "/account/orders", label: "Orders", icon: Package },
   { href: "/account/addresses", label: "Addresses", icon: MapPin },
   { href: "/account/wishlist", label: "Wishlist", icon: Heart },
+  { href: "/account/notifications", label: "Notifications", icon: Bell },
   { href: "/account/profile", label: "Settings", icon: Settings },
 ];
 

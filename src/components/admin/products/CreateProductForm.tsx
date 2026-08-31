@@ -8,6 +8,7 @@
  * After creation, redirects to the edit page.
  */
 
+import { slugify } from "@/domain/shared/slug";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,47 +48,13 @@ export function CreateProductForm() {
   const { data: categories, isLoading: categoriesLoading } =
     trpc.admin.categories.list.useQuery({});
 
-  // tRPC mutations
-  const addImageMutation = trpc.admin.images.add.useMutation();
-  const addVariantMutation = trpc.admin.variants.add.useMutation();
-
-  // Create mutation — after product creation, save images and variants
+  // One mutation, one transaction. Images and variants travel with the product
+  // rather than being saved afterwards in a loop, so a failure leaves nothing
+  // behind instead of a half-built product the admin has to go and find.
   const createMutation = trpc.admin.products.create.useMutation({
-    onSuccess: async (data) => {
-      const productId = data.id;
-
-      // Save pending images
-      for (const img of pendingImages) {
-        try {
-          await addImageMutation.mutateAsync({
-            productId,
-            imageUrl: img.imageUrl,
-            altText: img.altText || "",
-            isPrimary: img.isPrimary ?? false,
-          });
-        } catch {
-          toast.error("Failed to save an image");
-        }
-      }
-
-      // Save pending variants
-      for (const variant of pendingVariants) {
-        try {
-          await addVariantMutation.mutateAsync({
-            productId,
-            sku: variant.sku,
-            size: variant.size || undefined,
-            color: variant.color || undefined,
-            stockQuantity: variant.stockQuantity,
-            priceAdjustment: variant.priceAdjustment,
-          });
-        } catch {
-          toast.error("Failed to save a variant");
-        }
-      }
-
+    onSuccess: (data) => {
       toast.success(data.message);
-      router.push(`/admin/products/${productId}`);
+      router.push(`/admin/products/${data.id}`);
     },
     onError: (error) => {
       toast.error(error.message || "Failed to create product");
@@ -115,20 +82,33 @@ export function CreateProductForm() {
     },
   });
 
-  const isSubmitting =
-    createMutation.isPending ||
-    addImageMutation.isPending ||
-    addVariantMutation.isPending;
+  const isSubmitting = createMutation.isPending;
 
   // Handle form submission
   const onSubmit = (values: CreateProductValues) => {
     createMutation.mutate({
       ...values,
+      // Trimmed like every other identifier: a trailing space here is invisible
+      // in the field and would make the SKU miss its own uniqueness check.
+      sku: values.sku.trim(),
       // Blank optional text fields are stored as null rather than "".
       material: values.material.trim() || null,
       careInstructions: values.careInstructions.trim() || null,
       metaTitle: values.metaTitle.trim() || null,
       metaDescription: values.metaDescription.trim() || null,
+      images: pendingImages.map((image) => ({
+        imageUrl: image.imageUrl,
+        altText: image.altText?.trim() || null,
+        isPrimary: image.isPrimary ?? false,
+      })),
+      // Blank size/colour mean "this variant has no such axis", not "".
+      variants: pendingVariants.map((variant) => ({
+        sku: variant.sku.trim(),
+        size: variant.size.trim() || null,
+        color: variant.color.trim() || null,
+        stockQuantity: variant.stockQuantity,
+        priceAdjustment: variant.priceAdjustment,
+      })),
     });
   };
 
@@ -148,11 +128,7 @@ export function CreateProductForm() {
   const generateSlug = () => {
     const name = form.getValues("name");
     if (name) {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      form.setValue("slug", slug);
+      form.setValue("slug", slugify(name));
     }
   };
 

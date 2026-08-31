@@ -10,8 +10,11 @@ import { GetOrderUseCase } from "./use-cases/get-order.use-case";
 import { UpdateOrderStatusUseCase } from "./use-cases/update-order-status.use-case";
 import { CancelExpiredCheckoutsUseCase } from "./use-cases/cancel-expired-checkouts.use-case";
 import { RefundOrderUseCase } from "./use-cases/refund-order.use-case";
+import { NotificationService } from "@/application/notifications/notification.service";
 
-export function createOrderModule() {
+export function createOrderModule(deps: {
+  getNotificationService: () => NotificationService;
+}) {
   let repo: DrizzleOrderRepository | undefined;
   const getOrderRepository = () => (repo ??= new DrizzleOrderRepository());
 
@@ -29,10 +32,14 @@ export function createOrderModule() {
       (getOrder ??= new GetOrderUseCase(getOrderRepository())),
     getUpdateOrderStatusUseCase: () =>
       (updateOrderStatus ??= new UpdateOrderStatusUseCase(
-        getOrderRepository()
+        getOrderRepository(),
+        deps.getNotificationService()
       )),
     getRefundOrderUseCase: () =>
-      (refundOrder ??= new RefundOrderUseCase(getOrderRepository())),
+      (refundOrder ??= new RefundOrderUseCase(
+        getOrderRepository(),
+        deps.getNotificationService()
+      )),
     getCancelExpiredCheckoutsUseCase: () =>
       (cancelExpiredCheckouts ??= new CancelExpiredCheckoutsUseCase(
         getOrderRepository()

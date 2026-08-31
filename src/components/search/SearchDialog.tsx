@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Search, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useDebounce } from "@/lib/hooks/use-debounce";
+import { formatCurrency } from "@/lib/currency";
 
 interface SearchDialogProps {
   open: boolean;
@@ -132,17 +133,21 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                         {product.salePrice ? (
                           <>
                             <span className="text-green-400">
-                              $
-                              {parseFloat(String(product.salePrice)).toFixed(2)}
+                              {formatCurrency(
+                                parseFloat(String(product.salePrice))
+                              )}
                             </span>
                             <span className="text-gray-500 line-through text-xs">
-                              $
-                              {parseFloat(String(product.basePrice)).toFixed(2)}
+                              {formatCurrency(
+                                parseFloat(String(product.basePrice))
+                              )}
                             </span>
                           </>
                         ) : (
                           <span className="text-gray-300">
-                            ${parseFloat(String(product.basePrice)).toFixed(2)}
+                            {formatCurrency(
+                              parseFloat(String(product.basePrice))
+                            )}
                           </span>
                         )}
                       </div>

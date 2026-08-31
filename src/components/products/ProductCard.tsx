@@ -8,6 +8,7 @@ import {
   QuickAddSliderBar,
   type QuickAddVariant,
 } from "@/components/products/QuickAddSliderBar";
+import { formatCurrency } from "@/lib/currency";
 
 export interface ProductCardProps {
   id: string;
@@ -40,8 +41,11 @@ export function ProductCard({
   isOnSale = false,
   variants,
 }: ProductCardProps) {
-  const formattedPrice = price.toFixed(2);
-  const formattedSalePrice = salePrice?.toFixed(2);
+  const formattedPrice = formatCurrency(price);
+  const formattedSalePrice =
+    salePrice !== null && salePrice !== undefined
+      ? formatCurrency(salePrice)
+      : undefined;
 
   return (
     <div className="group relative">
@@ -107,14 +111,14 @@ export function ProductCard({
           {salePrice ? (
             <>
               <span className="text-red-400 font-medium">
-                ${formattedSalePrice}
+                {formattedSalePrice}
               </span>
               <span className="text-gray-500 line-through text-sm">
-                ${formattedPrice}
+                {formattedPrice}
               </span>
             </>
           ) : (
-            <span className="text-gray-300">${formattedPrice}</span>
+            <span className="text-gray-300">{formattedPrice}</span>
           )}
         </div>
       </div>

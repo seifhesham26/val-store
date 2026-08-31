@@ -3,6 +3,7 @@
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, ShoppingCart, Package, Star } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 export function MetricsCards() {
   const { data: metrics, isLoading } =
@@ -28,7 +29,7 @@ export function MetricsCards() {
   const metricsData = [
     {
       title: "Total Revenue",
-      value: `$${metrics?.revenue.toFixed(2) || "0.00"}`,
+      value: formatCurrency(metrics?.revenue ?? 0),
       change: "+20.1% from last month",
       icon: DollarSign,
     },

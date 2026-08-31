@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ShoppingBag, ArrowRight, Loader2, AlertTriangle } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 interface CartSummaryProps {
   subtotal: number;
@@ -42,25 +43,25 @@ export function CartSummary({
       <div className="space-y-2 text-sm">
         <div className="flex justify-between text-gray-400">
           <span>Subtotal ({itemCount} items)</span>
-          <span>${subtotal.toFixed(2)}</span>
+          <span>{formatCurrency(subtotal)}</span>
         </div>
 
         <div className="flex justify-between text-gray-400">
           <span>Shipping</span>
-          <span>{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</span>
+          <span>{shipping === 0 ? "Free" : formatCurrency(shipping)}</span>
         </div>
 
         {tax > 0 && (
           <div className="flex justify-between text-gray-400">
             <span>Tax</span>
-            <span>${tax.toFixed(2)}</span>
+            <span>{formatCurrency(tax)}</span>
           </div>
         )}
 
         <div className="border-t border-white/10 pt-2">
           <div className="flex justify-between text-base font-semibold text-white">
             <span>Total</span>
-            <span>${total.toFixed(2)}</span>
+            <span>{formatCurrency(total)}</span>
           </div>
         </div>
       </div>

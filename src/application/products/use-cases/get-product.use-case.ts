@@ -20,6 +20,7 @@ export interface GetProductOutput {
   id: string;
   name: string;
   slug: string;
+  sku: string;
   description: string;
   basePrice: number;
   salePrice: number | null;
@@ -76,6 +77,7 @@ export class GetProductUseCase {
       id: product.id,
       name: product.name,
       slug: product.slug,
+      sku: product.sku,
       description: product.description,
       basePrice: product.basePrice,
       salePrice: product.salePrice,

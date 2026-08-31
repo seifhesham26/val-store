@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/currency";
 
 export function ItemsCard({ order }: { order: OrderData }) {
   return (
@@ -31,7 +32,7 @@ export function ItemsCard({ order }: { order: OrderData }) {
                   </p>
                 )}
                 <p className="text-sm text-muted-foreground">
-                  Qty: {item.quantity} × ${item.price.toFixed(2)}
+                  Qty: {item.quantity} × {formatCurrency(item.price)}
                 </p>
                 {/* A partial return leaves the ordered quantity unchanged, so
                     without this the line still reads "Qty: 3" with no sign that
@@ -46,7 +47,7 @@ export function ItemsCard({ order }: { order: OrderData }) {
                 )}
               </div>
               <p className="font-semibold">
-                ${(item.quantity * item.price).toFixed(2)}
+                {formatCurrency(item.quantity * item.price)}
               </p>
             </div>
           ))}

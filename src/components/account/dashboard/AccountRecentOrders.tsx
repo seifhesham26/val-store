@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
+import { formatCurrency } from "@/lib/currency";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type OrdersList = RouterOutputs["public"]["orders"]["getMyOrders"]["orders"];
@@ -37,8 +38,10 @@ export function AccountRecentOrders({
                 className="flex items-center justify-between p-3 rounded-lg hover:bg-white/[0.04] transition-colors"
               >
                 <div>
-                  <p className="font-medium text-white">
-                    Order #{order.id.slice(-8)}
+                  {/* The real order number, matching /account/orders and the
+                      confirmation email. A UUID fragment matched nothing. */}
+                  <p className="font-mono text-sm font-medium text-white">
+                    {order.orderNumber ?? `#${order.id.slice(-8)}`}
                   </p>
                   <p className="text-sm text-gray-500">
                     {new Date(order.createdAt).toLocaleDateString()}
@@ -46,7 +49,7 @@ export function AccountRecentOrders({
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-white">
-                    ${order.total.toFixed(2)}
+                    {formatCurrency(order.total)}
                   </p>
                   <p className="text-sm text-gray-500 capitalize">
                     {order.status}

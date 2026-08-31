@@ -4,14 +4,15 @@ A catalogue of defects and gaps found by reading the codebase in full. Unlike th
 
 Each entry gives the location, what actually happens, why, and a concrete fix.
 
-Verified baseline, re-checked 2026-08-30 on `main`: `pnpm type-check` clean, `pnpm lint` 0 errors / 7 warnings, 67/67 tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
+Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 80/80 tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
 
 **Contents**
 
-- [Resolved](#resolved) (9)
-- [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (11)
+- [Resolved](#resolved) (19)
+- [Follow-ups — residue from the P0/P1 work](#follow-ups--residue-from-the-p0p1-work) (2)
+- [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (1)
 - [P2 — Performance](#p2--performance) (5)
-- [P3 — Cleanup](#p3--cleanup) (12)
+- [P3 — Cleanup](#p3--cleanup) (15)
 - [Suggested order of work](#suggested-order-of-work)
 
 ---
@@ -88,6 +89,16 @@ The coupon lived only in React state; orders always stored `discountAmount: "0"`
 
 ---
 
+### 9. The SKU an admin typed was discarded ✅
+
+`DrizzleProductRepository.create()` wrote `sku: product.slug`, so the SKU the form required, validated and checked for uniqueness was thrown away. `ProductEntity` had no `sku` property at all, so the value had nowhere to travel. Renaming a slug later did not update the SKU, so the two drifted apart silently.
+
+**Fixed** by giving the value somewhere to live: `ProductEntity.sku` (`product.entity.ts:24`) carries it from the use case to the repository, which now writes `sku: product.sku`. The duplicate uniqueness check that ran against the _slug_ — and reported a `DuplicateSKUException` naming the wrong string — is gone, and SKU is an editable field on the edit form. Validation is bounded at `.max(100)` to match the column, on every input path.
+
+**Still true** SKU uniqueness is only checked when the value changes, so a product cannot collide with itself. Variant SKUs are trimmed in the use case and the product SKU is trimmed on create — keep both, or they diverge again.
+
+---
+
 ### 10. A sale price could never be removed ✅
 
 The edit form sent `salePrice ?? undefined`, and `undefined` correctly means "keep existing" in a partial update.
@@ -96,93 +107,146 @@ The edit form sent `salePrice ?? undefined`, and `undefined` correctly means "ke
 
 ---
 
+### 11. Nothing ever created a notification ✅
+
+Both tables, both repositories, both routers and both bell dropdowns were complete, and no code anywhere called `create()` or `createMany()`. Both bells always showed zero.
+
+**Fixed** with one writer rather than scattered inserts: `NotificationService` (`src/application/notifications/notification.service.ts`) is the only thing that writes either table, and is injected into `CreateOrderUseCase`, `UpdateOrderStatusUseCase`, `RefundOrderUseCase`, `AdjustStockUseCase`, the review router, the signup hook, the Stripe webhook and the success page.
+
+**Still true** **Every emit swallows its own failure** and logs `[Notifications] <label> failed:`. That is the safety contract — an order must never fail over a courtesy message — but it means a broken emit is invisible in the UI. If a notification does not appear, read the server log before reading the code. Two further traps: admin notifications are per-admin-user rows fanned out in one insert, so a new admin gets no backlog; and low stock fires on the **crossing**, not the level, so an already-low variant does not notify on every subsequent sale.
+
+**A gap that survived the first pass:** a _partial_ return is not a status change, so `orderStatusChanged` never fired for it and refunds notified nobody. `NotificationService.orderRefunded()` now handles returns separately, reporting the money moved by that return rather than the running total.
+
+---
+
+### 12. The Featured settings tab controlled nothing ✅
+
+The admin curated into `featured_items` and the homepage read `products.isFeatured` and "the first three active categories". The Add button had no handler, the search box filtered nothing, and the "drag to reorder" tip described behaviour that was never built.
+
+**Fixed** by adopting `featured_items` as the source of truth — the first of the two options originally offered. `resolveFeaturedProducts` and `getCachedFeaturedCategories` (`src/lib/cache.ts`) read the curated list, and the tab gained working search, add, remove and up/down reorder. Every write drops the cache tag, so the homepage updates within a second rather than after 60.
+
+**Still true** The fallback is load-bearing: an empty curation — **or one whose every item has since been deactivated** — falls back to the `isFeatured` set and the first three active categories. The section must never render its heading above an empty grid. The first implementation checked the raw list rather than the resolved one and got this wrong.
+
+---
+
+### 13. There was no way to manage categories ✅
+
+Categories were seed-only. `admin.categories.list` existed purely to fill the product dropdown; `create`/`delete` had no UI and `UpdateCategoryUseCase` was reachable from nothing.
+
+**Fixed** with `/admin/categories` — table plus create/edit dialog plus guarded delete. Both fixes the entry asked for are in: slug generation goes through one shared `slugify` (`src/domain/shared/slug.ts`), and `DeleteCategoryUseCase` refuses to delete a category with children or products, so a parent can no longer orphan its rows through the missing FK.
+
+**Still true** `categories.parentId` still has **no FK constraint** — the guard is application-level, so anything writing outside the use case can still orphan children. Category delete is still **hard** while products soft-delete. The delete guard and the table's product count both count archived products on purpose: a table reading "0 products" beside a server that refuses would just look broken.
+
+---
+
+### 14. `/forgot-password` did not exist ✅
+
+An empty directory linked from two live buttons — the login form and the profile's "Change Password" card. Both 404'd. The backend half (`sendResetPassword`, `sendPasswordResetEmail`) was already written.
+
+**Fixed** with both pages, and `passwordResetRateLimiter` — defined and unused — is now wired in `src/lib/auth.ts:45`.
+
+**Still true** The request form answers **identically** for a registered and an unregistered address, deliberately: a different response would let a stranger test which addresses have accounts. Do not "improve" that into a helpful error. Rate limiting no-ops without `UPSTASH_*`, so it will not trigger locally.
+
+---
+
+### 15. One of the two stock-editing paths skipped the audit log ✅
+
+Editing stock on the product page wrote the number straight to the variant; editing it on the Inventory page logged. The history was silently incomplete.
+
+**Fixed** at the schema boundary rather than by adding a second logging call: `admin.variants.update` **no longer accepts `stockQuantity` at all**, and stock moves through `AdjustStockUseCase` on every path, writing an `inventory_logs` row with the author and a reason.
+
+**Still true** Creating a _new_ variant with an opening stock figure writes no log row — that is an opening balance, not a movement. Every change after it is logged.
+
+---
+
+### 17. Currency was inconsistent in four places ✅
+
+Stripe charged `egp`, the order repository wrote `EGP`, `site_settings.currency` defaulted to `USD`, and every price in the UI was rendered with a hardcoded `$`. Customers in Egypt were billed in pounds and shown dollars.
+
+**Fixed** by making currency **deployment configuration** rather than a database setting: `src/lib/currency.ts` exports `STORE_CURRENCY` (`NEXT_PUBLIC_STORE_CURRENCY`, default `EGP`), `STRIPE_CURRENCY`, and one `formatCurrency` used by every price display. A Stripe account is bound to the currency it charges in and every stored price is already denominated in it, so switching is a migration, not a dropdown — the Settings dropdown that implied otherwise is now a read-only row.
+
+**Still true** Four admin displays still hardcode `$` — see #40 — and rows written before this change still say `USD` — see #41.
+
+---
+
+### 18. Wishlist stock status was not stock ✅
+
+`WishlistItemEntity.inStock` came from `products.isActive`, so a sold-out product showed as in stock.
+
+**Fixed** in two halves. The repository sums `stockQuantity` across available variants in **one grouped query for the whole page**, not one per row, and requires `isActive` _and_ stock. The grid then had to be taught to read it — for a while `inStock` was correct and every card still rendered the same "Choose Options" button. Out-of-stock cards are now dimmed, badged, and their button disabled.
+
+**Still true** The item stays on the wishlist while sold out. That is the point of a wishlist; do not "tidy" it away.
+
+---
+
+### 19. Reviews were never marked as verified purchases ✅
+
+`isVerifiedPurchase` was hardcoded `false` and `reviews.orderId` was always null, so the badge could never appear.
+
+**Fixed** by looking for an order by this user containing this product before inserting, and storing the `orderId` alongside the flag (`public/reviews.ts:77,91`).
+
+**Still true** Only `paid`, `processing`, `shipped` and `delivered` count. A purchase that came undone — cancelled or refunded — does not earn the badge.
+
+---
+
+### 20. A failed image or variant save left a half-created product ✅
+
+The browser created the product, then looped through images and variants one request at a time, each in its own `try/catch` that only raised a toast — and redirected anyway.
+
+**Fixed** by accepting `images` and `variants` as arrays on `admin.products.create` and persisting all three in one server-side transaction.
+
+**Still true** The **edit** page still saves images and variants one at a time, on purpose: there each change is its own deliberate action, not part of building one object.
+
+---
+
 Work done in the same period that this file never catalogued — partial returns with derived refund totals, the payment expiry window and stale-checkout sweep, coupon-scaled refunds, and order numbers and customer names in the admin — is documented in `docs/P0-TEST-PLAN.md` instead.
+
+---
+
+## Follow-ups — residue from the P0/P1 work
+
+Not part of the original catalogue. These were found by reading the finished P0
+and P1 work back against the code, and each one exists **because** of a fix
+rather than in spite of it — a change applied to one screen and not its
+sibling, or a split that was right in principle and left a seam. They are
+listed apart from P1-P3 so it stays obvious that the fix is nearly done rather
+than not started.
+
+### 42. The customer order detail page never received the P0/P1 order work
+
+**Where** `src/server/routers/public/orders.ts:106-118` (`getOrderById`), and the four components it feeds: `account/order-detail/OrderDetailHeader.tsx:38`, `OrderItems.tsx:30`, `OrderSummaryCard.tsx`, and the page itself at `src/app/(main)/account/orders/[id]/page.tsx`.
+
+**What happens** Order numbers, partial returns and the payment window were all fixed thoroughly on the **admin** order screens and on the customer order **list**. The customer order **detail** page was missed, so five things the rest of the app knows are invisible on the one screen a customer opens to check an order:
+
+1. **The order number is missing.** The header renders `Order #{orderId.slice(-8)}` — a UUID fragment. The list one click earlier shows the real `VLK-YYYYMMDD-XXXXXX`, so the same order has two identities depending on the screen, and the number a customer would quote to support is on the wrong one.
+2. **No refund information at all.** `OrderSummaryCard` takes subtotal/shipping/tax/discount/total and nothing else, so a partly returned order looks untouched. This is precisely the defect the admin orders list fixed — a return is not a status change, so without an explicit signal there is nothing to see.
+3. **Per-line returns are missing.** `OrderItems.tsx:30` renders `Qty: {item.quantity}` — the same string the admin items card showed before it was taught to say "1 of 3 returned · 2 still with the customer". `item.refundedQuantity` is already in the payload, unread.
+4. **No payment window countdown,** though the list has one — and the detail page is where someone would sit while paying.
+5. **`shippingAddress` is fetched and never rendered.** It is in the payload; the page renders header, timeline, items and summary, and no address.
+
+**Why** `getOrderById` returns a hand-written subset of the entity that predates all of this work, and nothing forces it to keep up: `orderNumber`, `refundedAmount()`, `getRefundedItems()`, `isFullyRefunded()`, `isAwaitingPayment()` and `paymentDeadline()` are all on `OrderEntity` and simply are not selected. That the checkout success page needs a whole separate `getOrderNumberById` query is the same omission showing through somewhere else.
+
+**Fix** Widen `getOrderById` with `orderNumber`, `refundedAmount`, `refundedItems`, `fullyRefunded`, `awaitingPayment` and `paymentDeadline` — the same fields `getMyOrders` already returns — then update the four components. Doing so also makes `getOrderNumberById` redundant for anything but the Stripe-session lookup.
+
+**Not affected, checked:** the customer `OrderTimeline` is driven by dates rather than status, so it never had the `confirmed`/`paid` drift the admin timeline did.
+
+---
+
+### 43. Saving a variant is two mutations, not one transaction
+
+**Where** `src/components/admin/products/create/VariantsSection.tsx:60-77`, `src/server/routers/admin/variants.ts`
+
+**What happens** A side effect of #15. Variant metadata and stock are now deliberately separate operations — stock has to carry an author and a reason, metadata does not — but the form calls `admin.variants.update` and `admin.variants.updateStock` one after the other from the browser. If the second fails you get an error toast with the metadata already saved: the same shape as the create-product bug fixed in #20, at a smaller scale.
+
+**Fix** The split itself is right and should stay. Either fold both into one server-side operation that writes metadata and calls `AdjustStockUseCase` inside a single transaction, or make the form save them as two visibly separate actions so a partial save is not a surprise.
+
+**Checked while here:** `admin.variants.updateStock` does route through `AdjustStockUseCase`, so there is no unaudited stock path — #15 holds.
 
 ---
 
 ## P1 — Features that are broken or missing
 
-### 9. The SKU an admin types is discarded
-
-**Where** `src/infrastructure/database/repositories/products/product.repository.ts:125,136`
-
-**What happens** The create-product form requires a SKU, validates it, and checks it for uniqueness — then the repository writes `sku: product.slug` instead. Renaming a product's slug later does not update the SKU, so the two silently diverge and the "SKU" column becomes an inaccurate stale copy of an old slug.
-
-**Why** `ProductEntity` has no `sku` property at all, so the value has nowhere to travel between the use case and the repository. The uniqueness check also runs twice on different values — `CreateProductUseCase` checks the user's SKU, the repository re-checks the slug — meaning a slug collision reports a misleading `DuplicateSKUException` naming the slug.
-
-**Fix** Add `sku` to `ProductEntity` and to `CreateProductUseCase`'s entity construction, write `sku: product.sku` in the repository, and delete the duplicate check at line 125. Also surface SKU as an editable field on the edit form (it currently cannot be changed at all).
-
----
-
-### 11. No notification is ever created
-
-**Where** `src/infrastructure/database/repositories/notifications/` (both repositories), `src/components/UserNotificationsBell.tsx`, `src/components/admin/AdminNotifications.tsx`
-
-**What happens** Both bells always show zero. The tables, the type enums (`new_order`, `low_stock`, `order_shipped`, `price_drop`, …), the repositories, the routers and the dropdown UIs are all complete — but no code calls `create()` or `createMany()`, so there is nothing to read.
-
-**Fix** Emit notifications from the events that already exist:
-
-| Event                                    | Where to hook              | Notification                                                 |
-| ---------------------------------------- | -------------------------- | ------------------------------------------------------------ |
-| Order placed                             | `CreateOrderUseCase`       | admin `new_order`, user `order_confirmed`                    |
-| Status → shipped / delivered / cancelled | `UpdateOrderStatusUseCase` | user `order_shipped` / `order_delivered` / `order_cancelled` |
-| Stock crosses the low threshold          | `AdjustStockUseCase`       | admin `low_stock`                                            |
-| Review submitted                         | `public.reviews.create`    | admin `new_review`                                           |
-| Payment failed                           | Stripe webhook             | admin `failed_payment`                                       |
-
-Admin notifications are per-admin-user rows, so fan out to everyone with role `admin`/`super_admin`.
-
----
-
-### 12. The Featured settings tab controls nothing
-
-**Where** `src/components/admin/settings/FeaturedSettings.tsx`, versus `src/components/home/ServerFeaturedProducts.tsx` and `ServerFeaturedCategories.tsx`
-
-**What happens** The admin curates featured products and categories into the `featured_items` table, and the homepage ignores it entirely: `ServerFeaturedProducts` reads the `products.isFeatured` boolean via `getCachedFeaturedProducts`, and `ServerFeaturedCategories` just takes the first three active categories. The tab's "Add Product" button (`FeaturedSettings.tsx:93`) has no `onClick`, the search box filters nothing, and the "Drag items to reorder" tip describes behaviour that was never built — so the tab can only view and remove.
-
-**Fix** Choose one source of truth.
-
-- **Use `featured_items`:** point the homepage at `siteConfigRepo.getFeaturedItems("homepage_featured")` / `("homepage_categories")` — `public.categories.getFeatured` already shows the query shape — then implement the add and reorder handlers against the existing `addFeaturedItem` / `reorderFeaturedItems` procedures.
-- **Use the boolean:** delete the Featured tab and the `featured_items` table, and manage featuring from the product edit page's existing `isFeatured` switch.
-
-The second is less work and less machinery; the first is what the schema and admin UI were designed for.
-
----
-
-### 13. There is no way to manage categories
-
-**Where** `src/app/admin/` (no `categories/` route), `src/server/routers/admin/categories.ts`
-
-**What happens** Categories can only be created by the seed script. The admin UI calls `admin.categories.list` solely to populate the product dropdown. `create` and `delete` have no UI, and `UpdateCategoryUseCase` is fully written, wired into the container, and reachable from nothing — categories cannot be renamed, reordered, given an image, or deactivated.
-
-**Fix** Add `/admin/categories` with a table plus create/edit dialogs, and expose `update` on the router (the use case is ready). Two things to fix while doing it:
-
-- `UpdateCategoryUseCase:60-64` generates slugs with `name.toLowerCase().replace(/\s+/g, "-")`, which leaves punctuation intact, unlike `CategorySlug.fromName()`. Use the value object in both places.
-- Category delete is a **hard** delete (`category.repository.ts:115`) while products soft-delete. `categories.parentId` has no FK constraint, so deleting a parent orphans its children — they keep pointing at a missing id. Add the self-referencing FK, or block deletion of categories that have children or products.
-
----
-
-### 14. `/forgot-password` does not exist
-
-**Where** `src/app/(auth)/forgot-password/` is an empty directory; linked from `src/components/auth/login/LoginForm.tsx:127` and `src/components/account/profile/ProfilePasswordCard.tsx:12`
-
-**What happens** Both the login page's "Forgot password?" link and the profile page's "Change Password" button lead to a 404. There is no password recovery in the product.
-
-**Why** The backend half is done — `src/lib/auth.ts` configures `sendResetPassword` and `ResendEmailService.sendPasswordResetEmail` builds the email. Only the pages are missing.
-
-**Fix** Add two pages: a request form calling `authClient.forgetPassword({ email, redirectTo: "/reset-password" })`, and `/reset-password` reading the `token` query param and calling `authClient.resetPassword`. Rate-limit the request endpoint with the existing `passwordResetRateLimiter` (`src/server/utils/rate-limiter.ts:49`), which is defined and currently unused.
-
----
-
-### 15. One of the two stock-editing paths skips the audit log
-
-**Where** `src/server/routers/admin/variants.ts:78-105` (`update`) versus `src/server/routers/admin/inventory.ts:60-88` (`adjustStock`)
-
-**What happens** Editing a variant's stock from the product page writes the new quantity directly and records nothing. Editing it from the Inventory page writes an `inventory_logs` row. The history is therefore silently incomplete, and the two paths can't be reconciled.
-
-**Fix** Route all stock writes through `AdjustStockUseCase`. Have `admin.variants.update` reject or split out `stockQuantity`, so variant metadata (SKU, size, colour, availability) and stock are changed by different, clearly-named operations. `admin.variants.updateStock` — which has no caller — should be deleted or re-pointed at the same use case.
-
----
+Ten of the original eleven are in [Resolved](#resolved), keeping their numbers. One is left.
 
 ### 16. The confirmation email quotes a made-up order number
 
@@ -194,45 +258,7 @@ The second is less work and less machinery; the first is what the schema and adm
 
 **Fix** Load the order by `metadata.orderId` and send the real `orderNumber`, real line items, and formatted address. Both halves are already on the entity — `orderNumber` is read back on every load and `shippingAddress` is a resolved `OrderAddress`, not an id — so this is now a matter of using them. Move the send into a small `SendOrderConfirmation` helper and call it from the COD path too, so both payment methods behave the same.
 
----
-
-### 17. Currency is inconsistent in four places
-
-**Where** `src/infrastructure/services/stripe.service.ts:99` (`"egp"`), `src/infrastructure/database/repositories/orders/order.repository.ts:91,122` (`"EGP"`), `site_settings.currency` (defaults `USD`), and every price in the UI (hardcoded `$`).
-
-**What happens** Orders are stored and charged in Egyptian pounds while the entire storefront and admin render the amounts with a dollar sign. The admin's currency selector (`StoreSettings.tsx:32-39`, which offers EGP) has no effect on anything.
-
-**Fix** Make `site_settings.currency` authoritative: read it where the Stripe session is built and where orders are inserted, and add a shared `formatCurrency(amount, currency, locale)` helper used by every price display. There are roughly 40 hardcoded `$` template strings to replace — grep for `` `$${ `` and `.toFixed(2)`.
-
----
-
-### 18. Wishlist stock status is not stock
-
-**Where** `src/infrastructure/database/repositories/wishlist/wishlist.repository.ts:63`
-
-**What happens** `WishlistItemEntity.inStock` is populated from `products.isActive`, so a sold-out product shows as in stock and "Move to cart" is offered for items that cannot be bought.
-
-**Fix** Join `product_variants` and aggregate: `SUM(stock_quantity) > 0`, matching how `ProductEntity.stock` is derived in `product.repository.ts:324-326`.
-
----
-
-### 19. Reviews are never marked as verified purchases
-
-**Where** `src/server/routers/public/reviews.ts:68`
-
-**What happens** `isVerifiedPurchase` is hardcoded `false`, so the badge never appears, and `reviews.orderId` is always null.
-
-**Fix** Before inserting, look for a delivered or paid order by this user containing this product; if found, set `isVerifiedPurchase: true` and store the `orderId`. Consider only accepting reviews from verified purchasers, which also removes most spam and would let you auto-approve them.
-
----
-
-### 20. A failed image or variant save leaves a half-created product
-
-**Where** `src/components/admin/products/CreateProductForm.tsx:56-84`
-
-**What happens** After the product is created, images and variants are saved one at a time in a client-side loop, each in its own `try/catch` that only shows a toast. If one fails, the product still exists, the redirect still happens, and the admin gets a transient error for an item that is now missing — with no indication of which one.
-
-**Fix** Accept `images` and `variants` as arrays on `admin.products.create` and persist all three in a single server-side transaction, so the product either fully exists or does not.
+**Deferred on purpose**, not forgotten: it is waiting on a real domain being verified in Resend, so it can be tested end to end rather than merely compiled.
 
 ---
 
@@ -258,9 +284,11 @@ The second is less work and less machinery; the first is what the schema and adm
 
 **Where** `src/components/home/ServerFeaturedCategories.tsx:85`, `src/server/routers/public/categories.ts:18-38`
 
-**What happens** Both call `productRepo.findAll()` **inside** a per-category loop — the homepage does it three times, `public.categories.list` once per category — each time loading every product with its variants and images, just to count matches.
+**Half fixed.** The homepage half is done: `ServerFeaturedCategories` now reads `getCachedFeaturedCategories`, and the category repository gained `countProductsByCategory({ activeOnly })` — one grouped query for the whole list, used by the admin Categories page.
 
-**Fix** One grouped query: `SELECT category_id, COUNT(*) FROM products WHERE is_active GROUP BY category_id`. Add a `countByCategory()` to the product repository.
+**Still true** `public/categories.ts:18-25` still calls `productRepo.findAll()` **inside** a per-category `map`, loading every product with its variants and images just to count matches. `public.products.getFeatured` (`:100-105`) does the same inside its own loop.
+
+**Fix** Point both at the existing `countProductsByCategory`, or add a `countByCategory()` to the product repository. Note `public.categories.list` has no caller at all (#28), so deleting it is also a valid answer.
 
 ### 24. The dashboard fetches customer names one query at a time
 
@@ -299,9 +327,11 @@ Either adopt them or delete them. Two are worth adopting:
 
 ### 28. Unreferenced tRPC procedures
 
-No caller anywhere: the entire `public.config` router, `public.categories.{list,getFeatured}`, `public.products.{getBySlug,getFeatured}`, `admin.categories.{create,delete}`, `admin.products.getBySlug`, `admin.variants.updateStock`, `admin.notifications.clearAll`, and `admin.settings.{getAllContentSections,getContentHistory,revertToVersion,addFeaturedItem,updateFeaturedItems,reorderFeaturedItems}`.
+Re-checked 2026-08-31. Still with no caller anywhere: the entire `public.config` router, `public.categories.{list,getFeatured}`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug`, `admin.notifications.clearAll`, and `admin.settings.{getAllContentSections,getContentHistory,revertToVersion}`.
 
-Most are collateral from the homepage moving to server components. Some are worth wiring rather than deleting — see #12 and #29.
+**No longer on this list:** `admin.categories.{create,delete}` (the Categories page calls both — #13), `admin.variants.updateStock` (`VariantsSection.tsx:75`), and `admin.settings.{addFeaturedItem,updateFeaturedItems,reorderFeaturedItems}` (the Featured tab calls all three — #12).
+
+The rest are collateral from the homepage moving to server components. The history procedures are worth wiring rather than deleting — see #29.
 
 ### 29. Four of six CMS section types are unreachable
 
@@ -339,9 +369,9 @@ It exists in the `user_role` enum, `UserProfileEntity.isWorker()`, and both `Use
 
 `cart-store.ts` persists to localStorage and handles guest items, but `useCart().addItem` shows a sign-in toast instead of adding for unauthenticated visitors, so the guest branch never runs. Either implement guest carts properly (with a merge on login) or delete the guest handling in the store.
 
-### 36. Seven lint warnings
+### 36. Five lint warnings
 
-Unused imports in `src/app/admin/products/page.tsx` (`Plus`, `Button`), unused `_paymentIntent` bindings in the Stripe webhook, an unused `error` in `NewsletterSection` (which also swallows the real error), an unused `_width` in `product-image.entity.ts`, and an unused `protectedProcedure` import in `public/user.ts`.
+Down from seven — two went away with the webhook rewrite. What is left: unused imports in `src/app/admin/products/page.tsx` (`Plus`, `Button`), an unused `error` in `NewsletterSection` (which also swallows the real error), an unused `_width` in `product-image.entity.ts`, and an unused `protectedProcedure` import in `public/user.ts`.
 
 ### 37. Billing addresses do not exist
 
@@ -359,18 +389,46 @@ Add a billing-address choice at checkout, or drop the distinction from the schem
 
 ---
 
+### 39. The storefront runs on the light palette
+
+**Where** `src/app/globals.css:55` (`:root`), `src/app/layout.tsx:29` (`<body class="bg-black text-white">`)
+
+**What happens** `:root` holds the **light** token set — `--background` is white, `--foreground` near-black — and the storefront overrides only `<body>`'s own colours, never the tokens. So every shadcn primitive that styles itself with a token renders light-on-dark on the storefront. Worse, anything Radix renders through a **portal** attaches to `<body>`, escaping even the admin's `ThemeProvider`.
+
+This has now been hit five separate times and fixed five separate times: `AlertDialogContent` had `bg-background` with no `text-foreground` and rendered white-on-white in the admin; `CheckoutLoading` was two near-white `bg-muted` bars on black; `CheckoutOrderSummary`'s no-image tile was a white square; the notifications "Mark all read" button was a white pill (the `outline` variant is `bg-background`); and the applied-coupon chip used `dark:` variants that never apply, because the storefront sets no `.dark` class.
+
+**Sixth and worst:** `ProductReviews.tsx`, on the customer-facing product page. Near-white `bg-muted` skeletons and panels, a light-grey bare `border` — and both of its Buttons on the default variant, which is `bg-primary text-primary-foreground`: near-black on near-white, so "Write a Review" and "Submit Review" were all but invisible. Fixed 2026-08-31 with explicit storefront colours; the root cause below is untouched.
+
+**Fix** Stop patching call sites. Either give the storefront the dark token set (`globals.css` already defines `.dark`; the storefront wrapper would need the class, and portals would need it on an ancestor they actually inherit from), or define a storefront-specific token block. Until then, two rules — both now in `CLAUDE.md`: a surface must set **both halves of a pair** (`bg-background text-foreground`, `bg-popover text-popover-foreground`), and only style with tokens that exist.
+
+### 40. Four admin displays still hardcoded a dollar sign ✅
+
+#17 routed every price through `formatCurrency` and missed four: the revenue KPI (`AnalyticsKPICards.tsx:49`), both chart Y-axes (`RevenueTrendChart.tsx:73`, `SalesChart.tsx:139`) and the fixed-amount coupon value (`CouponsTable.tsx:129`). Both charts already formatted their _tooltips_ correctly — only the axis ticks were bare.
+
+**Fixed** 2026-08-31. The axes needed a new `formatCurrencyCompact` (`src/lib/currency.ts`) — a full `EGP 1,234.00` per gridline is wider than the plot area, which is why those two survived the original sweep.
+
+### 41. Order and payment rows written before #17 record the wrong currency
+
+**Where** `src/db/schema.ts:336` (`orders.currency`), `:568` (`payments.currency`) — both `varchar(3) DEFAULT 'USD' NOT NULL`
+
+**What happens** The repository now writes `STORE_CURRENCY` explicitly (`order.repository.ts:188,220`), but rows created before that fell through to the column default and say `USD`, while Stripe actually charged EGP. `site_settings.currency` has the same `USD` default.
+
+**Impact today is nil** — nothing reads either column — but `docs/P1-TEST-PLAN.md` §9 asks you to verify them in Drizzle Studio, where old rows will read `USD` and look like a live bug.
+
+**Fix** One backfill (`UPDATE orders SET currency = 'EGP' WHERE currency = 'USD'`, same for `payments`), and change the column defaults to match the store rather than leaving a default that is wrong for this deployment.
+
 ## Suggested order of work
 
-The whole P0 cluster is done — see [Resolved](#resolved). Everything left is P1 or below, and nothing left destroys data.
+Every P0 and all but one P1 are done — see [Resolved](#resolved). Nothing left destroys data.
 
-**First — finish the order pipeline.** #16 (confirmation email) is the last dishonest thing in checkout and it just got cheap: the real order number and the resolved shipping address are both on the entity already. #9 (SKU) and #15 (stock audit bypass) close the two remaining places where a write lands somewhere other than where the admin thinks it did.
+**First — the two [follow-ups](#follow-ups--residue-from-the-p0p1-work).** #42 is the only place left where a customer is shown something untrue: an order number that matches nothing, and no sign a refund happened. Everything it needs is already on the entity and already returned by the sibling list endpoint, so it is one widened query and four components. #43 is smaller still.
 
-**Then — the missing pages.** #14 (`/forgot-password`) is two pages over a backend that is already written, and it is linked from two live buttons, so every visitor who clicks either gets a 404. #13 (categories) is the largest admin gap.
+**Then #16, the confirmation email.** The last dishonest thing in checkout. The real order number and the resolved shipping address are both on the entity already, so it is a small change waiting on a verified Resend domain.
 
-**Then — the half-features.** #11 (notifications), #19 (verified reviews), #18 (wishlist stock), #20 (transactional product create). #12 is a decision before it is a fix: adopt `featured_items` or delete it in favour of the `isFeatured` boolean, but stop maintaining both.
+**Then — #39, the storefront palette.** It is filed under cleanup but it behaves like a defect generator: six separate white-on-black bugs so far, each found by a person looking at a screen rather than by any test. All six are patched and the cause is not, so deciding the token story once is cheaper than the seventh fix. #41 is the last loose end of the currency work and takes minutes.
 
-**#17 (currency) when there is appetite.** It is the largest single change in this file — roughly 40 hardcoded `$` sites — and it stays cosmetic until the store charges in more than one currency.
+**Then — performance,** #21-25, mostly mechanical once the repositories accept limit and offset. Do #21 first: the admin orders list still loads every order and slices in the use case, and the customer join layered on top of it inherits that shape. #25 is the same shape on the customer side — `getMyOrders` still fetches 1000 rows per infinite-scroll page, and now runs the expired-checkout sweep before it.
 
-**Then — performance,** #21-25, mostly mechanical once the repositories accept limit and offset. Do #21 first: the admin orders list still loads every order and slices in the use case, and the customer join layered on top of it inherits that shape.
+**Then the deferred decisions,** each of which is a choice before it is a fix: #29 (four CMS section types with no consumer — adopt or delete), #34 (the `worker` role), #35 (guest carts), #37 (billing addresses), and the phone-keyed `customers` table in #38.
 
 **Cleanup last,** except #27's duplicate address components and #31's build artifacts, which take a minute each and are worth doing whenever you are next in those directories.

@@ -6,6 +6,7 @@ import {
   type OrderStatus,
 } from "@/domain/orders/entities/order.entity";
 import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-coupon.use-case";
+import { NotificationService } from "@/application/notifications/notification.service";
 
 export interface CreateOrderInput {
   userId: string;
@@ -23,7 +24,8 @@ export class CreateOrderUseCase {
   constructor(
     private readonly orderRepository: OrderRepositoryInterface,
     private readonly cartRepository: CartRepositoryInterface,
-    private readonly validateCouponUseCase: ValidateCouponUseCase
+    private readonly validateCouponUseCase: ValidateCouponUseCase,
+    private readonly notifications: NotificationService
   ) {}
 
   async execute(input: CreateOrderInput): Promise<CreateOrderOutput> {
@@ -123,6 +125,27 @@ export class CreateOrderUseCase {
         );
       }
     }
+
+    // After the order has committed, and never in a way that can fail it: the
+    // service absorbs its own errors.
+    await this.notifications.orderPlaced({
+      orderId: created.id,
+      orderNumber: created.orderNumber,
+      userId: input.userId,
+      total: created.totalAmount,
+      itemCount: created.getTotalItems(),
+    });
+
+    // Stock was decremented inside the order transaction, so the low-stock
+    // check happens out here where a notifier exists.
+    await this.notifications.stockSold(
+      items
+        .filter((item) => item.variantId)
+        .map((item) => ({
+          variantId: item.variantId as string,
+          quantity: item.quantity,
+        }))
+    );
 
     return { order: created };
   }

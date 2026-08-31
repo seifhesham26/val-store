@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, ShoppingCart, TrendingUp, Users } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 function KPICard({
   title,
@@ -45,7 +46,7 @@ export function AnalyticsKPICards({
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <KPICard
         title="Total Revenue"
-        value={`$${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        value={formatCurrency(totalRevenue)}
         icon={DollarSign}
         description={`Last ${days} days`}
       />
@@ -57,7 +58,7 @@ export function AnalyticsKPICards({
       />
       <KPICard
         title="Avg Order Value"
-        value={`$${avgOrderValue.toFixed(2)}`}
+        value={formatCurrency(avgOrderValue)}
         icon={TrendingUp}
         description={`Last ${days} days`}
       />

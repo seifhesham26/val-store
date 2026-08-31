@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
 
 interface RevenueTrendChartProps {
   data: Array<{ date: string; revenue: number; orders: number }>;
@@ -69,7 +70,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
                 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `$${value}`}
+                tickFormatter={formatCurrencyCompact}
               />
               <Tooltip
                 contentStyle={{
@@ -78,7 +79,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
                   borderRadius: "8px",
                 }}
                 formatter={(value: number) => [
-                  `$${value.toFixed(2)}`,
+                  formatCurrency(value),
                   "Revenue",
                 ]}
               />

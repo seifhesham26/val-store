@@ -26,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { CartItem } from "./CartItem";
 import { useCart } from "@/components/providers/cart-provider";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
+import { formatCurrency } from "@/lib/currency";
 
 export function CartDrawer() {
   const {
@@ -105,7 +106,7 @@ export function CartDrawer() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-400">Subtotal</span>
                   <span className="text-lg font-semibold text-white">
-                    ${subtotal.toFixed(2)}
+                    {formatCurrency(subtotal)}
                   </span>
                 </div>
 

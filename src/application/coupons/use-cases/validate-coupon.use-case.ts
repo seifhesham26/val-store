@@ -7,6 +7,7 @@
 import { CouponRepositoryInterface } from "@/domain/coupons/interfaces/repositories/coupon.repository.interface";
 import { Coupon } from "@/db/schema";
 import { PAYMENT_WINDOW_MS } from "@/domain/orders/entities/order.entity";
+import { formatCurrency } from "@/lib/currency";
 
 export interface ValidateCouponResult {
   valid: boolean;
@@ -99,7 +100,7 @@ export class ValidateCouponUseCase {
     if (subtotal < minPurchase) {
       return {
         valid: false,
-        error: `Minimum purchase of $${minPurchase.toFixed(2)} required`,
+        error: `Minimum purchase of ${formatCurrency(minPurchase)} required`,
       };
     }
 

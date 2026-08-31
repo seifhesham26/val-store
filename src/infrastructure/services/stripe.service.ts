@@ -5,15 +5,11 @@
  */
 
 import Stripe from "stripe";
+import { STRIPE_CURRENCY } from "@/lib/currency";
 
-/**
- * Currency used for Stripe checkout.
- *
- * NOTE: this must stay in sync with the currency the order rows are written in
- * (see DrizzleOrderRepository.create). Issue #17 tracks making both read from
- * site_settings instead of being hardcoded.
- */
-const CHECKOUT_CURRENCY = "egp";
+// What Stripe charges in. Shared with the order rows and every price on the
+// site, so the three can no longer disagree.
+const CHECKOUT_CURRENCY = STRIPE_CURRENCY;
 
 // Initialize Stripe with secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -65,7 +61,14 @@ export class StripeService {
   async createPaymentIntent(
     input: CreatePaymentIntentInput
   ): Promise<CreatePaymentIntentResult> {
-    const { amount, currency = "usd", orderId, metadata = {} } = input;
+    const {
+      amount,
+      // The store's currency, not a dollar default — a payment intent created
+      // without an explicit currency used to be charged in USD.
+      currency = STRIPE_CURRENCY,
+      orderId,
+      metadata = {},
+    } = input;
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount,

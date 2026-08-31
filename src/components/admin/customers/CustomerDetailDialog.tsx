@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ShoppingBag, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/lib/trpc";
+import { formatCurrency } from "@/lib/currency";
 
 interface CustomerDetailDialogProps {
   customerId: string | null;
@@ -77,7 +78,7 @@ export function CustomerDetailDialog({
                 </div>
                 <div>
                   <p className="text-3xl font-bold tracking-tight">
-                    ${customerDetail.totalSpent.toFixed(2)}
+                    {formatCurrency(customerDetail.totalSpent)}
                   </p>
                   <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                     Total Spent
@@ -120,7 +121,7 @@ export function CustomerDetailDialog({
 
                       <div className="flex sm:flex-col flex-row items-center sm:items-end justify-between sm:justify-center gap-2">
                         <p className="font-semibold text-lg">
-                          ${parseFloat(order.totalAmount).toFixed(2)}
+                          {formatCurrency(parseFloat(order.totalAmount))}
                         </p>
                         <Badge
                           variant={

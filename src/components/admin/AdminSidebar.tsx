@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Package,
+  FolderTree,
   ShoppingCart,
   Users,
   BarChart3,
@@ -26,6 +27,11 @@ const navItems = [
     title: "Products",
     href: "/admin/products",
     icon: Package,
+  },
+  {
+    title: "Categories",
+    href: "/admin/categories",
+    icon: FolderTree,
   },
   {
     title: "Orders",

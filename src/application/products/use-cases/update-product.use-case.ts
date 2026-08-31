@@ -11,12 +11,14 @@ import {
   Gender,
 } from "@/domain/products/entities/product.entity";
 import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
+import { DuplicateSKUException } from "@/domain/products/exceptions/duplicate-sku.exception";
 
 export interface UpdateProductInput {
   id: string;
   data: {
     name?: string;
     slug?: string;
+    sku?: string;
     description?: string;
     categoryId?: string;
     basePrice?: number;
@@ -35,6 +37,7 @@ export interface UpdateProductOutput {
   id: string;
   name: string;
   slug: string;
+  sku: string;
   description: string;
   categoryId: string | null;
   basePrice: number;
@@ -59,11 +62,22 @@ export class UpdateProductUseCase {
       throw new ProductNotFoundException(input.id);
     }
 
+    // The SKU column is unique, so a collision would otherwise surface as a raw
+    // Postgres error. Checked only when the value actually changes — re-saving a
+    // product without touching its SKU must not collide with itself.
+    if (input.data.sku && input.data.sku !== existingProduct.sku) {
+      const skuTaken = await this.productRepository.existsBySKU(input.data.sku);
+      if (skuTaken) {
+        throw new DuplicateSKUException(input.data.sku);
+      }
+    }
+
     // Merge existing data with updates
     const updatedProduct = new ProductEntity(
       existingProduct.id,
       input.data.name ?? existingProduct.name,
       input.data.slug ?? existingProduct.slug,
+      input.data.sku ?? existingProduct.sku,
       input.data.description ?? existingProduct.description,
       input.data.basePrice ?? existingProduct.basePrice,
       input.data.salePrice !== undefined
@@ -110,6 +124,7 @@ export class UpdateProductUseCase {
       id: saved.id,
       name: saved.name,
       slug: saved.slug,
+      sku: saved.sku,
       description: saved.description,
       categoryId: saved.categoryId,
       basePrice: saved.basePrice,

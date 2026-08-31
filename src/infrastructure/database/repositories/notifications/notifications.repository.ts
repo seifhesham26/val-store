@@ -5,10 +5,11 @@
 import { db } from "@/db";
 import {
   adminNotifications,
+  userProfiles,
   AdminNotification,
   NewAdminNotification,
 } from "@/db/schema";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, inArray } from "drizzle-orm";
 import { NotificationsRepositoryInterface } from "@/domain/notifications/interfaces/repositories/notifications.repository.interface";
 
 export class DrizzleNotificationsRepository implements NotificationsRepositoryInterface {
@@ -18,6 +19,20 @@ export class DrizzleNotificationsRepository implements NotificationsRepositoryIn
       .values(notification)
       .returning();
     return result;
+  }
+
+  async createMany(notifications: NewAdminNotification[]): Promise<void> {
+    if (notifications.length === 0) return;
+    await db.insert(adminNotifications).values(notifications);
+  }
+
+  async findAdminUserIds(): Promise<string[]> {
+    const rows = await db
+      .select({ userId: userProfiles.userId })
+      .from(userProfiles)
+      .where(inArray(userProfiles.role, ["admin", "super_admin"]));
+
+    return rows.map((row) => row.userId);
   }
 
   async findByAdminUser(

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { formatCurrency } from "@/lib/currency";
 
 export function PaymentCard({ order }: { order: OrderData }) {
   return (
@@ -61,20 +62,20 @@ export function PaymentCard({ order }: { order: OrderData }) {
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
-            <span>${order.subtotal.toFixed(2)}</span>
+            <span>{formatCurrency(order.subtotal)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Tax</span>
-            <span>${order.tax.toFixed(2)}</span>
+            <span>{formatCurrency(order.tax)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Shipping</span>
-            <span>${order.shippingCost.toFixed(2)}</span>
+            <span>{formatCurrency(order.shippingCost)}</span>
           </div>
           <Separator />
           <div className="flex justify-between font-semibold">
             <span>Total</span>
-            <span>${order.totalAmount.toFixed(2)}</span>
+            <span>{formatCurrency(order.totalAmount)}</span>
           </div>
           {/* Returns can be partial, so what has actually gone back to the
               customer is worth stating separately from the order total. */}
@@ -82,12 +83,12 @@ export function PaymentCard({ order }: { order: OrderData }) {
             <>
               <div className="flex justify-between text-sm text-amber-600 dark:text-amber-400">
                 <span>Refunded</span>
-                <span>-${order.refundedAmount.toFixed(2)}</span>
+                <span>-{formatCurrency(order.refundedAmount)}</span>
               </div>
               <div className="flex justify-between text-sm font-medium">
                 <span>Net</span>
                 <span>
-                  ${(order.totalAmount - order.refundedAmount).toFixed(2)}
+                  {formatCurrency(order.totalAmount - order.refundedAmount)}
                 </span>
               </div>
               {order.partiallyRefunded && (

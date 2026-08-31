@@ -6,6 +6,7 @@
  */
 
 import { db } from "@/db";
+import { STORE_CURRENCY } from "@/lib/currency";
 import {
   siteSettings,
   contentSections,
@@ -68,7 +69,12 @@ export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
       .insert(siteSettings)
       .values({
         storeName: "Valkyrie",
-        currency: "USD",
+        // Seeded from the deployment's currency rather than the column default,
+        // which still says USD. Nothing reads this column — prices, Stripe and
+        // the order rows all go through `@/lib/currency` — but a settings row
+        // that disagrees with what customers are charged is how the four
+        // conflicting currencies started in the first place.
+        currency: STORE_CURRENCY,
         locale: "en-US",
         timezone: "UTC",
       })

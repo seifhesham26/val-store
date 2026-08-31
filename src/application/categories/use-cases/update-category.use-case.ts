@@ -8,6 +8,7 @@
 import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
 import { CategoryEntity } from "@/domain/categories/entities/category.entity";
 import { CategoryNotFoundException } from "@/domain/categories/exceptions/category-not-found.exception";
+import { CategorySlug } from "@/domain/categories/value-objects/category-slug.value-object";
 
 export interface UpdateCategoryInput {
   id: string;
@@ -51,12 +52,23 @@ export class UpdateCategoryUseCase {
       throw new Error("Category cannot be its own parent");
     }
 
-    // Generate slug from name if name changed but slug not provided
-    const slug =
-      input.data.slug ??
-      (input.data.name
-        ? input.data.name.toLowerCase().replace(/\s+/g, "-")
-        : existing.slug);
+    // Slugs go through the value object in both directions. The old inline
+    // `replace(/\s+/g, "-")` left punctuation intact, so "Men's Tees" produced
+    // "men's-tees" here and "mens-tees" at creation — two spellings of one name.
+    const slug = input.data.slug
+      ? CategorySlug.create(input.data.slug).getValue()
+      : input.data.name
+        ? CategorySlug.fromName(input.data.name).getValue()
+        : existing.slug;
+
+    // Slugs are unique and address a public URL, so a collision has to be caught
+    // before the constraint does.
+    if (slug !== existing.slug) {
+      const taken = await this.categoryRepository.findBySlug(slug);
+      if (taken) {
+        throw new Error(`Category with slug "${slug}" already exists`);
+      }
+    }
 
     // Merge existing data with updates
     const updatedCategory = new CategoryEntity(
