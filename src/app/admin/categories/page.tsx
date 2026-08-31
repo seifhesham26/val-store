@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import {
   AlertDialog,
@@ -111,6 +111,8 @@ export default function AdminCategoriesPage() {
 
     createMutation.mutate({
       name,
+      // Same contract as update: an empty field means "derive it".
+      ...(slug ? { slug } : {}),
       description: text(formData, "description") ?? undefined,
       parentId: parentId && parentId !== NO_PARENT ? parentId : undefined,
       imageUrl: text(formData, "imageUrl") ?? undefined,
@@ -188,8 +190,12 @@ export default function AdminCategoriesPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {/* The hand-written `text-destructive-foreground` this replaces was
+                a no-op — globals.css defines --destructive but no
+                --destructive-foreground — so the label was only white by
+                inheriting it from the storefront body. */}
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className={buttonVariants({ variant: "destructive" })}
               disabled={
                 deleteMutation.isPending ||
                 (pendingDelete?.childCount ?? 0) > 0 ||

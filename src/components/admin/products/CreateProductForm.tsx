@@ -8,6 +8,7 @@
  * After creation, redirects to the edit page.
  */
 
+import { slugify } from "@/domain/shared/slug";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -127,11 +128,7 @@ export function CreateProductForm() {
   const generateSlug = () => {
     const name = form.getValues("name");
     if (name) {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      form.setValue("slug", slug);
+      form.setValue("slug", slugify(name));
     }
   };
 

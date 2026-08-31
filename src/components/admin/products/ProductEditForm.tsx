@@ -7,6 +7,7 @@
  * Uses react-hook-form with zod validation.
  */
 
+import { slugify } from "@/domain/shared/slug";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -143,11 +144,7 @@ export function ProductEditForm({ productId }: ProductEditFormProps) {
   const generateSlug = () => {
     const name = form.getValues("name");
     if (name) {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      form.setValue("slug", slug);
+      form.setValue("slug", slugify(name));
     }
   };
 

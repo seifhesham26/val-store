@@ -67,10 +67,12 @@ The bug: editing stock on the product page wrote the number straight to the vari
 ## 4. Wishlist stock is real stock (#18)
 
 The bug: `inStock` was populated from `products.isActive`, so a sold-out product showed as in stock and offered "Move to cart".
+The second half of it: even once `inStock` was real, the wishlist grid never read it — every card showed the same "Choose Options" button.
 
 - [ ] Add a product to your wishlist as the customer account.
 - [ ] In **Admin → Inventory**, set **every variant** of that product to **0**.
-- [ ] Reload **/account/wishlist**. **Expected:** the item shows as out of stock and cannot be moved to the cart.
+- [ ] Reload **/account/wishlist**. **Expected:** the card is dimmed, carries an **Out of Stock** badge over the image, and its button is a disabled "Out of Stock" instead of "Choose Options" — there is no route from the wishlist to the cart.
+- [ ] The item is **not** removed from the wishlist. Staying saved while sold out is the point of a wishlist.
 - [ ] Restock **one** variant to 1. Reload. **Expected:** it is in stock again.
 - [ ] Deactivate the product in the admin (leaving stock alone). **Expected:** still out of stock — active _and_ in stock are both required.
 - [ ] With ten items in the wishlist, watch the server log or network timing. **Expected:** one extra grouped query for the whole page, not one per item.
@@ -81,12 +83,12 @@ The bug: `inStock` was populated from `products.isActive`, so a sold-out product
 
 The bug: `isVerifiedPurchase` was hardcoded `false` and `reviews.orderId` was always null, so the badge could never appear.
 
-- [ ] As the **customer** account that has **never** bought product X, leave a review on X.
-- [ ] In Drizzle Studio: **Expected:** `is_verified_purchase = false`, `order_id = null`.
-- [ ] Now **buy** product X with that account and let the order reach **paid** (card) or leave it as a COD order and move it to **processing**.
-- [ ] Review a _different_ product, Y, that the same order contained. **Expected:** `is_verified_purchase = true` and `order_id` set to that order.
-- [ ] Approve it in **Admin → Reviews**, then look at the product page. **Expected:** the verified-purchase badge is shown.
-- [ ] Cancel or refund an order and review a product only that order contained. **Expected:** **not** verified — a purchase that came undone does not earn the badge. Only `paid`, `processing`, `shipped` and `delivered` count.
+- ✅ As the **customer** account that has **never** bought product X, leave a review on X.
+- ✅ In Drizzle Studio: **Expected:** `is_verified_purchase = false`, `order_id = null`.
+- ✅ Now **buy** product X with that account and let the order reach **paid** (card) or leave it as a COD order and move it to **processing**.
+- ✅ Review a _different_ product, Y, that the same order contained. **Expected:** `is_verified_purchase = true` and `order_id` set to that order.
+- ✅ Approve it in **Admin → Reviews**, then look at the product page. **Expected:** the verified-purchase badge is shown.
+- ✅ Cancel or refund an order and review a product only that order contained. **Expected:** **not** verified — a purchase that came undone does not earn the badge. Only `paid`, `processing`, `shipped` and `delivered` count.
 
 ---
 
@@ -96,13 +98,13 @@ The bug: categories were seed-only. `admin.categories.list` existed purely to fi
 
 **The list**
 
-- [ ] **Admin → Categories** (new item in the sidebar, between Products and Orders). **Expected:** every category, ordered by display order, with slug, parent, product count and Active/Hidden.
+- ✅ **Admin → Categories** (new item in the sidebar, between Products and Orders). **Expected:** every category, ordered by display order, with slug, parent, product count and Active/Hidden.
 
 **Creating**
 
-- [ ] **Add Category**, name only, save. **Expected:** it appears, and the slug was generated from the name.
+- ✅ **Add Category**, name only, save. **Expected:** it appears, and the slug was generated from the name.
 - [ ] Create one named **`Men's Tees`**. **Expected:** the slug is `mens-tees` — apostrophe gone. This is the value-object fix: the old inline slug code left punctuation in, so creating and renaming produced two different spellings of the same name.
-- [ ] Create a category with a **parent** and a **display order**. **Expected:** the parent's name shows in the Parent column, and the row sorts by display order.
+- ✅ Create a category with a **parent** and a **display order**. **Expected:** the parent's name shows in the Parent column, and the row sorts by display order.
 
 **Editing**
 
@@ -114,10 +116,10 @@ The bug: categories were seed-only. `admin.categories.list` existed purely to fi
 
 **Deleting — this is the part worth testing hardest**
 
-- [ ] Try to delete a category that **has products**. **Expected:** refused, with a message naming how many. Nothing is deleted.
-- [ ] Try to delete one that **has subcategories**. **Expected:** refused, naming how many.
-- [ ] Delete an **empty, childless** category. **Expected:** it goes, and the confirmation warns that category deletion is permanent (products soft-delete; categories do not).
-- [ ] Confirm the guard is real and not just UI: it lives in `DeleteCategoryUseCase`, so it holds for any caller. Previously deleting a parent orphaned its children — `categories.parent_id` has no foreign key, so they kept pointing at a row that no longer existed.
+- ✅ Try to delete a category that **has products**. **Expected:** refused, with a message naming how many. Nothing is deleted.
+- ✅ Try to delete one that **has subcategories**. **Expected:** refused, naming how many.
+- ✅ Delete an **empty, childless** category. **Expected:** it goes, and the confirmation warns that category deletion is permanent (products soft-delete; categories do not).
+- ✅ Confirm the guard is real and not just UI: it lives in `DeleteCategoryUseCase`, so it holds for any caller. Previously deleting a parent orphaned its children — `categories.parent_id` has no foreign key, so they kept pointing at a row that no longer existed.
 - [ ] Check the **product form's category dropdown** still populates. It shares the same `list` endpoint, which now also carries counts.
 - [ ] **Archived products count too.** Put a product in a category, then delete (archive) the product. **Expected:** the Categories table still shows that category as having **1 product**, and delete is still refused. The table and the guard read the same number on purpose — an archived product would silently lose its category if the delete went through, so a table reading "0 products" next to a server that refuses would just look broken.
 - [ ] Rename a category, then load the **homepage** immediately. **Expected:** the new name within a second, not after a minute. Category writes now drop the storefront cache tag; without that the new page would have looked like it had not saved.

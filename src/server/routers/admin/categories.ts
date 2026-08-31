@@ -19,6 +19,8 @@ const listCategoriesSchema = z
 
 const createCategorySchema = z.object({
   name: z.string().min(1),
+  // Omitted means "derive from the name", same as on update.
+  slug: z.string().min(1).optional(),
   description: z.string().optional(),
   parentId: z.string().uuid().optional(),
   imageUrl: urlOrAssetPath.optional(),
