@@ -4,7 +4,9 @@ A catalogue of defects and gaps found by reading the codebase in full. Unlike th
 
 Each entry gives the location, what actually happens, why, and a concrete fix.
 
-Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 80/80 tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
+Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 80/80 tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived. Worth remembering why the suite proves so little here: the 80 tests cover **pure domain logic only** — the order entity, cart item, and the two slug helpers. There are no repository, router, or component tests, so nothing in this file would be caught by CI.
+
+Issues 1-43 are the original catalogue and are the work in progress. [Pass 2](#pass-2--full-source-audit-deferred) is a later audit, numbered separately and deliberately not started — finish 1-43 first.
 
 **Contents**
 
@@ -13,6 +15,7 @@ Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `
 - [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (1)
 - [P2 — Performance](#p2--performance) (5)
 - [P3 — Cleanup](#p3--cleanup) (15)
+- [Pass 2 — full-source audit, deferred](#pass-2--full-source-audit-deferred) (14)
 - [Suggested order of work](#suggested-order-of-work)
 
 ---
@@ -260,6 +263,8 @@ Ten of the original eleven are in [Resolved](#resolved), keeping their numbers. 
 
 **Deferred on purpose**, not forgotten: it is waiting on a real domain being verified in Resend, so it can be tested end to end rather than merely compiled.
 
+**Added 2026-08-31:** the COD half is worse than "no email". `src/app/(main)/checkout/success/page.tsx:83` tells every customer — on both payment paths — "You'll receive a confirmation email shortly". For COD that is a promise the system cannot keep, and it is shown before the deferred fix lands. Either send the COD email as part of this, or make the success copy conditional on the payment method in the meantime.
+
 ---
 
 ## P2 — Performance
@@ -361,6 +366,8 @@ Fix by consuming them: `getCachedSiteSettings()` already exists, so the Navbar, 
 
 For "new", sort by `createdAt` desc, optionally with a recency window. For accessories, create the category and filter by `categoryId`.
 
+**Added 2026-08-31, same area:** all six static collection routes (`men`, `women`, `new`, `sale`, `all`, `accessories`) take routing precedence over `[slug]`, so a real category created with any of those slugs is unreachable through its own page — including the `accessories` category the fix above asks you to create. Decide whether the static routes should survive at all, or become redirects into `[slug]`. Separately, `[slug]/page.tsx:21` calls `public.categories.getBySlug`, which returns **every product in the category**, purely to read `category.id` and `category.name` before handing off to a grid that queries again.
+
 ### 34. The `worker` role does nothing
 
 It exists in the `user_role` enum, `UserProfileEntity.isWorker()`, and both `UserRole` type aliases, but no route or procedure checks it — `adminProcedure` only accepts `admin`/`super_admin`. Either give it meaning (an order-fulfilment view is the obvious one) or drop it from the enum.
@@ -381,7 +388,7 @@ Add a billing-address choice at checkout, or drop the distinction from the schem
 
 ### 38. Smaller notes
 
-- `NEXT_PUBLIC_APP_NAME` is read by `ResendEmailService` but appears in neither `.env` nor `.env.example`; it silently falls back to "Valkyrie". Add it to `.env.example`.
+- ~~`NEXT_PUBLIC_APP_NAME` is read by `ResendEmailService` but appears in neither `.env` nor `.env.example`.~~ **Done** — verified 2026-08-31, it is in `.env.example` under Store Configuration. The reverse case is now the live one: `STRIPE_PUBLISHABLE_KEY` is documented in `.env.example` and read by no file. It could not be used client-side anyway without a `NEXT_PUBLIC_` prefix, and the app uses Stripe's hosted Checkout, so drop it.
 - `zod` is imported as both `"zod"` and `"zod/v4"` across the codebase. Pick one.
 - `DrizzleOrderRepository.update()` throws "not implemented" — fine, but it satisfies an interface method that therefore lies about the contract. Remove it from `OrderRepositoryInterface`.
 - The contact form is a placeholder (`ContactFormPlaceholder.tsx`). The admin orders list's "coming soon" filter button is gone — the toolbar's buttons all do something now.
@@ -417,6 +424,220 @@ This has now been hit five separate times and fixed five separate times: `AlertD
 
 **Fix** One backfill (`UPDATE orders SET currency = 'EGP' WHERE currency = 'USD'`, same for `payments`), and change the column defaults to match the store rather than leaving a default that is wrong for this deployment.
 
+---
+
+## Pass 2 — full-source audit, deferred
+
+Found by reading the whole tree again on 2026-08-31 — every layer of `src/`, with
+reference checks by grep for each "unused" claim and `diff` for each "identical"
+one. **Nothing here is started, and none of it should be started before the
+queue above is finished.** They carry their own `P2-n` numbering ("pass 2, item
+n") so they never interleave with the 1-43 series; it is unrelated to the
+"P2 — Performance" tier, which is a _kind_, not a pass.
+
+Ten findings from that audit are **not** listed here because they were already
+catalogued: the customer order detail page (#42), the confirmation email (#16),
+footer dead links (#32), collection route filters (#33), category count scans
+(#23), fetch-all-then-slice (#21, #25), the dashboard name N+1 (#24), unused
+value objects and the unused `search()` (#26, #22), dead components and
+duplicate address files (#27), unreferenced procedures (#28), and committed
+build artifacts (#31). Three of those gained notes this pass — see #16, #33 and
+#38.
+
+The audit also confirmed eight areas as **sound**, which is the more useful half
+of the result — the transactional core holds, and that is why every finding
+below sits outside it. The two worth not re-reading the code for: order creation
+locks variant rows with `FOR UPDATE` in a consistent sorted order on every path
+that touches them, so concurrent checkouts cannot oversell or deadlock; and
+`markAsPaid` is a conditional `UPDATE … WHERE status IN ('pending','processing')
+RETURNING`, so the webhook and the success page can both call it and only the
+one that actually transitions the row notifies. Also verified: the derived
+refund model and its in-transaction bound check, the coupon lifecycle across
+all four branches, the Stripe-before-cancel expiry sweep, ownership checks
+everywhere outside P2-0, both rate limiters, and the single-source currency.
+
+### P2-0. Notification read/delete never checks who owns the notification
+
+**Where** `src/server/routers/public/notifications.ts:44,56`; `src/infrastructure/database/repositories/notifications/user-notifications.repository.ts:82,110`; the same shape on the admin side at `notifications.repository.ts:62,88`
+
+**What happens** `markAsRead` and `delete` accept a notification id and pass it straight to a repository whose `WHERE` clause is `eq(userNotifications.id, id)` — the row's owner is never consulted. Any authenticated user holding another user's notification UUID can mark it read or delete it outright.
+
+**Why** The sibling procedures on the same router scope correctly — `markAllAsRead` and `getUnreadCount` both filter on `ctx.user.id`. These two were written against the id alone and nothing forced the difference: `ctx.user.id` is in scope and simply unused.
+
+**Impact** Bounded by needing to guess a UUID, so this is not an open door. It is still a missing authorisation check on a write path, and the admin variant lets one admin silently clear another's queue.
+
+**Fix** Take `userId` as a second argument in both repositories and add it to an `and(...)`; pass `ctx.user.id` from all four procedures. A non-matching row then no-ops silently, which is the right behaviour — it leaks nothing about whether the id exists.
+
+---
+
+### P2-1. The previous account's cart survives sign-out in localStorage
+
+**Where** `src/lib/stores/cart-store.ts:123-128`; `src/components/account/AccountSidebar.tsx:36`, `src/components/layout/MobileMenu.tsx:188`, `src/components/UserDialog.tsx:32`; `src/components/providers/cart-provider.tsx:35-50`
+
+**What happens** The cart store persists to `localStorage` under `valkyrie-cart-v2`, with `partialize` keeping `items` — product names, images, unit prices, quantities. No sign-out path clears it. All three handlers finish with a `window.location.href` redirect, and the full page load rehydrates the store from disk before any session check has run.
+
+So on a shared browser the next person sees the previous account's cart lines once hydration completes. The navbar badge starts at 0 — the `useSyncExternalStore` guard added for the SSR mismatch — and then fills in with someone else's items, which makes it look like their own cart rather than a leftover.
+
+**Why** `CartProvider` calls `setItems` only when a server cart _arrives_; there is no branch for `!isAuthenticated`, so for a logged-out visitor the stale cart is never displaced. The store's guest branch is unreachable (#35), which is why nothing else covers this.
+
+**Fix** Call `clearCart()` before each of the three redirects, and clear in `CartProvider` when `isAuthenticated` goes false. Both, not either — the redirect path is the common case and the provider is the backstop.
+
+**While you are there** `UserDialog.tsx:35` calls `localStorage.removeItem("user")`. Nothing in the codebase writes a `"user"` key; the only other `localStorage` writer is the announcement bar's dismiss flag. That line reads exactly like the cleanup that was meant to be this one.
+
+---
+
+### P2-2. Dashboard revenue counts orders that were never paid, and orders that were refunded
+
+**Where** `src/infrastructure/database/repositories/dashboard/dashboard.repository.ts:36` (`getMetrics`), `:79` (`getSalesTrend`), `:152` and `:164` (`getAnalytics`)
+
+**What happens** All four revenue queries are `SUM(orders.total_amount)` over a date window with **no status filter at all**. A `pending` card order the customer abandoned counts. An order an admin cancelled counts. A fully refunded order counts at its original value.
+
+Refunds never enter the figure anywhere. `order_items.refundedQuantity` is the single stored fact the whole return system derives from, and no dashboard query joins `order_items` to reach it — so the number an admin reads can include money that was taken and given back, alongside money that was never taken.
+
+**Why** These queries predate both the refund model and the payment-window work, and nothing in the schema forces a status filter — `totalAmount` is on every order row regardless of whether it was ever collected.
+
+**Fix** Decide once what counts as recognised revenue: which statuses, and gross or net of returns. Then apply that one definition to all four queries. `OrderEntity.refundedAmount()` already produces the net figure per order, correctly scaled for coupons, if the answer is net. Resolve together with P2-3 and P2-10, which are the same question asked in two other places.
+
+---
+
+### P2-3. A second, contradictory revenue definition exists and is dead
+
+**Where** `src/infrastructure/database/repositories/orders/order.repository.ts:879`; declared at `src/domain/orders/interfaces/repositories/order.repository.interface.ts:140`
+
+**What happens** `getTotalRevenue()` filters to `status IN ('processing', 'shipped', 'delivered')`. Measured against this codebase's own state machine that set is wrong in both directions: it **excludes `paid`**, which is precisely the status `markAsPaid` writes when Stripe confirms, so a freshly paid order contributes nothing; and it **includes `processing`**, which `ORDER_STATUS_TRANSITIONS` defines as a pre-payment state (`pending → processing → paid`).
+
+It also has no caller anywhere outside the interface that declares it.
+
+**Fix** Delete it, or promote it to the single definition from P2-2 and point the dashboard at it. What it must not stay is a third answer sitting in the repository looking authoritative.
+
+---
+
+### P2-4. Dashboard cards print invented deltas, and count all orders under a "new" label
+
+**Where** `src/components/admin/dashboard/MetricsCards.tsx:36,42`; `src/infrastructure/database/repositories/dashboard/dashboard.repository.ts:43-47`
+
+**What happens** Two of the four metric cards carry hardcoded sub-labels: every load renders `"+20.1% from last month"` beneath revenue and `"+180 from yesterday"` beneath orders. Nothing computes either. Sitting directly under a live figure, in the same card, in the position a real delta would occupy, they read as measurements.
+
+The figure above the second one is mislabelled as well. The card is titled **"New Orders"**, but `getMetrics` returns `COUNT(*)` over the whole `orders` table with no date bound — while the revenue card beside it _is_ windowed to 30 days. Two cards, two different time ranges, neither stated.
+
+**Fix** Compute the deltas or delete the strings; a card with no sub-label is honest and a card with a fabricated one is not. Then either bound the order count to the same 30 days as revenue, or retitle it "Total Orders" and label both cards with their window.
+
+---
+
+### P2-5. The app has no error, not-found, or loading boundaries
+
+**Where** absent throughout `src/app`; `src/components/ui/ErrorBoundary.tsx` (59 lines, zero importers)
+
+**What happens** There is no `error.tsx`, `global-error.tsx`, `not-found.tsx` or `loading.tsx` anywhere in the route tree. An uncaught throw in any server component drops the visitor onto Next's default error screen; a bad URL gets Next's default 404 with none of the store's chrome; and with no `loading.tsx` the server-rendered homepage sections have no streaming boundary to suspend into.
+
+An `ErrorBoundary` component exists and is mounted nowhere.
+
+**Why** The homepage sections and the footer each wrap their own fetch in `try`/`catch` and fall back to hardcoded defaults — a deliberate and good pattern that should be preserved. But it only covers the failures those authors anticipated, and it created the impression that failure was handled generally.
+
+**Fix** A root `error.tsx` and `not-found.tsx` in `(main)`, styled to the storefront's dark palette rather than the token defaults (see #39 and P2-6 — this is exactly the surface that trap catches). An `error.tsx` under `admin` too, since that tree has its own theme. Mount the existing `ErrorBoundary` around the client-heavy subtrees, or delete it as part of #27 if the route-level files cover the need.
+
+---
+
+### P2-6. The white-pill outline button is live again, in the cart and checkout funnel
+
+**Where** `src/components/cart/CartPopulated.tsx:60`, `src/components/checkout/CheckoutAddressSelection.tsx:79`, `src/components/checkout/CheckoutOrderSummary.tsx:52`, `src/app/(main)/checkout/success/page.tsx:114`, `src/components/cart/CartUnauthenticated.tsx:18`
+
+**What happens** The seventh through eleventh instances of #39. `variant="outline"` resolves to `bg-background`, which on the storefront is `oklch(1 0 0)` — pure white — with `text-accent-foreground`, near-black. Without a `bg-transparent` override each renders as a white pill on the black page. The last of the five is the instructive one: `CartUnauthenticated.tsx:18` _does_ set `border-white/10` and `text-gray-300`, so it looks patched, but never overrides the background — the rule in `CLAUDE.md` says `bg-transparent` for exactly this reason.
+
+The default variant has the mirror problem in the same flow: `bg-primary` is `oklch(0.205)`, a near-black button on a black page, at `checkout/success/page.tsx:108` and `CheckoutNoAddress.tsx:22`.
+
+**Why** #39's root cause, untouched. Every instance is one `<Button>` written without remembering that `:root` is the light palette.
+
+**Fix** Patch these five as an interim — `bg-transparent` plus an explicit border for outline, `bg-val-accent text-black` for primary; `RelatedProducts.tsx:27` is the correct reference. But this is the argument for doing #39 properly rather than a twelfth patch: the whole purchase funnel is now affected, and no test can see it.
+
+---
+
+### P2-7. Three portalled primitives still set a background with no paired foreground
+
+**Where** `src/components/ui/sheet.tsx:61`, `drawer.tsx:59`, `menubar.tsx:17`
+
+**What happens** The rule that fixed `AlertDialogContent` — a portalled surface must set both halves of a pair, because Radix attaches it to `<body>` where it escapes the admin's `ThemeProvider` and inherits the storefront's white text — has three remaining violations. `SheetContent`, `DrawerContent` and the menubar root each set `bg-background` alone.
+
+**All three are currently unused**, so this is latent rather than live. It becomes live the moment anyone reaches for a sheet or a drawer, which is precisely how the previous instances arrived.
+
+**Verified correct while checking:** `dialog`, `alert-dialog`, `popover`, `select`, `dropdown-menu`, `context-menu`, `command`, `hover-card` and `tooltip` all set both halves.
+
+**Fix** Add `text-foreground` to all three now — three words, and it closes the class off before the next consumer arrives. Or delete them as part of P2-13, since nothing imports them.
+
+---
+
+### P2-8. Nested `<main>` on every storefront page
+
+**Where** `src/app/(main)/layout.tsx:21`, `src/app/(main)/page.tsx:12`
+
+**What happens** The layout wraps its children in `<main className="min-h-screen">`, and the homepage returns another `<main>` as its own root. Invalid HTML, and two `main` landmarks means assistive technology has no single "primary content" target on the site's front page.
+
+**Fix** Make the inner one a fragment or a `<div>`. Worth grepping the other route files for the same shape while you are in there.
+
+---
+
+### P2-9. Half the cached product fetchers carry no tags, so no write can invalidate them
+
+**Where** `src/lib/cache.ts:256` (`getCachedProductsByCategory`), `:310` (`getCachedProductBySlug`), `:381` (`getCachedRelatedProducts`)
+
+**What happens** All three pass a key array to `unstable_cache` but **no `tags`** — only `revalidate: 60`. The admin routers call `revalidateTag("all-products")` and `revalidateTag("featured-products")` after every product write, and these three never see it.
+
+The visible symptom is an asymmetry: after an edit the product _lists_ update immediately while the product _detail page_ for the same item stays stale for up to a minute. That is the exact shape that makes an admin conclude the save failed and press it again — the failure mode `revalidateCatalogue()` was added to prevent.
+
+**Fix** Give all three the `all-products` tag, and `getCachedProductBySlug` a per-product tag if you want precision. The comment above `revalidateCatalogue()` in `admin/products.ts` already explains why this matters; it just did not reach these three.
+
+---
+
+### P2-10. Customer search pages against the wrong total, and lifetime value counts cancelled orders
+
+**Where** `src/server/routers/admin/customers.ts:60-62`, and `:39` / `:106-109`
+
+**What happens** Two separate problems in one router.
+
+`list` applies the search filter to the returned rows but computes `total` as an unconditional `COUNT(*)` over `user`. Search for one customer and the UI is still told there are hundreds of pages, so the pager is wrong for every search.
+
+`totalSpent` — in the list aggregate and again in `getById` — sums `orders.totalAmount` across every order regardless of status. A customer who abandoned three checkouts and cancelled a fourth reads as a high-value account, and the admin has no way to see why.
+
+**Fix** Move the search predicate into a shared `where` used by both the row query and the count. For `totalSpent`, apply whatever P2-2 settles on — this is the same question about the same column, and the two must not diverge.
+
+---
+
+### P2-11. Notification thumbnails pick the alphabetically-first image, not the primary one
+
+**Where** `src/infrastructure/database/repositories/notifications/user-notifications.repository.ts:48`
+
+**What happens** The product-image subquery is `MIN(image_url)` grouped by product — the alphabetically first URL, not the row flagged `isPrimary`. Every other read path in the codebase does `images.find(img => img.isPrimary) ?? images[0]`.
+
+It returns _an_ image, which is why it has never looked broken.
+
+**Fix** Filter the subquery on `isPrimary` with a `displayOrder` fallback, matching `productImageRepository.findPrimaryByProducts()` — which already exists and does exactly this.
+
+---
+
+### P2-12. The marketing pages quote dollar shipping rates the checkout does not charge
+
+**Where** `src/components/shipping/ShippingOptions.tsx:15,31,44`, `src/components/home/TrustIndicators.tsx:13`, `src/components/faq/FAQAccordion.tsx:42`; against `src/application/checkout/use-cases/create-order.use-case.ts:55-56`
+
+**What happens** `CreateOrderUseCase` hardcodes `shippingCost = 0` and `tax = 0`, and the checkout summary correctly renders "Free". Meanwhile the shipping page advertises `$5.99` / `$14.99` / `$24.99` tiers, the homepage trust badge promises free shipping "On orders over $200", and the FAQ offers `$5` gift wrapping that checkout has no option for.
+
+Two faults at once: the amounts contradict what the system charges, and they are denominated in dollars on a store whose entire currency layer resolves to EGP. Everything _computed_ goes through `formatCurrency` correctly after #17 and #40 — this is the hand-written copy that neither sweep looked at.
+
+**Fix** Decide whether shipping is genuinely free. If it is, say so on all three pages and delete the tiers. If it is not, that is a real feature — `shippingCost` is already a first-class field on the order and the entity's `validateTotal()` will hold you to it — and the copy should follow the implementation rather than lead it.
+
+---
+
+### P2-13. Twenty-nine UI primitives and three dependencies have no consumer
+
+**Where** `src/components/ui/`, `package.json`
+
+**What happens** 29 of the 60 files in `src/components/ui/` are imported by nothing — roughly 3,700 lines, about 8% of the source tree. `sidebar.tsx` alone is 724 lines and `chart.tsx` is 357 (the admin charts use `recharts` directly rather than through it).
+
+Unimported: `sidebar`, `chart`, `menubar`, `context-menu`, `field`, `carousel`, `item`, `command`, `input-group`, `navigation-menu`, `drawer`, `pagination`, `breadcrumb`, `empty`, `button-group`, `toggle-group`, `input-otp`, `alert`, `hover-card`, `tooltip`, `resizable`, `collapsible`, `checkbox`, `toggle`, `sonner`, `progress`, `aspect-ratio`, `kbd`, and `ErrorBoundary` (see P2-5).
+
+Five dependencies exist solely to support unused primitives — `embla-carousel-react`, `cmdk`, `vaul`, `input-otp`, `react-resizable-panels` — and three more are imported by no file at all: `@stripe/react-stripe-js` and `@stripe/stripe-js` (the app uses Stripe's hosted Checkout, never the client SDK) and `bcryptjs` with its `@types` (Better Auth does its own hashing).
+
+**Fix** Lowest-risk cleanup in the file, and it should still go last. Delete the three genuinely unimported dependencies first — they carry install weight and imply a client-side Stripe integration that does not exist. The primitives are a judgment call: they are `shadcn` scaffolding that costs nothing at runtime, and the argument for removing them is that unused surface is what a future reader mistakes for load-bearing code.
+
 ## Suggested order of work
 
 Every P0 and all but one P1 are done — see [Resolved](#resolved). Nothing left destroys data.
@@ -432,3 +653,12 @@ Every P0 and all but one P1 are done — see [Resolved](#resolved). Nothing left
 **Then the deferred decisions,** each of which is a choice before it is a fix: #29 (four CMS section types with no consumer — adopt or delete), #34 (the `worker` role), #35 (guest carts), #37 (billing addresses), and the phone-keyed `customers` table in #38.
 
 **Cleanup last,** except #27's duplicate address components and #31's build artifacts, which take a minute each and are worth doing whenever you are next in those directories.
+
+---
+
+**Then, and not before — [Pass 2](#pass-2--full-source-audit-deferred).** It is held back on purpose: the queue above is nearly finished and interleaving a fresh batch is how a nearly-finished queue stops being one. Two exceptions worth pulling forward if they are cheap on the day, because both are correctness rather than polish:
+
+- **P2-0** is a missing authorisation check on a write path — two lines per repository, no design decision, and the only thing in either list that lets one user act on another's data.
+- **P2-1** shows one customer's cart contents to the next person on a shared browser, and is a `clearCart()` call in three places.
+
+The rest genuinely can wait. Three of them do change how you would do work already queued, so read them before starting the relevant item rather than after: **P2-2/P2-3/P2-10** settle what revenue means, which the dashboard work needs; **P2-6** is five more instances of #39 and belongs in that decision rather than as its own patch; and **P2-5** wants its error and not-found pages styled for the storefront palette, which is the same decision again.
