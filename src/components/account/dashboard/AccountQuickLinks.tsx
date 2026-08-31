@@ -42,8 +42,10 @@ function QuickLinkCard({
   value: string | number;
   description: string;
 }) {
+  // The <a> is the grid item, so h-full has to live on the Link for cards to
+  // match heights.
   return (
-    <Link href={href}>
+    <Link href={href} className="block h-full">
       <div className="bg-zinc-900 border border-white/10 rounded-lg p-4 hover:border-white/20 transition-colors cursor-pointer h-full">
         <div className="flex items-start gap-3">
           <div className="p-2 bg-val-accent/10 rounded-lg">

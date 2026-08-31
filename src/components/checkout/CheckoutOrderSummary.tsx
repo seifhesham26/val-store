@@ -77,8 +77,8 @@ export function CheckoutOrderSummary({
                   className="object-cover"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-muted">
-                  <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                <div className="flex h-full w-full items-center justify-center bg-white/[0.06]">
+                  <ShoppingBag className="h-6 w-6 text-gray-500" />
                 </div>
               )}
             </div>

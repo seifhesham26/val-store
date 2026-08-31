@@ -12,6 +12,7 @@
 
 import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import type { RefundLine } from "@/domain/orders/entities/order.entity";
+import { NotificationService } from "@/application/notifications/notification.service";
 
 export interface RefundOrderInput {
   id: string;
@@ -31,7 +32,10 @@ export interface RefundOrderOutput {
 }
 
 export class RefundOrderUseCase {
-  constructor(private readonly orderRepository: OrderRepositoryInterface) {}
+  constructor(
+    private readonly orderRepository: OrderRepositoryInterface,
+    private readonly notifications: NotificationService
+  ) {}
 
   async execute(input: RefundOrderInput): Promise<RefundOrderOutput> {
     const before = await this.orderRepository.findById(input.id);
@@ -44,11 +48,22 @@ export class RefundOrderUseCase {
 
     const refundedTotal = order.refundedAmount();
     const fullyRefunded = order.isFullyRefunded();
+    const amount = refundedTotal - amountBefore;
+
+    // After the refund is durable, never before: the service swallows its own
+    // failures, so a notification problem cannot undo money already returned.
+    await this.notifications.orderRefunded({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      userId: order.userId,
+      amount,
+      fullyRefunded,
+    });
 
     return {
       id: order.id,
       status: order.status,
-      amount: refundedTotal - amountBefore,
+      amount,
       refundedTotal,
       fullyRefunded,
       message: fullyRefunded

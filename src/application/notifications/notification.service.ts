@@ -130,6 +130,44 @@ export class NotificationService {
   }
 
   /**
+   * A return was recorded against an order.
+   *
+   * Separate from `orderStatusChanged` because a partial return is not a status
+   * change — returning one of three shirts leaves the order where it was — so
+   * the status hook never fired and the customer was told nothing at all. The
+   * amount is the money moved by *this* return, not the running total, because
+   * that is the number the customer is waiting to see back on their card.
+   */
+  async orderRefunded(input: {
+    orderId: string;
+    orderNumber: string | null;
+    userId: string | null;
+    /** Money returned by this return alone. */
+    amount: number;
+    fullyRefunded: boolean;
+  }): Promise<void> {
+    if (!input.userId) return;
+    // A return that moved no money (all lines restocked at zero value, or a
+    // no-op call) is not worth a notification.
+    if (input.amount <= 0) return;
+
+    const label = input.orderNumber ?? input.orderId.slice(0, 8).toUpperCase();
+
+    await this.safely("orderRefunded", () =>
+      this.userNotifications.create({
+        userId: input.userId!,
+        notificationType: "refund_processed",
+        title: input.fullyRefunded ? "Refund processed" : "Partial refund",
+        message: input.fullyRefunded
+          ? `${formatCurrency(input.amount)} for ${label} has been refunded.`
+          : `${formatCurrency(
+              input.amount
+            )} of ${label} has been refunded for the items you returned.`,
+      })
+    );
+  }
+
+  /**
    * Stock fell to or below the threshold. Only fires on the crossing, so a
    * variant that is already low does not notify on every subsequent sale.
    */

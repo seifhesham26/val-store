@@ -17,45 +17,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Bell,
-  Check,
-  Tag,
-  Package,
-  Percent,
-  Clock,
-  Truck,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  ShoppingBag,
-} from "lucide-react";
+import { Bell, Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-
-const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
-  wishlist_sale: Tag,
-  item_available: Package,
-  order_update: Clock,
-  price_drop: Percent,
-  order_confirmed: ShoppingBag,
-  order_shipped: Truck,
-  order_delivered: CheckCircle,
-  order_cancelled: XCircle,
-  refund_processed: RefreshCw,
-};
-
-const NOTIFICATION_COLORS: Record<string, string> = {
-  wishlist_sale: "text-green-400 bg-green-500/10",
-  item_available: "text-blue-400 bg-blue-500/10",
-  order_update: "text-orange-400 bg-orange-500/10",
-  price_drop: "text-purple-400 bg-purple-500/10",
-  order_confirmed: "text-blue-400 bg-blue-500/10",
-  order_shipped: "text-indigo-400 bg-indigo-500/10",
-  order_delivered: "text-green-400 bg-green-500/10",
-  order_cancelled: "text-red-400 bg-red-500/10",
-  refund_processed: "text-amber-400 bg-amber-500/10",
-};
+import {
+  notificationIcon,
+  notificationColor,
+} from "@/components/notifications/notification-visuals";
 
 export function UserNotificationsBell() {
   const { data: session } = useSession();
@@ -133,10 +101,8 @@ export function UserNotificationsBell() {
         ) : (
           <div className="max-h-80 overflow-y-auto">
             {notifications.map((n) => {
-              const Icon = NOTIFICATION_ICONS[n.notificationType] || Bell;
-              const colorClass =
-                NOTIFICATION_COLORS[n.notificationType] ||
-                "text-gray-400 bg-white/[0.06]";
+              const Icon = notificationIcon(n.notificationType);
+              const colorClass = notificationColor(n.notificationType);
 
               return (
                 <DropdownMenuItem

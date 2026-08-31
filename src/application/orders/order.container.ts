@@ -36,7 +36,10 @@ export function createOrderModule(deps: {
         deps.getNotificationService()
       )),
     getRefundOrderUseCase: () =>
-      (refundOrder ??= new RefundOrderUseCase(getOrderRepository())),
+      (refundOrder ??= new RefundOrderUseCase(
+        getOrderRepository(),
+        deps.getNotificationService()
+      )),
     getCancelExpiredCheckoutsUseCase: () =>
       (cancelExpiredCheckouts ??= new CancelExpiredCheckoutsUseCase(
         getOrderRepository()

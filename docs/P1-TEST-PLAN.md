@@ -122,7 +122,7 @@ The bug: categories were seed-only. `admin.categories.list` existed purely to fi
 - ✅ Confirm the guard is real and not just UI: it lives in `DeleteCategoryUseCase`, so it holds for any caller. Previously deleting a parent orphaned its children — `categories.parent_id` has no foreign key, so they kept pointing at a row that no longer existed.
 - [ ] Check the **product form's category dropdown** still populates. It shares the same `list` endpoint, which now also carries counts.
 - [ ] **Archived products count too.** Put a product in a category, then delete (archive) the product. **Expected:** the Categories table still shows that category as having **1 product**, and delete is still refused. The table and the guard read the same number on purpose — an archived product would silently lose its category if the delete went through, so a table reading "0 products" next to a server that refuses would just look broken.
-- [ ] Rename a category, then load the **homepage** immediately. **Expected:** the new name within a second, not after a minute. Category writes now drop the storefront cache tag; without that the new page would have looked like it had not saved.
+- ✅ Rename a category, then load the **homepage** immediately. **Expected:** the new name within a second, not after a minute. Category writes now drop the storefront cache tag; without that the new page would have looked like it had not saved.
 
 ---
 
@@ -130,17 +130,17 @@ The bug: categories were seed-only. `admin.categories.list` existed purely to fi
 
 The bug: the tab wrote to `featured_items` and the homepage read `products.isFeatured` and "the first three active categories". Curating changed nothing. The Add button had no handler and the "drag to reorder" tip described behaviour that was never built.
 
-- [ ] **Admin → Settings → Featured**. **Expected:** each list now shows real **names**, not `ID: 4f3a91b2...`.
-- [ ] With both lists empty, open the homepage. **Expected:** Best Sellers shows products marked Featured on their edit page, and the category grid shows the first three active categories. This is the documented fallback — an empty curation must never blank the homepage.
-- [ ] Type in the **search box** above Featured Products. **Expected:** matching products appear with an **Add** button. (Before, the box filtered nothing and the button did nothing.)
-- [ ] Add three products. Reload the homepage. **Expected:** exactly those three, in the order listed — **not** the `isFeatured` set.
-- [ ] Use the **up/down arrows** to reorder. Reload the homepage. **Expected:** the new order. (Arrows rather than drag, because arrows are what actually exists.)
-- [ ] Remove one. Reload. **Expected:** gone from the homepage within a second — the write drops the cache tag, so you should not have to wait 60 seconds.
-- [ ] Curate **categories** the same way and confirm the homepage grid follows.
-- [ ] Now the awkward case: add a product to the featured list, then **deactivate that product**. Reload the homepage. **Expected:** it is skipped, and the rest still render. The admin tab shows it as **Deleted product** so you know why.
-- [ ] Now the worse case: with three products curated, **deactivate all three**. Reload the homepage. **Expected:** Best Sellers falls back to the `isFeatured` set. It must **not** render the section heading above an empty grid — a curation that has outlived every one of its products means the same thing as an empty curation. Repeat for categories.
-- [ ] Reorder the **categories** and watch the card images. **Expected:** each category keeps its own image as it moves. The images used to be seeded on grid position, so reordering shuffled them between cards.
-- [ ] Empty both lists again. **Expected:** the homepage returns to the fallback behaviour.
+- ✅ **Admin → Settings → Featured**. **Expected:** each list now shows real **names**, not `ID: 4f3a91b2...`.
+- ✅ With both lists empty, open the homepage. **Expected:** Best Sellers shows products marked Featured on their edit page, and the category grid shows the first three active categories. This is the documented fallback — an empty curation must never blank the homepage.
+- ✅ Type in the **search box** above Featured Products. **Expected:** matching products appear with an **Add** button. (Before, the box filtered nothing and the button did nothing.)
+- ✅ Add three products. Reload the homepage. **Expected:** exactly those three, in the order listed — **not** the `isFeatured` set.
+- ✅ Use the **up/down arrows** to reorder. Reload the homepage. **Expected:** the new order. (Arrows rather than drag, because arrows are what actually exists.)
+- ✅ Remove one. Reload. **Expected:** gone from the homepage within a second — the write drops the cache tag, so you should not have to wait 60 seconds.
+- ✅ Curate **categories** the same way and confirm the homepage grid follows.
+- ✅ Now the awkward case: add a product to the featured list, then **deactivate that product**. Reload the homepage. **Expected:** it is skipped, and the rest still render. The admin tab shows it as **Deleted product** so you know why.
+- ✅ Now the worse case: with three products curated, **deactivate all three**. Reload the homepage. **Expected:** Best Sellers falls back to the `isFeatured` set. It must **not** render the section heading above an empty grid — a curation that has outlived every one of its products means the same thing as an empty curation. Repeat for categories.
+- ✅ Reorder the **categories** and watch the card images. **Expected:** each category keeps its own image as it moves. The images used to be seeded on grid position, so reordering shuffled them between cards.
+- ✅ Empty both lists again. **Expected:** the homepage returns to the fallback behaviour.
 
 ---
 
@@ -152,21 +152,21 @@ The bug: both notification tables, both repositories, both routers and both bell
 
 **As a customer**
 
-- [ ] Place an order (COD). **Expected:** the customer bell gets **"Order placed"**.
-- [ ] Pay by card and complete Stripe. **Expected:** **"Payment received"**. Return to the success page and refresh it a few times. **Expected:** still exactly one — the success page and the webhook race each other, and only the one that actually transitions the order notifies.
+- ✅ Place an order (COD). **Expected:** the customer bell gets **"Order placed"**.
+- ✅ Pay by card and complete Stripe. **Expected:** **"Payment received"**. Return to the success page and refresh it a few times. **Expected:** still exactly one — the success page and the webhook race each other, and only the one that actually transitions the order notifies.
 - [ ] In the admin, move the order to **shipped**, then **delivered**. **Expected:** one notification each, naming the real order number.
 - [ ] Cancel an order. **Expected:** "Order cancelled". Refund one. **Expected:** "Refund processed".
-- [ ] Try an **illegal** status transition (the dropdown will reject it). **Expected:** no notification — the emit happens after the transition is accepted, never before. A customer must not be told their order shipped when it did not.
+- ✅ Try an **illegal** status transition (the dropdown will reject it). **Expected:** no notification — the emit happens after the transition is accepted, never before. A customer must not be told their order shipped when it did not.
 
 **As an admin**
 
-- [ ] The same order should have produced a **"New order"** admin notification, with the order number, item count and total.
-- [ ] Have the customer submit a review. **Expected:** **"New review awaiting approval"**, with the rating and product name, and "(verified purchase)" when it is one. This is the only thing that tells you the approval queue is non-empty.
-- [ ] Sign up a brand-new account. **Expected:** a **"New customer"** admin notification.
-- [ ] **Low stock:** take the variant you set to 6 or 7 units and buy enough to push it to **5 or below**. **Expected:** one **"Low stock"** notification naming the **SKU** and the units left.
-- [ ] Buy one more of the same variant. **Expected: no second notification.** It fires on the crossing, not on the level — otherwise every subsequent sale of an already-low variant would notify again.
-- [ ] Drive it to **0**. **Expected:** nothing new, for the same reason. (It already notified on the way down.)
-- [ ] Set stock back up to 20 in **Admin → Inventory**, then adjust it down to 3. **Expected:** a fresh "Low stock" — a new crossing.
+- ✅ The same order should have produced a **"New order"** admin notification, with the order number, item count and total.
+- ✅ Have the customer submit a review. **Expected:** **"New review awaiting approval"**, with the rating and product name, and "(verified purchase)" when it is one. This is the only thing that tells you the approval queue is non-empty.
+- ✅ Sign up a brand-new account. **Expected:** a **"New customer"** admin notification.
+- ✅ **Low stock:** take the variant you set to 6 or 7 units and buy enough to push it to **5 or below**. **Expected:** one **"Low stock"** notification naming the **SKU** and the units left.
+- ✅ Buy one more of the same variant. **Expected: no second notification.** It fires on the crossing, not on the level — otherwise every subsequent sale of an already-low variant would notify again.
+- ✅ Drive it to **0**. **Expected:** nothing new, for the same reason. (It already notified on the way down.)
+- ✅ Set stock back up to 20 in **Admin → Inventory**, then adjust it down to 3. **Expected:** a fresh "Low stock" — a new crossing.
 - [ ] If you have **two admin accounts**, confirm both got their own copy of every admin notification. They are per-user rows, fanned out in one insert.
 - [ ] Mark as read, mark all as read, and delete. **Expected:** all unchanged — those endpoints always worked, they just had nothing to work on.
 

@@ -47,15 +47,27 @@ export const ordersRouter = router({
 
       const orders = allOrders.slice(offset, offset + limit).map((order) => ({
         id: order.id,
+        // The real VLK-YYYYMMDD-XXXXXX number, which is what the confirmation
+        // email quotes and what support searches by. The list used to render
+        // `id.slice(-8)` — a UUID fragment that appears nowhere else.
+        orderNumber: order.orderNumber,
         status: order.status,
         total: order.totalAmount,
-        itemCount: order.items.length,
+        itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        lineCount: order.items.length,
         createdAt: order.createdAt,
         // An unpaid card order is held briefly and then released. The customer
         // should see that rather than watch it silently turn into "cancelled".
         awaitingPayment: order.isAwaitingPayment(),
         paymentDeadline: order.paymentDeadline(),
+        // Returns are partial and derived, so a bare amount is not the whole
+        // story: how many units came back, and whether anything is left.
         refundedAmount: order.refundedAmount(),
+        refundedItems: order.getRefundedItems(),
+        fullyRefunded: order.isFullyRefunded(),
+        // Enough to recognise the order without loading a second query. The
+        // repository does not join product images here, so names only.
+        itemNames: order.items.slice(0, 3).map((item) => item.productName),
       }));
 
       return {
