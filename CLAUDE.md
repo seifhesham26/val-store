@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-08-30): `type-check` clean, `lint` 0 errors / 7 unused-var warnings, 67 tests passing.
+Baseline as of last check (2026-08-31): `type-check` clean, `lint` 0 errors / 5 unused-var warnings, 80 tests passing.
 
 ## Commands
 
@@ -67,7 +67,7 @@ Context is built per-request from the Better Auth session, then the role is look
 
 Note: most `public.*` routers are actually `protectedProcedure` (cart, checkout, orders, wishlist, address, profile, coupons, notifications) — "public" means "storefront", not "unauthenticated".
 
-Several procedures have no caller at all. Before extending one, check whether anything uses it: the whole `public.config` router, `public.categories.{list,getFeatured}`, `public.products.{getBySlug,getFeatured}`, `admin.categories.{create,delete}`, `admin.products.getBySlug`, `admin.variants.updateStock`, `admin.notifications.clearAll`, and `admin.settings.{getAllContentSections,getContentHistory,revertToVersion,addFeaturedItem,updateFeaturedItems,reorderFeaturedItems}`. The homepage moved to server components and left the client API surface behind.
+Several procedures have no caller at all. Before extending one, check whether anything uses it: the whole `public.config` router, `public.categories.{list,getFeatured}`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug`, `admin.notifications.clearAll`, and `admin.settings.{getAllContentSections,getContentHistory,revertToVersion}`. Mostly collateral from the homepage moving to server components. (`admin.categories.{create,delete}`, `admin.variants.updateStock` and the featured-item mutations were on this list and now have callers.)
 
 ### Auth
 
@@ -89,7 +89,7 @@ Two identity concepts coexist:
 - Better Auth `user` + `user_profiles` (role) — what login, orders, cart, and the admin "Customers" page actually use.
 - `customers`, keyed on **phone**, modeling "a real human" so multiple accounts can map to one person (loyalty points, totals, admin notes). Written by the signup hook, read by essentially nothing; `GetOrCreateCustomerUseCase` has no callers.
 
-Deletion semantics differ by entity: products soft-delete (`isActive = false`), categories **hard-delete**. `categories.parentId` has no FK constraint, so deleting a parent orphans its children.
+Deletion semantics differ by entity: products soft-delete (`isActive = false`), categories **hard-delete**. `categories.parentId` still has no FK constraint, so the protection against orphaning a parent's children is application-level — `DeleteCategoryUseCase` refuses to delete a category that has children or products. Anything writing outside that use case can still orphan rows.
 
 Money is stored as Postgres `decimal` strings and parsed with `parseFloat` at the repository boundary.
 
@@ -124,47 +124,58 @@ Status changes go through the `OrderStatus` value object's transition table — 
 
 ## Known gaps
 
-Verified against the code. Read this before touching the relevant area. **`docs/ISSUES.md` has the full catalogue** — exact file:line locations, root cause, and a concrete fix for each, plus a suggested order of work and a `Resolved` section recording what the P0 fixes actually did and what stays easy to break again. The summary below is the index.
+Verified against the code on 2026-08-31. Read this before touching the relevant area. **`docs/ISSUES.md` has the full catalogue** — exact file:line locations, root cause, and a concrete fix for each, plus a suggested order of work and a `Resolved` section recording what each fix actually did and what stays easy to break again. The summary below is the index.
 
-### Data-loss / correctness bugs
+Every P0 and all but one P1 are now fixed. What is left:
 
-- **The SKU field is a lie.** `DrizzleProductRepository.create()` does `sku: product.slug` (`ProductEntity` has no `sku` at all), so the admin-entered SKU is discarded. Renaming a slug later doesn't update the sku, so the two drift apart.
-- **Stock can still be written without an audit row.** `admin.variants.update` sets `stockQuantity` directly, while `admin.inventory.adjustStock` goes through `AdjustStockUseCase` and logs. Purchases, cancellations and refunds all log correctly; this one admin path does not.
+### The one real feature gap
+
+- **The Stripe confirmation email is dishonest** (ISSUES #16). `src/app/api/webhook/stripe/route.ts:93,104` builds the email from the Stripe session rather than the order it just updated: it sends `session.id.slice(-12)` as the "order number" (matching nothing the customer can look up) and the literal text "Address will be confirmed separately". COD orders get no email at all. Deferred until a domain is verified in Resend, not forgotten — the real `orderNumber` and a resolved `shippingAddress` are both already on the order entity.
+
+### Two themes, one `:root` — the recurring trap
+
+`:root` holds the **light** palette and the storefront overrides only `<body>` (`bg-black text-white`), so a shadcn primitive styled with tokens renders light-on-dark on the storefront; anything Radix portals attaches to `<body>` and escapes the admin's `ThemeProvider` too. This has produced six separate white-on-white/white-on-black bugs, each found by a person looking at a screen rather than by any test. All six are patched; the root cause is not. Rules in [Conventions](#conventions) — follow them for any new surface. Note the trap that caught `ProductReviews`: the **default `Button` variant** is `bg-primary text-primary-foreground`, near-black on near-white, so a plain `<Button>` on the storefront is nearly invisible. Storefront buttons need `bg-val-accent text-black`, and `variant="outline"` needs `bg-transparent` or it renders as a white pill.
 
 ### Features that exist but do nothing
 
-- **Notifications are read-only.** Both tables have full read/mark/delete APIs and UI bells, but nothing anywhere creates a notification.
-- **Featured items are write-only.** The admin Featured tab writes `featured_items`, but the storefront ignores it: `ServerFeaturedProducts` uses the `products.isFeatured` boolean and `ServerFeaturedCategories` just takes the first 3 active categories. The tab's "Add Product" button has no handler, and the "drag to reorder" tip is aspirational.
 - **CMS version history has no UI.** `content_sections_history`, the repository methods, and `revertToVersion` all work; nothing calls them.
-- **Most site settings are unused.** Only `storeName` and the four social URLs (both in the Footer) are consumed. `logoUrl`, `faviconUrl`, `storeTagline`, `defaultMetaTitle`, `defaultMetaDescription`, `contactEmail`, `contactPhone` are settable but read nowhere — the Navbar/Footer hardcode `/logo/VAL-LOGO.png`, the root layout hardcodes its metadata, and the contact page hardcodes `support@valstore.com`.
-- ~~**There is no admin Categories page.**~~ Resolved: `src/app/admin/categories/page.tsx` now drives `list`/`create`/`update`/`delete`. Slugs go through `slugify` (`src/domain/shared/slug.ts`) everywhere, and the form's slug field follows the name until an admin types their own.
+- **Four of six CMS section types are unreachable.** `promo_banner`, `brand_story`, `newsletter` and `instagram` have schemas, DB rows, seed data and a public API; their components use hardcoded props and the admin has no editors.
+- **Most site settings are unused.** Only `storeName` and the four social URLs (both in the Footer) are consumed. `logoUrl`, `faviconUrl`, `storeTagline`, `defaultMetaTitle`, `defaultMetaDescription`, `contactEmail`, `contactPhone` are settable but read nowhere.
 - **The `worker` role** is in the enum and entity but never checked.
+- **Guest cart persistence** exists in the store but `addItem` shows a sign-in toast instead, so the guest branch never runs.
+- **Billing addresses never exist.** `public.address.create` hardcodes `addressType: "shipping"`, and checkout reuses the shipping address id for both.
 
 ### Dead code
 
-- Value objects written but never used anywhere: `Money`, `Email`, `PasswordValueObject` (enforces strong-password rules the signup form doesn't apply — it only checks length ≥ 8), `ProductSKU`, `AddressValueObject`. Only `PhoneValueObject`, `CategorySlug`, and `OrderStatus` are wired in.
-- Unused components: `ProductSidebar` (a mockup with dead buttons), `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout`. Its old twin `AdditionalDetailsSection` was salvaged and is now imported by both product forms.
+- Value objects written but never used: `Money`, `Email`, `PasswordValueObject` (enforces strong-password rules no form applies — signup and reset both check only length ≥ 8), `ProductSKU`, `AddressValueObject`. Wired in: `PhoneValueObject`, `CategorySlug`, `OrderStatus`, and the shared `slugify`.
+- Unused components: `ProductSidebar` (a mockup with dead buttons), `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout`.
 - `src/components/account/AddressList.tsx` and `AddressFormDialog.tsx` are byte-identical duplicates of the versions in `account/addresses/`; only the nested ones are imported.
 - `DrizzleProductRepository.search()` does a proper SQL `ILIKE` query — and is never called. `public.products.search` loads all products and filters in JS instead.
 - Committed build artifacts: `build_output.log`, `build_output3.log`, `type_output.log`, `tmp/tsc_errors.txt`.
 
 ### Performance
 
-`public.products.list`/`search` and `ListProductsUseCase`/`ListOrdersUseCase` all fetch everything then `.slice()`. `getMyOrders` pulls 1000 rows per page request. `ServerFeaturedCategories` calls `findAll()` once per category inside a loop, as does `public.categories.list`. `getRecentOrders` fetches each customer name in its own query.
+`public.products.list`/`search` and `ListProductsUseCase`/`ListOrdersUseCase` all fetch everything then `.slice()`. `getMyOrders` pulls 1000 rows per page request **and** runs the expired-checkout sweep first. `public.categories.list` and `public.products.getFeatured` still call `findAll()` once per category inside a loop — the homepage no longer does, and `countProductsByCategory` exists for exactly this. `getRecentOrders` fetches each customer name in its own query.
 
 ### Smaller things
 
-- `reviews.isVerifiedPurchase` is hardcoded `false` (TODO in `public/reviews.ts`).
-- `/forgot-password` is an empty directory, linked from both the login form and the profile "Change Password" card.
+- `orders.currency`/`payments.currency` default to `'USD'`; rows written before the currency work say `USD` though they were charged in EGP. Nothing reads either column yet.
 - Footer links to `/size-guide`, `/careers`, `/sustainability`, `/press`, `/blog` — none exist.
 - `/collections/new` filters on `isFeatured`, and `/collections/accessories` applies no filter at all.
-- Wishlist `inStock` is really `products.isActive`, not stock.
-- Addresses are always created with `addressType: "shipping"`; billing addresses never exist, and checkout reuses the shipping address id for both.
-- Product create saves images and variants in a sequential loop _after_ the product, with per-item try/catch and no rollback.
-- Currency is inconsistent: settings default `USD`, Stripe line items hardcode `egp`, the order repository hardcodes `EGP`, the UI renders `$`.
-- The webhook's confirmation email uses `session.id.slice(-12)` as the order number and literal text "Address will be confirmed separately" rather than the real values.
-- Guest cart persistence exists in the store but is unreachable.
+- The shipping page, FAQ and homepage trust badges carry hardcoded dollar copy (`$5.99`, "On orders over $200") — placeholder marketing numbers, not computed prices.
 - `NEXT_PUBLIC_APP_NAME` is read by the email service but is in neither `.env` nor `.env.example` (falls back to "Valkyrie").
+
+### Traps in the code that is now fixed
+
+These are working. They are listed because each is easy to break again — the full version of each is in the `Resolved` section of `docs/ISSUES.md`.
+
+- **Notifications swallow their own failures** and log `[Notifications] <label> failed:`. An emit that breaks is invisible in the UI, so read the server log before the code. Low stock fires on the **crossing**, not the level. A partial return is not a status change, which is why refunds notify through `orderRefunded()` rather than the status hook.
+- **Featured items fall back** when the curation is empty _or_ when every curated item has since been deactivated. Never render the section heading above an empty grid.
+- **Categories delete hard, products soft.** `categories.parentId` still has no FK; the orphan guard is application-level in `DeleteCategoryUseCase`. The delete guard and the table's product count both count archived products, deliberately.
+- **`admin.variants.update` no longer accepts `stockQuantity`.** All stock moves through `AdjustStockUseCase` so every movement leaves an audit row. Opening stock on a _new_ variant is not a movement and writes no row.
+- **Password reset answers identically** for registered and unregistered addresses. That is anti-enumeration, not an oversight.
+- **Currency is deployment config** (`NEXT_PUBLIC_STORE_CURRENCY`, default `EGP`) via `src/lib/currency.ts`, not a DB setting — a Stripe account is bound to the currency it charges in.
+- **`admin.products.create` takes images and variants** and writes all three in one transaction; the edit page still saves them one at a time on purpose.
 
 ## Conventions
 

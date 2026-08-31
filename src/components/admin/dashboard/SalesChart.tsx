@@ -20,7 +20,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
 
 type Period = "7d" | "30d" | "90d";
 
@@ -136,7 +136,7 @@ export function SalesChart() {
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `$${value}`}
+                tickFormatter={formatCurrencyCompact}
               />
               <Tooltip
                 contentStyle={{

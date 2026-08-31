@@ -46,7 +46,7 @@ export function AnalyticsKPICards({
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <KPICard
         title="Total Revenue"
-        value={`$${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        value={formatCurrency(totalRevenue)}
         icon={DollarSign}
         description={`Last ${days} days`}
       />

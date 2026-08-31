@@ -103,16 +103,16 @@ The bug: categories were seed-only. `admin.categories.list` existed purely to fi
 **Creating**
 
 - ✅ **Add Category**, name only, save. **Expected:** it appears, and the slug was generated from the name.
-- [ ] Create one named **`Men's Tees`**. **Expected:** the slug is `mens-tees` — apostrophe gone. This is the value-object fix: the old inline slug code left punctuation in, so creating and renaming produced two different spellings of the same name.
+- ✅ Create one named **`Men's Tees`**. **Expected:** the slug is `mens-tees` — apostrophe gone. This is the value-object fix: the old inline slug code left punctuation in, so creating and renaming produced two different spellings of the same name.
 - ✅ Create a category with a **parent** and a **display order**. **Expected:** the parent's name shows in the Parent column, and the row sorts by display order.
 
 **Editing**
 
-- [ ] Rename a category **without touching the slug field**. **Expected:** the slug is regenerated from the new name.
-- [ ] Rename it again, this time **typing the old slug explicitly**. **Expected:** the slug you typed is kept — that is how you rename a category without breaking its public URL.
-- [ ] Try to save a slug another category already uses. **Expected:** a clear "already exists" error, not a Postgres constraint error.
-- [ ] Try to set a category's parent to **itself**. **Expected:** it is not offered in the dropdown. Its own children are not offered either — that would make a cycle.
-- [ ] Toggle **Visible in the storefront** off. **Expected:** the row reads Hidden, and the category stops appearing in storefront navigation while keeping its products.
+- ✅ Rename a category **without touching the slug field**. **Expected:** the slug is regenerated from the new name.
+- ✅ Rename it again, this time **typing the old slug explicitly**. **Expected:** the slug you typed is kept — that is how you rename a category without breaking its public URL.
+- ✅ Try to save a slug another category already uses. **Expected:** a clear "already exists" error, not a Postgres constraint error.
+- ✅ Try to set a category's parent to **itself**. **Expected:** it is not offered in the dropdown. Its own children are not offered either — that would make a cycle.
+- ✅ Toggle **Visible in the storefront** off. **Expected:** the row reads Hidden, and the category stops appearing in storefront navigation while keeping its products.
 
 **Deleting — this is the part worth testing hardest**
 
@@ -120,8 +120,8 @@ The bug: categories were seed-only. `admin.categories.list` existed purely to fi
 - ✅ Try to delete one that **has subcategories**. **Expected:** refused, naming how many.
 - ✅ Delete an **empty, childless** category. **Expected:** it goes, and the confirmation warns that category deletion is permanent (products soft-delete; categories do not).
 - ✅ Confirm the guard is real and not just UI: it lives in `DeleteCategoryUseCase`, so it holds for any caller. Previously deleting a parent orphaned its children — `categories.parent_id` has no foreign key, so they kept pointing at a row that no longer existed.
-- [ ] Check the **product form's category dropdown** still populates. It shares the same `list` endpoint, which now also carries counts.
-- [ ] **Archived products count too.** Put a product in a category, then delete (archive) the product. **Expected:** the Categories table still shows that category as having **1 product**, and delete is still refused. The table and the guard read the same number on purpose — an archived product would silently lose its category if the delete went through, so a table reading "0 products" next to a server that refuses would just look broken.
+- ✅ Check the **product form's category dropdown** still populates. It shares the same `list` endpoint, which now also carries counts.
+- ✅ **Archived products count too.** Put a product in a category, then delete (archive) the product. **Expected:** the Categories table still shows that category as having **1 product**, and delete is still refused. The table and the guard read the same number on purpose — an archived product would silently lose its category if the delete went through, so a table reading "0 products" next to a server that refuses would just look broken.
 - ✅ Rename a category, then load the **homepage** immediately. **Expected:** the new name within a second, not after a minute. Category writes now drop the storefront cache tag; without that the new page would have looked like it had not saved.
 
 ---
@@ -154,8 +154,8 @@ The bug: both notification tables, both repositories, both routers and both bell
 
 - ✅ Place an order (COD). **Expected:** the customer bell gets **"Order placed"**.
 - ✅ Pay by card and complete Stripe. **Expected:** **"Payment received"**. Return to the success page and refresh it a few times. **Expected:** still exactly one — the success page and the webhook race each other, and only the one that actually transitions the order notifies.
-- [ ] In the admin, move the order to **shipped**, then **delivered**. **Expected:** one notification each, naming the real order number.
-- [ ] Cancel an order. **Expected:** "Order cancelled". Refund one. **Expected:** "Refund processed".
+- ✅ In the admin, move the order to **shipped**, then **delivered**. **Expected:** one notification each, naming the real order number.
+- ✅ Cancel an order. **Expected:** "Order cancelled". Refund one. **Expected:** "Refund processed".
 - ✅ Try an **illegal** status transition (the dropdown will reject it). **Expected:** no notification — the emit happens after the transition is accepted, never before. A customer must not be told their order shipped when it did not.
 
 **As an admin**
@@ -167,8 +167,8 @@ The bug: both notification tables, both repositories, both routers and both bell
 - ✅ Buy one more of the same variant. **Expected: no second notification.** It fires on the crossing, not on the level — otherwise every subsequent sale of an already-low variant would notify again.
 - ✅ Drive it to **0**. **Expected:** nothing new, for the same reason. (It already notified on the way down.)
 - ✅ Set stock back up to 20 in **Admin → Inventory**, then adjust it down to 3. **Expected:** a fresh "Low stock" — a new crossing.
-- [ ] If you have **two admin accounts**, confirm both got their own copy of every admin notification. They are per-user rows, fanned out in one insert.
-- [ ] Mark as read, mark all as read, and delete. **Expected:** all unchanged — those endpoints always worked, they just had nothing to work on.
+- ✅ If you have **two admin accounts**, confirm both got their own copy of every admin notification. They are per-user rows, fanned out in one insert.
+- ✅ Mark as read, mark all as read, and delete. **Expected:** all unchanged — those endpoints always worked, they just had nothing to work on.
 
 **The safety property**
 
@@ -182,13 +182,13 @@ The bug: Stripe charged `egp`, the order rows recorded `EGP`, `site_settings.cur
 
 **The decision, so the change is not a surprise:** currency is now **deployment configuration** (`NEXT_PUBLIC_STORE_CURRENCY`, default `EGP`) rather than a database setting, and one helper — `formatCurrency` in `src/lib/currency.ts` — renders every price. A Stripe account is bound to the currency it charges in and every stored price is already denominated in it, so switching currency is a migration, not a dropdown. The Settings dropdown that implied otherwise is gone.
 
-- [ ] Walk the storefront: product cards, product page, search, cart drawer, cart page, checkout summary, order confirmation, **/account/orders** and an order detail. **Expected:** every price reads `EGP 1,234.00`. No `$` anywhere on a computed price.
-- [ ] Walk the admin: products list, orders list, order detail (including the refund lines), customers, dashboard metrics, analytics KPIs and charts. **Expected:** the same.
-- [ ] **Admin → Settings → Store → Currency.** **Expected:** a read-only row showing `EGP` and a formatted sample, with a note that it is set at deploy time. The dropdown offering USD/EUR/GBP is gone — it never had any effect.
-- [ ] Place a **card** order. In Stripe's dashboard, **Expected:** the charge is in **EGP**, and the amount matches what checkout showed, discount included.
-- [ ] In Drizzle Studio, check the new `orders.currency` and `payments.currency`. **Expected:** `EGP` in both, matching what Stripe charged.
-- [ ] Apply a coupon with a minimum spend you do not meet. **Expected:** the error reads "Minimum purchase of EGP 500.00 required" — the same helper, so the message cannot disagree with the prices next to it.
-- [ ] Optional: set `NEXT_PUBLIC_STORE_CURRENCY=USD` in `.env.local` and restart. **Expected:** every price, the Stripe charge and the stored order currency all switch together. Set it back — **do not leave a store with EGP orders configured as USD.**
+- ✅ Walk the storefront: product cards, product page, search, cart drawer, cart page, checkout summary, order confirmation, **/account/orders** and an order detail. **Expected:** every price reads `EGP 1,234.00`. No `$` anywhere on a computed price.
+- ✅ Walk the admin: products list, orders list, order detail (including the refund lines), customers, dashboard metrics, analytics KPIs and charts. **Expected:** the same.
+- ✅ **Admin → Settings → Store → Currency.** **Expected:** a read-only row showing `EGP` and a formatted sample, with a note that it is set at deploy time. The dropdown offering USD/EUR/GBP is gone — it never had any effect.
+- ✅ Place a **card** order. In Stripe's dashboard, **Expected:** the charge is in **EGP**, and the amount matches what checkout showed, discount included.
+- ✅ In Drizzle Studio, check the new `orders.currency` and `payments.currency`. **Expected:** `EGP` in both, matching what Stripe charged.
+- ✅ Apply a coupon with a minimum spend you do not meet. **Expected:** the error reads "Minimum purchase of EGP 500.00 required" — the same helper, so the message cannot disagree with the prices next to it.
+- ✅ Optional: set `NEXT_PUBLIC_STORE_CURRENCY=USD` in `.env.local` and restart. **Expected:** every price, the Stripe charge and the stored order currency all switch together. Set it back — **do not leave a store with EGP orders configured as USD.**
 
 **Not part of this fix:** the shipping page, the FAQ and the homepage trust badges contain hardcoded dollar copy (`$5.99`, "On orders over $200"). Those are placeholder marketing numbers, not computed prices — converting them would mean inventing EGP prices for your shipping tiers. Tell me the real numbers and I will set them.
 

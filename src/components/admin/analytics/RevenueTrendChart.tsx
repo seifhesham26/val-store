@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
 
 interface RevenueTrendChartProps {
   data: Array<{ date: string; revenue: number; orders: number }>;
@@ -70,7 +70,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
                 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `$${value}`}
+                tickFormatter={formatCurrencyCompact}
               />
               <Tooltip
                 contentStyle={{

@@ -56,3 +56,21 @@ export function formatCurrencyDelta(amount: number): string {
   const sign = amount < 0 ? "-" : "";
   return `${sign}${formatCurrency(Math.abs(amount))}`;
 }
+
+/**
+ * Compact price, for places where a full amount does not fit.
+ *
+ * Chart axes are the case this exists for: a tick per gridline rendered as
+ * `EGP 1,234.00` is wider than the plot area, which is why those axes were
+ * still drawing a bare `$` long after every other price was converted.
+ */
+const compactFormatter = new Intl.NumberFormat(PRICE_LOCALE, {
+  style: "currency",
+  currency: STORE_CURRENCY,
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+export function formatCurrencyCompact(amount: number): string {
+  return compactFormatter.format(Number.isFinite(amount) ? amount : 0);
+}

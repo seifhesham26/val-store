@@ -17,6 +17,7 @@ import {
 import { MoreHorizontal, Pencil, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { formatCurrency } from "@/lib/currency";
 
 export interface CouponRow {
   id: string;
@@ -126,7 +127,7 @@ export function CouponsTable({
               <TableCell>
                 {coupon.discountType === "percentage"
                   ? `${coupon.discountValue}%`
-                  : `$${coupon.discountValue}`}
+                  : formatCurrency(Number(coupon.discountValue))}
               </TableCell>
               <TableCell>
                 {coupon.usageCount}

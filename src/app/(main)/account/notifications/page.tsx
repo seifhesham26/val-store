@@ -81,7 +81,7 @@ export default function NotificationsPage() {
             size="sm"
             onClick={() => markAllAsRead.mutate()}
             disabled={markAllAsRead.isPending}
-            className="border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
+            className="border-white/10 bg-transparent text-gray-300 hover:bg-white/10 hover:text-white"
           >
             <Check className="mr-2 h-4 w-4" />
             Mark all read

@@ -104,17 +104,21 @@ export function CheckoutOrderSummary({
           <Label className="text-sm font-medium text-white mb-2 block">
             Coupon Code
           </Label>
+          {/* The `dark:` half of this chip's colour pairs never applied — the
+              storefront sets no `.dark` class, so it rendered in light green on
+              the dark summary card. Fixed colours now, and the fixed-amount
+              discount goes through formatCurrency like every other price. */}
           {appliedCoupon ? (
-            <div className="flex items-center justify-between mt-2 p-2 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
+            <div className="mt-2 flex items-center justify-between rounded-md border border-green-500/20 bg-green-500/10 p-2">
               <div className="flex items-center gap-2">
-                <span className="font-mono font-semibold text-green-700 dark:text-green-400">
+                <span className="font-mono font-semibold text-green-400">
                   {appliedCoupon.code}
                 </span>
-                <span className="text-sm text-green-600 dark:text-green-500">
+                <span className="text-sm text-green-500">
                   (
                   {appliedCoupon.discountType === "percentage"
                     ? `${appliedCoupon.discountValue}% off`
-                    : `-$${appliedCoupon.discountValue}`}
+                    : `-${formatCurrency(Number(appliedCoupon.discountValue))}`}
                   )
                 </span>
               </div>
