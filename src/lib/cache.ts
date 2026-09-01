@@ -237,6 +237,11 @@ export const getCachedCategories = unstable_cache(
 
 /**
  * Get products by category with caching
+ *
+ * Tagged `all-products` like the list fetchers below it. These three carried a
+ * cache key but no tags, so `revalidateTag("all-products")` — which every admin
+ * product write calls — could not reach them: the lists updated on save while
+ * the detail page for the same product stayed stale for up to a minute.
  */
 export const getCachedProductsByCategory = unstable_cache(
   async (categoryId: string) => {
@@ -254,7 +259,7 @@ export const getCachedProductsByCategory = unstable_cache(
       }));
   },
   ["products-by-category"],
-  { revalidate: DEFAULT_REVALIDATE }
+  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -308,7 +313,7 @@ export const getCachedProductBySlug = unstable_cache(
     };
   },
   ["product-by-slug"],
-  { revalidate: DEFAULT_REVALIDATE }
+  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -379,7 +384,7 @@ export const getCachedRelatedProducts = unstable_cache(
     }));
   },
   ["related-products"],
-  { revalidate: DEFAULT_REVALIDATE }
+  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
 );
 
 // Export cache tags for revalidation

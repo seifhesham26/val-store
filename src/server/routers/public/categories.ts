@@ -14,32 +14,29 @@ export const publicCategoriesRouter = router({
    */
   list: publicProcedure.query(async () => {
     const repo = container.getCategoryRepository();
-    const productRepo = container.getProductRepository();
-    const categories = await repo.findAll();
 
-    // Get product counts for each active category
-    const categoriesWithCounts = await Promise.all(
-      categories
-        .filter((c) => c.isActive)
-        .map(async (c) => {
-          const products = await productRepo.findAll({
-            isActive: true,
-            categoryId: c.id,
-          });
-          return {
-            id: c.id,
-            name: c.name,
-            slug: c.slug,
-            description: c.description,
-            imageUrl: c.imageUrl,
-            parentId: c.parentId,
-            displayOrder: c.displayOrder,
-            productCount: products.length,
-          };
-        })
-    );
+    // One grouped count for every category, not one full product scan each.
+    // The previous shape called `findAll({ categoryId })` inside a `map` — and
+    // that query joins every variant and image — so listing twelve categories
+    // hydrated the entire active catalogue twelve times to produce twelve
+    // integers.
+    const [categories, counts] = await Promise.all([
+      repo.findAll(),
+      repo.countProductsByCategory({ activeOnly: true }),
+    ]);
 
-    return categoriesWithCounts;
+    return categories
+      .filter((c) => c.isActive)
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        description: c.description,
+        imageUrl: c.imageUrl,
+        parentId: c.parentId,
+        displayOrder: c.displayOrder,
+        productCount: counts.get(c.id) ?? 0,
+      }));
   }),
 
   /**
@@ -55,12 +52,14 @@ export const publicCategoriesRouter = router({
         return null;
       }
 
-      // Get products for this category
-      const productRepo = container.getProductRepository();
-      const products = await productRepo.findAll({
-        isActive: true,
-        categoryId: category.id,
-      });
+      // A count, not the products themselves. The only caller — the dynamic
+      // collection page — reads `id`, `name` and `description`, then hands the
+      // id to `InfiniteProductGrid`, which queries the products again with
+      // pagination. Returning the whole category here meant every collection
+      // page loaded its entire product list twice, once of it unpaginated.
+      const productCount = await container
+        .getProductRepository()
+        .count({ isActive: true, categoryId: category.id });
 
       return {
         id: category.id,
@@ -68,14 +67,7 @@ export const publicCategoriesRouter = router({
         slug: category.slug,
         description: category.description,
         imageUrl: category.imageUrl,
-        productCount: products.length,
-        products: products.map((p) => ({
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          basePrice: p.basePrice,
-          salePrice: p.salePrice,
-        })),
+        productCount,
       };
     }),
 
@@ -87,7 +79,6 @@ export const publicCategoriesRouter = router({
     .query(async ({ input }) => {
       const siteConfigRepo = container.getSiteConfigRepository();
       const categoryRepo = container.getCategoryRepository();
-      const productRepo = container.getProductRepository();
 
       // Get featured items of type 'category'
       const featuredItems = await siteConfigRepo.getFeaturedItemsByType(
@@ -95,28 +86,34 @@ export const publicCategoriesRouter = router({
         "category"
       );
 
-      // Fetch actual categories with product counts
-      const categories = await Promise.all(
-        featuredItems.slice(0, input.limit).map(async (item) => {
-          const category = await categoryRepo.findById(item.itemId);
-          if (!category || !category.isActive) return null;
+      const curatedIds = featuredItems
+        .slice(0, input.limit)
+        .map((item) => item.itemId);
 
-          // Get product count for this category
-          const products = await productRepo.findAll({
-            isActive: true,
-            categoryId: category.id,
-          });
+      if (curatedIds.length === 0) return [];
 
-          return {
+      // Three queries total. This was one `findById` plus one full product
+      // scan per curated category.
+      const [categories, counts] = await Promise.all([
+        categoryRepo.findByIds(curatedIds),
+        categoryRepo.countProductsByCategory({ activeOnly: true }),
+      ]);
+
+      const byId = new Map(categories.map((c) => [c.id, c]));
+
+      // Re-apply the admin's curated order — `findByIds` does not guarantee it.
+      return curatedIds.flatMap((id) => {
+        const category = byId.get(id);
+        if (!category?.isActive) return [];
+        return [
+          {
             id: category.id,
             name: category.name,
             slug: category.slug,
             imageUrl: category.imageUrl,
-            productCount: products.length,
-          };
-        })
-      );
-
-      return categories.filter(Boolean);
+            productCount: counts.get(category.id) ?? 0,
+          },
+        ];
+      });
     }),
 });

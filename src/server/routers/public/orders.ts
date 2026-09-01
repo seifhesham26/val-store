@@ -12,6 +12,7 @@ import { TRPCError } from "@trpc/server";
 import { db } from "@/db";
 import { orders, payments } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { pageWindow, pageCount } from "@/domain/shared/pagination";
 
 export const ordersRouter = router({
   /**
@@ -27,25 +28,29 @@ export const ordersRouter = router({
         .optional()
     )
     .query(async ({ ctx, input }) => {
-      // Sweep abandoned checkouts first, so a customer never sees their own
-      // dead "pending" order still sitting there.
-      await container.getCancelExpiredCheckoutsUseCase().execute();
+      // Release abandoned checkouts, but never make the customer wait for it.
+      // The sweep asks Stripe about other people's orders over the network, and
+      // it was awaited here — so opening "My orders" blocked on third-party
+      // round trips before a single row was read. Deliberately not awaited, the
+      // same call the cart's stock check already makes: the use case throttles
+      // itself to once a minute per process and swallows its own errors, so at
+      // worst a just-expired order shows as pending until the next load.
+      void container.getCancelExpiredCheckoutsUseCase().execute();
 
       const orderRepository = container.getOrderRepository();
       const page = input?.cursor ?? 1;
-      const limit = input?.limit ?? 10;
+      const { limit, offset } = pageWindow(page, input?.limit ?? 10);
 
-      // Get all orders for the user
-      const allOrders = await orderRepository.findRecentByUserId(
-        ctx.user.id,
-        1000 // Get all orders for pagination
-      );
+      // One bounded page plus one count. This used to ask for 1000 orders on
+      // every infinite-scroll page and slice ten out of them.
+      const [pageOrders, total] = await Promise.all([
+        orderRepository.findAll({ userId: ctx.user.id, limit, offset }),
+        orderRepository.count({ userId: ctx.user.id }),
+      ]);
 
-      const total = allOrders.length;
-      const totalPages = Math.ceil(total / limit);
-      const offset = (page - 1) * limit;
+      const totalPages = pageCount(total, limit);
 
-      const orders = allOrders.slice(offset, offset + limit).map((order) => ({
+      const orders = pageOrders.map((order) => ({
         id: order.id,
         // The real VLK-YYYYMMDD-XXXXXX number, which is what the confirmation
         // email quotes and what support searches by. The list used to render

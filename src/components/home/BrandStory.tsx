@@ -1,6 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { unoptimizedFor } from "@/lib/image-hosts";
+
+/** Placeholder art. Hoisted so the tag and the optimise guard read one value. */
+const BRAND_STORY_IMAGE = "https://picsum.photos/seed/brand-story/800/1000";
 
 interface BrandStoryProps {
   preHeadline?: string;
@@ -27,12 +31,12 @@ export function BrandStory({
           {/* Image Side */}
           <div className="relative aspect-4/5 overflow-hidden">
             <Image
-              src="https://picsum.photos/seed/brand-story/800/1000"
+              src={BRAND_STORY_IMAGE}
               alt="Valkyrie brand story"
               fill
               sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover"
-              unoptimized
+              unoptimized={unoptimizedFor(BRAND_STORY_IMAGE)}
             />
             {/* Decorative accent line */}
             <div className="absolute bottom-0 left-0 w-1/2 h-1 bg-val-accent" />

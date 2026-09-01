@@ -105,7 +105,7 @@ export function InfiniteProductGrid({
         {/* Product Grid */}
         {products.length > 0 ? (
           <div className={GRID_CLASSES}>
-            {products.map((product) => (
+            {products.map((product, index) => (
               <ProductCard
                 key={product.id}
                 id={product.id}
@@ -120,6 +120,7 @@ export function InfiniteProductGrid({
                 }
                 isFeatured={product.isFeatured}
                 variants={product.variants}
+                priority={index < 4}
               />
             ))}
 

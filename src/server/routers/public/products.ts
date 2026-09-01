@@ -4,11 +4,59 @@
  * Public endpoints for storefront product data.
  * All endpoints use publicProcedure (no auth required).
  * Returns only active products with filtered data (no cost/admin info).
+ *
+ * Every list endpoint here costs a fixed four queries regardless of page size:
+ * one bounded page of products, one count for the pager, and two batched
+ * lookups for the images and variants the cards render. They used to load the
+ * entire active catalogue, slice it in JavaScript, and then fetch images and
+ * variants **one product at a time** — 1 + 2N queries for an N-card grid.
  */
 
 import { z } from "zod";
 import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
+import type { ProductEntity } from "@/domain/products/entities/product.entity";
+import { pageWindow, pageCount } from "@/domain/shared/pagination";
+
+/**
+ * Attach the presentation data a product card needs, in two queries total.
+ *
+ * The batched repository helpers already existed for the cached homepage; the
+ * storefront routers were the callers that never adopted them.
+ */
+async function withCardData(pageProducts: ProductEntity[]) {
+  if (pageProducts.length === 0) return [];
+
+  const imageRepo = container.getProductImageRepository();
+  const variantRepo = container.getProductVariantRepository();
+  const productIds = pageProducts.map((p) => p.id);
+
+  const [imageMap, variantMap] = await Promise.all([
+    imageRepo.findPrimaryByProducts(productIds),
+    variantRepo.findByProducts(productIds),
+  ]);
+
+  return pageProducts.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description,
+    basePrice: p.basePrice,
+    salePrice: p.salePrice,
+    categoryId: p.categoryId,
+    gender: p.gender,
+    isFeatured: p.isFeatured,
+    primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+    variants: (variantMap.get(p.id) ?? [])
+      .filter((v) => v.isAvailable)
+      .map((v) => ({
+        id: v.id,
+        size: v.size,
+        color: v.color,
+        inStock: v.stockQuantity > 0,
+      })),
+  }));
+}
 
 export const publicProductsRouter = router({
   /**
@@ -30,72 +78,29 @@ export const publicProductsRouter = router({
     .query(async ({ input }) => {
       const repo = container.getProductRepository();
       const page = input?.cursor ?? 1;
-      const limit = input?.limit ?? 12;
-      const offset = (page - 1) * limit;
+      const { limit, offset } = pageWindow(page, input?.limit ?? 12);
 
-      let allProducts = await repo.findAll({
+      // Gender and on-sale are SQL predicates now. Filtering them in JS meant
+      // the page could only be sliced after every active product was loaded.
+      const filters = {
         isActive: true,
         categoryId: input?.categoryId,
         isFeatured: input?.isFeatured,
-      });
+        gender: input?.gender,
+        isOnSale: input?.isOnSale,
+      };
 
-      // Filter by gender if provided
-      if (input?.gender) {
-        allProducts = allProducts.filter((p) => p.gender === input.gender);
-      }
-
-      // Filter by on sale if requested
-      if (input?.isOnSale) {
-        allProducts = allProducts.filter(
-          (p) => p.salePrice !== null && p.salePrice < p.basePrice
-        );
-      }
-
-      const total = allProducts.length;
-      const totalPages = Math.ceil(total / limit);
-
-      // Get primary images and variants for the page products
-      const imageRepo = container.getProductImageRepository();
-      const variantRepo = container.getProductVariantRepository();
-      const pageProducts = allProducts.slice(offset, offset + limit);
-
-      // Return only public-safe data with images and variants
-      const products = await Promise.all(
-        pageProducts.map(async (p) => {
-          const [images, variants] = await Promise.all([
-            imageRepo.findByProduct(p.id),
-            variantRepo.findByProduct(p.id),
-          ]);
-          const primaryImage = images.find((img) => img.isPrimary) || images[0];
-          return {
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            description: p.description,
-            basePrice: p.basePrice,
-            salePrice: p.salePrice,
-            categoryId: p.categoryId,
-            gender: p.gender,
-            isFeatured: p.isFeatured,
-            primaryImage: primaryImage?.imageUrl ?? null,
-            variants: variants
-              .filter((v) => v.isAvailable)
-              .map((v) => ({
-                id: v.id,
-                size: v.size,
-                color: v.color,
-                inStock: v.stockQuantity > 0,
-              })),
-          };
-        })
-      );
+      const [pageProducts, total] = await Promise.all([
+        repo.findAll({ ...filters, limit, offset }),
+        repo.count(filters),
+      ]);
 
       return {
-        products,
+        products: await withCardData(pageProducts),
         total,
         page,
         limit,
-        totalPages,
+        totalPages: pageCount(total, limit),
       };
     }),
 
@@ -112,12 +117,11 @@ export const publicProductsRouter = router({
         return null;
       }
 
-      // Get images and variants
-      const imageRepo = container.getProductImageRepository();
-      const variantRepo = container.getProductVariantRepository();
-
-      const images = await imageRepo.findByProduct(product.id);
-      const variants = await variantRepo.findByProduct(product.id);
+      // One product, so the two lookups run together rather than in sequence.
+      const [images, variants] = await Promise.all([
+        container.getProductImageRepository().findByProduct(product.id),
+        container.getProductVariantRepository().findByProduct(product.id),
+      ]);
 
       return {
         id: product.id,
@@ -158,40 +162,13 @@ export const publicProductsRouter = router({
   getFeatured: publicProcedure
     .input(z.object({ limit: z.number().min(1).max(20).optional().default(8) }))
     .query(async ({ input }) => {
-      const repo = container.getProductRepository();
-      const imageRepo = container.getProductImageRepository();
-      const products = await repo.findAll({
+      const products = await container.getProductRepository().findAll({
         isActive: true,
         isFeatured: true,
+        limit: input.limit,
       });
 
-      const variantRepo = container.getProductVariantRepository();
-
-      return Promise.all(
-        products.slice(0, input.limit).map(async (p) => {
-          const [images, variants] = await Promise.all([
-            imageRepo.findByProduct(p.id),
-            variantRepo.findByProduct(p.id),
-          ]);
-          const primaryImage = images.find((img) => img.isPrimary) || images[0];
-          return {
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            basePrice: p.basePrice,
-            salePrice: p.salePrice,
-            primaryImage: primaryImage?.imageUrl ?? null,
-            variants: variants
-              .filter((v) => v.isAvailable)
-              .map((v) => ({
-                id: v.id,
-                size: v.size,
-                color: v.color,
-                inStock: v.stockQuantity > 0,
-              })),
-          };
-        })
-      );
+      return withCardData(products);
     }),
 
   /**
@@ -208,57 +185,23 @@ export const publicProductsRouter = router({
     .query(async ({ input }) => {
       const repo = container.getProductRepository();
       const page = input.cursor ?? 1;
-      const limit = input.limit ?? 12;
-      const offset = (page - 1) * limit;
+      const { limit, offset } = pageWindow(page, input.limit ?? 12);
 
-      const allProducts = await repo.findAll({ isActive: true });
+      // A real `ILIKE` against name and description, paginated in SQL. This
+      // used to load every active product and filter with `String.includes`.
+      const filters = { isActive: true, search: input.query };
 
-      // Simple search - filter by name/description containing query
-      const query = input.query.toLowerCase();
-      const allResults = allProducts.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          (p.description && p.description.toLowerCase().includes(query))
-      );
-
-      const total = allResults.length;
-      const totalPages = Math.ceil(total / limit);
-
-      const imageRepo = container.getProductImageRepository();
-      const variantRepo = container.getProductVariantRepository();
-
-      const products = await Promise.all(
-        allResults.slice(offset, offset + limit).map(async (p) => {
-          const [images, variants] = await Promise.all([
-            imageRepo.findByProduct(p.id),
-            variantRepo.findByProduct(p.id),
-          ]);
-          const primaryImage = images.find((img) => img.isPrimary) || images[0];
-          return {
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            basePrice: p.basePrice,
-            salePrice: p.salePrice,
-            primaryImage: primaryImage?.imageUrl ?? null,
-            variants: variants
-              .filter((v) => v.isAvailable)
-              .map((v) => ({
-                id: v.id,
-                size: v.size,
-                color: v.color,
-                inStock: v.stockQuantity > 0,
-              })),
-          };
-        })
-      );
+      const [pageProducts, total] = await Promise.all([
+        repo.findAll({ ...filters, limit, offset }),
+        repo.count(filters),
+      ]);
 
       return {
-        products,
+        products: await withCardData(pageProducts),
         total,
         page,
         limit,
-        totalPages,
+        totalPages: pageCount(total, limit),
       };
     }),
 
@@ -269,9 +212,12 @@ export const publicProductsRouter = router({
    * periodically-refreshed copy of stock and know every limit up front, instead
    * of discovering it from failed add-to-cart calls. Server-side validation
    * still runs on every write — this is for the UI, not for trust.
+   *
+   * The cap is generous because a whole product grid now shares **one** call
+   * through `VariantStockProvider`. It used to be one call per card.
    */
   getStock: publicProcedure
-    .input(z.object({ variantIds: z.array(z.string().uuid()).max(100) }))
+    .input(z.object({ variantIds: z.array(z.string().uuid()).max(500) }))
     .query(async ({ input }) => {
       if (input.variantIds.length === 0) {
         return { stock: {} as Record<string, number> };

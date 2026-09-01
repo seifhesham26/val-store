@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Banknote,
 } from "lucide-react";
-import { container } from "@/application/container";
+import { getCachedSiteSettings } from "@/lib/cache";
 
 export async function Footer() {
   // Fetch site settings for social links and store name.
@@ -17,15 +17,15 @@ export async function Footer() {
   // Degrades to defaults on failure, matching the homepage server sections: the
   // footer renders on every page, so a transient database error must not take
   // the whole site down with it.
-  let settings: Awaited<
-    ReturnType<
-      ReturnType<typeof container.getSiteConfigRepository>["getSiteSettings"]
-    >
-  > = null;
+  //
+  // Read through the cache for exactly that reason — it renders on every page,
+  // and it was querying the database directly on each one. `getCachedSiteSettings`
+  // already existed for this and had no callers; the announcement bar beside it
+  // was using the cached path all along.
+  let settings: Awaited<ReturnType<typeof getCachedSiteSettings>> = null;
 
   try {
-    const siteConfigRepo = container.getSiteConfigRepository();
-    settings = await siteConfigRepo.getSiteSettings();
+    settings = await getCachedSiteSettings();
   } catch (error) {
     console.error("[Footer] Failed to fetch site settings:", error);
   }

@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-08-31): `type-check` clean, `lint` 0 errors / 5 unused-var warnings, 80 tests passing.
+Baseline as of last check (2026-08-31): `type-check` clean, `lint` 0 errors / 5 unused-var warnings, 124 unit tests passing, plus an integration suite that needs a database.
 
 ## Commands
 
@@ -17,7 +17,8 @@ pnpm dev              # dev server
 pnpm build            # production build
 pnpm lint             # eslint (next core-web-vitals + typescript)
 pnpm type-check       # tsc --noEmit
-pnpm test             # vitest run
+pnpm test             # vitest run — unit only, no database needed. This is what CI runs.
+pnpm test:integration # vitest against a REAL database (reads DATABASE_URL from .env)
 pnpm vitest run src/domain/orders/entities/order.test.ts   # single test file
 pnpm vitest run -t "canTransitionTo"                        # single test by name
 
@@ -186,7 +187,9 @@ These are working. They are listed because each is easy to break again — the f
 - **Only style with tokens that exist.** `globals.css` defines `--destructive` but **no `--destructive-foreground`**, so `text-destructive-foreground` silently applies nothing and the element inherits — which reads as "working" against whichever body colour happens to be behind it. Prefer `buttonVariants({ variant: "destructive" })` (it uses `text-white`) over hand-written colour classes, and grep `globals.css` before reaching for a `--*-foreground` you have not seen there.
 - Domain classes use constructor-parameter properties (`ProductEntity`, `OrderEntity`, `CartItemEntity`) or private-props + static factory (`Customer`, `SiteSettingsEntity`); value objects use private constructors with static `create`/`from*`. Entities that mutate return new instances rather than mutating in place.
 - `zod` is imported both as `"zod"` and `"zod/v4"` depending on the file — match whatever the file already uses.
-- Tests only cover pure domain logic (`src/domain/**/*.test.ts`), colocated with the entity. There are no repository, router, or component tests.
+- **Two suites.** `pnpm test` is unit-only and needs no database — `src/**/*.test.ts`, colocated with what they cover, and the only thing CI runs. `pnpm test:integration` runs `src/**/*.integration.test.ts` against a real database via `vitest.integration.config.ts`; it is excluded from the default `include` so it can never break CI, which has no `DATABASE_URL`.
+- **Integration tests are read-only by rule.** They assert that the SQL the repositories emit agrees with the domain logic it replaced — `refundableOnly` against `OrderEntity.canRefund()`, `returnedOnly` against `getRefundedItems()`, the batched card lookups against the per-product ones. That comparison is the whole point, so keep them read-only and safe to point at real data. They log a summary of what they found, so a failure is diagnosable from the output alone.
+- Component tests still do not exist; there is no DOM testing library installed. Where client logic is worth testing, extract it into a plain module and test that instead — `src/lib/variant-stock-registry.ts` is the pattern: the ref-counting lives outside React, and `VariantStockProvider` is a thin wrapper over it.
 
 ## Docs in-repo
 

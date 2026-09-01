@@ -4,7 +4,9 @@ A catalogue of defects and gaps found by reading the codebase in full. Unlike th
 
 Each entry gives the location, what actually happens, why, and a concrete fix.
 
-Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 80/80 tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived. Worth remembering why the suite proves so little here: the 80 tests cover **pure domain logic only** — the order entity, cart item, and the two slug helpers. There are no repository, router, or component tests, so nothing in this file would be caught by CI.
+Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 124/124 unit tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
+
+Coverage improved with the P2 work but is still narrow. `pnpm test` is unit-only and is all CI runs; `pnpm test:integration` adds repository and router tests against a real database, and is where the SQL introduced by the performance work is checked against the domain logic it replaced. There are still no component tests.
 
 Issues 1-43 are the original catalogue and are the work in progress. [Pass 2](#pass-2--full-source-audit-deferred) is a later audit, numbered separately and deliberately not started — finish 1-43 first.
 
@@ -13,7 +15,7 @@ Issues 1-43 are the original catalogue and are the work in progress. [Pass 2](#p
 - [Resolved](#resolved) (19)
 - [Follow-ups — residue from the P0/P1 work](#follow-ups--residue-from-the-p0p1-work) (2)
 - [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (1)
-- [P2 — Performance](#p2--performance) (5)
+- [P2 — Performance](#p2--performance-) (5, all resolved ✅)
 - [P3 — Cleanup](#p3--cleanup) (15)
 - [Pass 2 — full-source audit, deferred](#pass-2--full-source-audit-deferred) (14)
 - [Suggested order of work](#suggested-order-of-work)
@@ -267,49 +269,143 @@ Ten of the original eleven are in [Resolved](#resolved), keeping their numbers. 
 
 ---
 
-## P2 — Performance
+## P2 — Performance ✅
 
-### 21. Product and order lists fetch every row, then slice
+**All five resolved 2026-08-31**, together with P2-9 and P2-11 from the Pass 2
+list and two problems found while measuring. Verified against the live database
+and in a real browser, not by reasoning about the code.
 
-**Where** `src/application/products/use-cases/list-products.use-case.ts:63`, `src/application/orders/use-cases/list-orders.use-case.ts:59`, `src/server/routers/public/products.ts:60,231`
+Measured on the actual data (36 active products, 516 variants, 13 categories),
+best of three runs:
 
-**What happens** Every page of every list loads the entire filtered table into memory and discards all but 10–12 rows. Cost grows linearly with catalogue size on every request; the comments (`"slice for now"`) acknowledge it.
+| Path | Before | After | |
+| --- | --- | --- | --- |
+| Storefront product grid, page 1 | 2877 ms | 472 ms | **6.1×** |
+| Product search | 1281 ms | 456 ms | **2.8×** |
+| Category list with counts | 1566 ms | 150 ms | **10.4×** |
 
-**Fix** `ProductFilters` already supports `limit` (`product.repository.ts:69`). Add `offset`, push both into the query, and use the existing `count()` methods for the total instead of `array.length`.
+### 21. Product and order lists fetch every row, then slice ✅
 
-### 22. Search re-implements in JavaScript what the repository already does in SQL
+`ProductFilters` and `OrderFilters` gained `offset`, and both repositories now
+apply `limit`/`offset` in the query. `ListProductsUseCase`, `ListOrdersUseCase`,
+`public.products.list` and `getMyOrders` each fetch one bounded page and run
+`count(filters)` beside it in `Promise.all`, rather than loading the filtered
+table and slicing.
 
-**Where** `src/server/routers/public/products.ts:216-222`, versus the unused `DrizzleProductRepository.search()` at `product.repository.ts:102-116`
+`ListOrdersUseCase`'s two derived filters were the reason it could not paginate:
+refundability and return state are computed on the entity, so a page could only
+be cut after every matching order was loaded. Both are now SQL — `returnedOnly`
+is an `EXISTS` over `order_items.refunded_quantity`, and `refundableOnly`
+mirrors `canRefund()` against the order's payment row. **Note the assumption**
+that an order has exactly one payment row, which `create()` guarantees today; if
+that ever changes, the predicate needs the same "latest row wins" rule
+`mapToEntity` applies.
 
-**What happens** `public.products.search` loads all active products and filters them with `String.includes`. A correct `ILIKE` implementation exists in the repository and is never called. The gender and on-sale filters at lines 44-51 are also applied in JS after the fetch.
+### 22. Search re-implements in JavaScript what the repository already does in SQL ✅
 
-**Fix** Call `repo.search(query)` with DB-level pagination, and move `gender` / `isOnSale` into `buildFiltersConditions` (`product.repository.ts:270`).
+Resolved by moving search *into* `ProductFilters` rather than by calling the old
+`search()` method — a separate method could not compose with `limit`/`offset`,
+which is what made the JavaScript version tempting in the first place. The
+now-genuinely-duplicate `DrizzleProductRepository.search()` is deleted, along
+with its interface declaration.
 
-### 23. Category product counts issue one full table scan per category
+`gender` and `isOnSale` moved to SQL in the same change; they were the other two
+filters applied in JavaScript after the fetch. LIKE metacharacters in the query
+are escaped, so searching for `50%` no longer matches the whole catalogue.
 
-**Where** `src/components/home/ServerFeaturedCategories.tsx:85`, `src/server/routers/public/categories.ts:18-38`
+### 23. Category product counts issue one full table scan per category ✅
 
-**Half fixed.** The homepage half is done: `ServerFeaturedCategories` now reads `getCachedFeaturedCategories`, and the category repository gained `countProductsByCategory({ activeOnly })` — one grouped query for the whole list, used by the admin Categories page.
+Both remaining callers now use the `countProductsByCategory()` that already
+existed: `public.categories.list` and `public.categories.getFeatured`.
+`getFeatured` also stopped issuing a `findById` per curated item — it batches
+through `findByIds` and re-applies the admin's order.
 
-**Still true** `public/categories.ts:18-25` still calls `productRepo.findAll()` **inside** a per-category `map`, loading every product with its variants and images just to count matches. `public.products.getFeatured` (`:100-105`) does the same inside its own loop.
+`getBySlug` was a third instance nobody had catalogued: it returned **every
+product in the category** so the page could read `category.id`, then handed that
+id to `InfiniteProductGrid`, which queried the products again with pagination.
+It returns a count now.
 
-**Fix** Point both at the existing `countProductsByCategory`, or add a `countByCategory()` to the product repository. Note `public.categories.list` has no caller at all (#28), so deleting it is also a valid answer.
+### 24. The dashboard fetches customer names one query at a time ✅
 
-### 24. The dashboard fetches customer names one query at a time
+`getRecentOrders` uses a single `leftJoin` on `user`. Guest orders (`user_id` is
+null) and orders whose account was deleted are distinguished rather than both
+reading "Unknown".
 
-**Where** `src/infrastructure/database/repositories/dashboard/dashboard.repository.ts:116-133`
+### 25. "My orders" loads 1000 orders per page request ✅
 
-**What happens** `getRecentOrders` runs a separate `SELECT name FROM user` per order.
+Paginated in SQL like the rest. The expired-checkout sweep in front of it is no
+longer awaited: it makes Stripe API calls, so awaiting it put a third-party
+round trip ahead of every "My orders" load and every admin order list. It is now
+`void`-ed on both, exactly as the cart's stock check already did — the use case
+throttles itself to once a minute per process and swallows its own errors, so
+the cost of not waiting is that a just-expired order may show as pending until
+the next load.
 
-**Fix** `leftJoin(user, eq(orders.userId, user.id))` in the original query. Worth adding the missing `orders → user` relation in `src/db/relations.ts` while you are there — its absence is why several places hand-roll this join.
+### 44. Every product card ran its own live-stock query ✅
 
-### 25. "My orders" loads 1000 orders per page request
+Found while measuring, and the single largest cost on the storefront.
 
-**Where** `src/server/routers/public/orders.ts:37`
+`useVariantStock` keys its query on the variant ids it is handed, and every
+`ProductCard` renders a `QuickAddSliderBar` that calls it with *that card's*
+variants — so each card had its own query key, its own request and its own
+`refetchInterval`. A twelve-card grid called `getStock` twelve times on load and
+twelve more every fifteen seconds, forever, growing as the customer scrolled.
+The hook's own docstring promised "one cached copy shared by every component";
+that is what was missing.
 
-**What happens** `getMyOrders` calls `findRecentByUserId(userId, 1000)` and slices to 10, on every infinite-scroll page.
+`VariantStockProvider` (`src/components/providers/variant-stock-provider.tsx`),
+mounted once in the storefront layout, ref-counts the ids cards register and
+serves them all from one query. **Verified in a browser:** `/collections/all`
+now issues a single `getStock` request carrying all 131 variant ids, and a
+single request per poll.
 
-**Fix** Same as #21 — push limit/offset into the query and count separately.
+The refresh interval is deliberately still fifteen seconds, so this is purely a
+reduction in how many requests are made and not in how fresh the answer is.
+
+### 45. The footer queried the database on every storefront page ✅
+
+`getCachedSiteSettings` existed in `src/lib/cache.ts` with **no callers**. The
+`Footer` — which renders on every page of the site — called
+`siteConfigRepo.getSiteSettings()` directly, uncached, while the announcement
+bar beside it used the cached path all along. The footer now reads through the
+cache, and `admin.settings.updateSiteSettings` calls
+`revalidateTag("site-settings")` so a save still shows up immediately.
+
+### 46. React Query had no defaults, so navigation refetched everything ✅
+
+The `QueryClient` was constructed bare: `staleTime: 0` refetches on every mount
+and `refetchOnWindowFocus` refetches again on every tab switch. Defaults are now
+30 s stale time, no refetch on focus, one retry. Anything needing to be fresher
+sets its own values, which still win.
+
+### 47. Images bypassed the optimiser entirely ✅
+
+Every storefront `<Image>` passed `unoptimized`, so the homepage hero served a
+full 1920×1080 original as the LCP element with no `sizes` attribute, and each
+product card downloaded the original behind a 300 px slot.
+
+`src/lib/image-hosts.ts` now holds the host list `next.config.ts` builds its
+`remotePatterns` from, plus the narrower set actually routed through the
+optimiser, so the two cannot drift. AVIF/WebP and a 30-day optimiser cache are
+on; the hero has `sizes="100vw"` and `fetchPriority="high"`; the first row of
+each collection grid is eager rather than lazy.
+
+**`picsum.photos` is deliberately excluded from optimisation.** Optimising means
+Next fetches server-to-server, and picsum answers those with 503 — verified
+against the live host after the first attempt broke the seed imagery, not
+assumed. It is placeholder data; real uploads go to `utfs.io`, which is
+optimised. Below-the-fold homepage grids were left lazy on purpose so they do
+not compete with the hero for LCP.
+
+### Still open in this area
+
+`ILIKE '%term%'` cannot use a btree index, so search is a sequential scan. Fine
+at 36 products; if the catalogue grows into the thousands this wants a `pg_trgm`
+GIN index, which means enabling the extension.
+
+The collection pages remain fully client-side — the customer waits for the JS
+bundle and then a round trip before any product appears. Server-rendering the
+first page would remove that, and is a real refactor rather than a tuning change.
 
 ---
 
@@ -576,7 +672,7 @@ The default variant has the mirror problem in the same flow: `bg-primary` is `ok
 
 ---
 
-### P2-9. Half the cached product fetchers carry no tags, so no write can invalidate them
+### P2-9. Half the cached product fetchers carry no tags, so no write can invalidate them ✅
 
 **Where** `src/lib/cache.ts:256` (`getCachedProductsByCategory`), `:310` (`getCachedProductBySlug`), `:381` (`getCachedRelatedProducts`)
 
@@ -602,7 +698,7 @@ The visible symptom is an asymmetry: after an edit the product _lists_ update im
 
 ---
 
-### P2-11. Notification thumbnails pick the alphabetically-first image, not the primary one
+### P2-11. Notification thumbnails pick the alphabetically-first image, not the primary one — still open
 
 **Where** `src/infrastructure/database/repositories/notifications/user-notifications.repository.ts:48`
 
@@ -648,7 +744,9 @@ Every P0 and all but one P1 are done — see [Resolved](#resolved). Nothing left
 
 **Then — #39, the storefront palette.** It is filed under cleanup but it behaves like a defect generator: six separate white-on-black bugs so far, each found by a person looking at a screen rather than by any test. All six are patched and the cause is not, so deciding the token story once is cheaper than the seventh fix. #41 is the last loose end of the currency work and takes minutes.
 
-**Then — performance,** #21-25, mostly mechanical once the repositories accept limit and offset. Do #21 first: the admin orders list still loads every order and slices in the use case, and the customer join layered on top of it inherits that shape. #25 is the same shape on the customer side — `getMyOrders` still fetches 1000 rows per infinite-scroll page, and now runs the expired-checkout sweep before it.
+**~~Then — performance, #21-25.~~ Done 2026-08-31** — see [P2](#p2--performance-), which also swept up P2-9 and three problems found while measuring: every product card ran its own live-stock query, the footer queried the database on every page, and images bypassed the optimiser entirely.
+
+**One action is outstanding:** `drizzle/0001_glossy_scourge.sql` adds two composite indexes and has **not been applied**. It is written to be idempotent, so `pnpm db:push` or `pnpm db:migrate` is safe on the existing pushed database. The measured gains below were achieved *without* it; the indexes are on top.
 
 **Then the deferred decisions,** each of which is a choice before it is a fix: #29 (four CMS section types with no consumer — adopt or delete), #34 (the `worker` role), #35 (guest carts), #37 (billing addresses), and the phone-keyed `customers` table in #38.
 

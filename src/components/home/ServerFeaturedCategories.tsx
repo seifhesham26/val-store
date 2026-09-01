@@ -8,6 +8,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getCachedFeaturedCategories } from "@/lib/cache";
+import { unoptimizedFor } from "@/lib/image-hosts";
 
 interface ServerFeaturedCategoriesProps {
   title?: string;
@@ -40,7 +41,7 @@ function CategoryCard({
           fill
           sizes="(max-width: 768px) 100vw, 33vw"
           className="object-cover transition-transform duration-500 group-hover:scale-105"
-          unoptimized
+          unoptimized={unoptimizedFor(`https://picsum.photos/seed/category-${slug}/600/800`)}
         />
 
         {/* Gradient overlay */}

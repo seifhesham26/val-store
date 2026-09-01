@@ -67,9 +67,11 @@ const refundOrderSchema = z.object({
 export const ordersRouter = router({
   // List orders with filtering and pagination
   list: adminProcedure.input(listOrdersSchema).query(async ({ input }) => {
-    // Sweep abandoned checkouts so the list never shows a stale "pending" card
-    // order that should already have released its stock.
-    await container.getCancelExpiredCheckoutsUseCase().execute();
+    // Release abandoned checkouts without blocking the list on it — the sweep
+    // makes Stripe API calls, and awaiting them put a third-party round trip in
+    // front of every admin page load. Throttled to once a minute per process
+    // and error-swallowing, so firing and forgetting is safe.
+    void container.getCancelExpiredCheckoutsUseCase().execute();
 
     const useCase = container.getListOrdersUseCase();
     const page = input?.cursor ?? 1;

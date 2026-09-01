@@ -1,5 +1,6 @@
 import { ProductEntity } from "@/domain/products/entities/product.entity";
 import { ProductRepositoryInterface } from "@/domain/products/interfaces/repositories/product.repository.interface";
+import { pageWindow, pageCount } from "@/domain/shared/pagination";
 
 /**
  * List Products Use Case
@@ -46,27 +47,28 @@ export class ListProductsUseCase {
 
   async execute(input: ListProductsInput = {}): Promise<ListProductsOutput> {
     const page = input.page ?? 1;
-    const limit = input.limit ?? 10;
-    const offset = (page - 1) * limit;
+    const { limit, offset } = pageWindow(page, input.limit ?? 10);
 
-    // 1. Fetch products from repository (filter only, no pagination in repo yet)
-    const allProducts = await this.productRepository.findAll({
+    const filters = {
       isActive: input.isActive,
       isFeatured: input.isFeatured,
       categoryId: input.categoryId,
-    });
+      minPrice: input.minPrice,
+      maxPrice: input.maxPrice,
+    };
 
-    // 2. Get total count
-    const total = allProducts.length;
-    const totalPages = Math.ceil(total / limit);
+    // One bounded page and one count, in parallel. This used to load every
+    // matching product — each with its variants and images joined — and throw
+    // all but `limit` of them away, so an admin opening page 1 of the catalogue
+    // paid for the whole catalogue.
+    const [pageProducts, total] = await Promise.all([
+      this.productRepository.findAll({ ...filters, limit, offset }),
+      this.productRepository.count(filters),
+    ]);
 
-    // 3. Apply pagination (slice for now - could be DB-level later)
-    const paginatedProducts = allProducts.slice(offset, offset + limit);
+    const totalPages = pageCount(total, limit);
 
-    // 4. Map to DTOs
-    const productDTOs = paginatedProducts.map((product) =>
-      this.mapToDTO(product)
-    );
+    const productDTOs = pageProducts.map((product) => this.mapToDTO(product));
 
     return {
       products: productDTOs,

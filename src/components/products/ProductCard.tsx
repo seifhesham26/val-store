@@ -9,6 +9,7 @@ import {
   type QuickAddVariant,
 } from "@/components/products/QuickAddSliderBar";
 import { formatCurrency } from "@/lib/currency";
+import { unoptimizedFor } from "@/lib/image-hosts";
 
 export interface ProductCardProps {
   id: string;
@@ -21,6 +22,12 @@ export interface ProductCardProps {
   isNew?: boolean;
   isOnSale?: boolean;
   isFeatured?: boolean;
+  /**
+   * Render this image eagerly at high priority. Set on the first row of a grid
+   * only — one of those cards is the page's LCP element, and lazy-loading it
+   * costs a round trip after hydration before the customer sees anything.
+   */
+  priority?: boolean;
   /**
    * Required on purpose. A card rendered without its variants falls back to a
    * plain "Quick Add" that adds no variant, which silently skips stock
@@ -39,6 +46,7 @@ export function ProductCard({
   primaryImage,
   isNew = false,
   isOnSale = false,
+  priority = false,
   variants,
 }: ProductCardProps) {
   const formattedPrice = formatCurrency(price);
@@ -58,9 +66,11 @@ export function ProductCard({
               src={primaryImage}
               alt={name}
               fill
-              sizes="(max-width: 768px) 50vw, 25vw"
+              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              priority={priority}
+              loading={priority ? "eager" : "lazy"}
               className="object-cover transition-transform duration-300 group-hover:scale-105"
-              unoptimized
+              unoptimized={unoptimizedFor(primaryImage)}
             />
           ) : (
             <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />

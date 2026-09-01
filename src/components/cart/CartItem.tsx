@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import type { CartItem as CartItemType } from "@/lib/stores/cart-store";
 import { formatCurrency } from "@/lib/currency";
+import { unoptimizedFor } from "@/lib/image-hosts";
 
 interface CartItemProps {
   item: CartItemType;
@@ -62,8 +63,9 @@ export function CartItem({
             src={item.productImage}
             alt={item.productName}
             fill
+            sizes="96px"
             className="object-cover"
-            unoptimized
+            unoptimized={unoptimizedFor(item.productImage)}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-gray-500">

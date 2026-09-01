@@ -10,6 +10,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { getCachedHeroSection } from "@/lib/cache";
 import { HeroScrollIndicator } from "./HeroScrollIndicator";
+import { unoptimizedFor } from "@/lib/image-hosts";
 
 interface HeroContent {
   title?: string;
@@ -58,6 +59,8 @@ export async function ServerHeroSection() {
   const ctaText = content.ctaText ?? "Shop Now";
   const ctaLink = content.ctaLink ?? "/collections/all";
   const backgroundImage = content.backgroundImage;
+  const heroImage =
+    backgroundImage || "https://picsum.photos/seed/hero-valkyrie/1920/1080";
   const overlayOpacity = content.overlayOpacity ?? 40;
   const textAlignment = content.textAlignment ?? "center";
 
@@ -72,15 +75,16 @@ export async function ServerHeroSection() {
     <section className="relative h-[calc(100vh-96px)] md:h-[calc(100vh-104px)] flex items-center justify-center overflow-hidden">
       {/* Background Image or Default Image */}
       <Image
-        src={
-          backgroundImage ||
-          "https://picsum.photos/seed/hero-valkyrie/1920/1080"
-        }
-        alt="Hero background"
+        src={heroImage}
+        alt=""
         fill
+        // The LCP element on the homepage: full-bleed, so it needs the whole
+        // viewport width, and it must not wait for anything else.
+        sizes="100vw"
         priority
+        fetchPriority="high"
         className="object-cover"
-        unoptimized
+        unoptimized={unoptimizedFor(heroImage)}
       />
 
       {/* Overlay */}

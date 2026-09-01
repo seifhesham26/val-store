@@ -255,6 +255,16 @@ export const products = pgTable(
     categoryIdIdx: index("idx_products_category_id").on(table.categoryId),
     isActiveIdx: index("idx_products_is_active").on(table.isActive),
     isFeaturedIdx: index("idx_products_is_featured").on(table.isFeatured),
+    // Every storefront listing is `WHERE is_active = true ORDER BY created_at
+    // DESC LIMIT n`. On `is_active` alone Postgres has to sort every active
+    // product to find one page; this composite lets it walk the index backwards
+    // and stop at the limit. Ascending on purpose — a btree scans either way,
+    // and an equality predicate on the leading column makes it usable for both
+    // sort directions.
+    activeCreatedIdx: index("idx_products_active_created").on(
+      table.isActive,
+      table.createdAt
+    ),
   })
 );
 
@@ -356,6 +366,12 @@ export const orders = pgTable(
     orderNumberIdx: index("idx_orders_order_number").on(table.orderNumber),
     statusIdx: index("idx_orders_status").on(table.status),
     createdAtIdx: index("idx_orders_created_at").on(table.createdAt),
+    // "My orders" pages `WHERE user_id = ? ORDER BY created_at DESC`, which the
+    // single-column user_id index cannot satisfy without a sort.
+    userCreatedIdx: index("idx_orders_user_created").on(
+      table.userId,
+      table.createdAt
+    ),
   })
 );
 

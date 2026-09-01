@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 import { adminProcedure } from "../../../trpc";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
@@ -68,6 +69,11 @@ export const siteSettingsProcedures = {
     .mutation(async ({ input, ctx }) => {
       const repo = container.getSiteConfigRepository();
       const updated = await repo.updateSiteSettings(input, ctx.user.id);
+
+      // The footer reads these through `unstable_cache` on every page, so a
+      // save is invisible for up to a minute unless the tag is dropped.
+      revalidateTag("site-settings", "max");
+
       return updated.toObject();
     }),
 };

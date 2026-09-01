@@ -94,7 +94,7 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
 
       {/* Product Grid */}
       <div className={GRID_CLASSES}>
-        {products.map((product) => (
+        {products.map((product, index) => (
           <ProductCard
             key={product.id}
             id={product.id}
@@ -108,6 +108,7 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
               product.salePrice < product.basePrice
             }
             variants={product.variants}
+                priority={index < 4}
           />
         ))}
 

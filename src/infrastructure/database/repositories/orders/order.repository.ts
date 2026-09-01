@@ -148,6 +148,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         payments: true,
       },
       orderBy: [desc(orders.createdAt)],
+      limit: filters?.limit,
+      offset: filters?.offset,
     });
 
     const customers = await loadCustomers(ordersList.map((o) => o.userId));
@@ -901,6 +903,38 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
     if (filters?.endDate) {
       conditions.push(lte(orders.createdAt, filters.endDate));
+    }
+
+    // `returnedOnly` and `refundableOnly` mirror `OrderEntity.getRefundedItems()`
+    // and `canRefund()`. They are derived rather than stored, but every fact
+    // they derive from lives in a table, so they belong in the WHERE clause —
+    // that is what keeps the admin list from having to load every order to
+    // filter one page of them.
+    if (filters?.returnedOnly) {
+      conditions.push(
+        sql`EXISTS (SELECT 1 FROM ${orderItems} WHERE ${orderItems.orderId} = ${orders.id} AND ${orderItems.refundedQuantity} > 0)`
+      );
+    }
+
+    if (filters?.refundableOnly) {
+      // Mirrors canRefund(): not already refunded, and money actually captured
+      // — a completed card payment, or a delivered cash-on-delivery order.
+      //
+      // Reads the order's single payment row, which `create()` guarantees:
+      // exactly one is inserted per order and no path adds a second. If that
+      // ever changes, this needs the same "latest row wins" rule `mapToEntity`
+      // applies.
+      conditions.push(
+        sql`${orders.status} <> 'refunded' AND EXISTS (
+          SELECT 1 FROM ${payments}
+          WHERE ${payments.orderId} = ${orders.id}
+            AND ${payments.paymentStatus} <> 'refunded'
+            AND (
+              ${payments.paymentStatus} = 'completed'
+              OR (${payments.paymentMethod} = 'cash_on_delivery' AND ${orders.deliveredAt} IS NOT NULL)
+            )
+        )`
+      );
     }
 
     return conditions;
