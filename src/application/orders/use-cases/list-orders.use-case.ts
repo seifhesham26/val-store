@@ -1,5 +1,6 @@
 import { OrderEntity } from "@/domain/orders/entities/order.entity";
 import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
+import { pageWindow, pageCount } from "@/domain/shared/pagination";
 
 /**
  * List Orders Use Case
@@ -60,39 +61,30 @@ export class ListOrdersUseCase {
 
   async execute(input: ListOrdersInput = {}): Promise<ListOrdersOutput> {
     const page = input.page ?? 1;
-    const limit = input.limit ?? 10;
-    const offset = (page - 1) * limit;
+    const { limit, offset } = pageWindow(page, input.limit ?? 10);
 
-    // Fetch orders from repository (without pagination for now - slice in memory)
-    const allOrders = await this.orderRepository.findAll({
+    // Every filter here is now a SQL predicate, including the two derived ones
+    // — refundability and return state both read columns, so the repository
+    // expresses them as EXISTS clauses. Before this, one page of orders cost a
+    // full load of every order the filters matched, with items, both addresses
+    // and payments joined.
+    const filters = {
       userId: input.userId,
       status: input.status,
       startDate: input.startDate,
       endDate: input.endDate,
-    });
+      refundableOnly: input.refundableOnly,
+      returnedOnly: input.returnedOnly,
+    };
 
-    // Refundability and return state are both derived (from the joined payment
-    // row and from the line quantities), so they are filtered here rather than
-    // in SQL. Applied before paging so counts stay correct.
-    let filteredOrders = allOrders;
-    if (input.refundableOnly) {
-      filteredOrders = filteredOrders.filter((order) => order.canRefund());
-    }
-    if (input.returnedOnly) {
-      filteredOrders = filteredOrders.filter(
-        (order) => order.getRefundedItems() > 0
-      );
-    }
+    const [pageOrders, total] = await Promise.all([
+      this.orderRepository.findAll({ ...filters, limit, offset }),
+      this.orderRepository.count(filters),
+    ]);
 
-    // Get total count
-    const total = filteredOrders.length;
-    const totalPages = Math.ceil(total / limit);
+    const totalPages = pageCount(total, limit);
 
-    // Apply pagination
-    const paginatedOrders = filteredOrders.slice(offset, offset + limit);
-
-    // Map to DTOs
-    const orderDTOs = paginatedOrders.map((order) => this.mapToDTO(order));
+    const orderDTOs = pageOrders.map((order) => this.mapToDTO(order));
 
     return {
       orders: orderDTOs,

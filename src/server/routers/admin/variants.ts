@@ -10,6 +10,7 @@ import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
 import { TRPCError } from "@trpc/server";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
 
 // Validation schemas
 const addVariantSchema = z.object({
@@ -79,7 +80,11 @@ export const variantsRouter = router({
    */
   add: adminProcedure.input(addVariantSchema).mutation(async ({ input }) => {
     const useCase = container.getAddProductVariantUseCase();
-    return useCase.execute(input);
+    const variant = await useCase.execute(input);
+    // Cards carry their variants so Quick Add can record one, so the cached
+    // grid is now missing an option a customer should be able to pick.
+    revalidateCatalogue();
+    return variant;
   }),
 
   /**
@@ -111,6 +116,8 @@ export const variantsRouter = router({
       );
 
       const saved = await repo.update(updated);
+      // `isAvailable` decides whether the card offers this variant at all.
+      revalidateCatalogue();
       return variantToOutput(saved);
     }),
 
@@ -122,6 +129,7 @@ export const variantsRouter = router({
     .mutation(async ({ input }) => {
       const repo = container.getProductVariantRepository();
       await repo.delete(input.id);
+      revalidateCatalogue();
       return { success: true };
     }),
 
@@ -150,6 +158,11 @@ export const variantsRouter = router({
           message: result.error ?? "Failed to update stock",
         });
       }
+
+      // The cached card carries an `inStock` flag derived from this. Live
+      // stock polling corrects it within 15s either way, but an admin who has
+      // just restocked something should not have to wait for that.
+      revalidateCatalogue();
 
       return result;
     }),

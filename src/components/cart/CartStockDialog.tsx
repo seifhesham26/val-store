@@ -29,6 +29,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { trpc } from "@/lib/trpc";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import type { CartStockLine } from "@/application/cart/use-cases/check-cart-stock.use-case";
+import { unoptimizedFor } from "@/lib/image-hosts";
 
 export function CartStockDialog() {
   const { problems, isDialogOpen, closeDialog } = useCartStock();
@@ -153,7 +154,7 @@ export function CartStockDialog() {
                           fill
                           sizes="80px"
                           className="object-cover"
-                          unoptimized
+                          unoptimized={unoptimizedFor(line.productImage)}
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">

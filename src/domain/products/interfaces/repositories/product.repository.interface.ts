@@ -38,8 +38,22 @@ export interface ProductFilters {
   inStock?: boolean;
   /** Max number of results to return */
   limit?: number;
+  /** Rows to skip. Pair with `limit` for pagination. */
+  offset?: number;
   /** Exclude a specific product ID from results */
   excludeId?: string;
+  /** Restrict to one gender. Was applied in JS after fetching everything. */
+  gender?: string;
+  /** Only products whose sale price actually undercuts the base price. */
+  isOnSale?: boolean;
+  /**
+   * Case-insensitive match against name or description.
+   *
+   * Lives here rather than in a separate `search()` so it composes with the
+   * other filters and, crucially, with `limit`/`offset` — a search that cannot
+   * be paginated in SQL is a search that loads the whole catalogue.
+   */
+  search?: string;
 }
 
 export interface ProductRepositoryInterface {
@@ -75,11 +89,6 @@ export interface ProductRepositoryInterface {
    * Find featured products
    */
   findFeatured(limit?: number): Promise<ProductEntity[]>;
-
-  /**
-   * Search products by name or description
-   */
-  search(query: string): Promise<ProductEntity[]>;
 
   /**
    * Create a new product

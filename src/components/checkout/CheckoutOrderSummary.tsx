@@ -14,6 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { useCartStore } from "@/lib/stores/cart-store";
 import { formatCurrency } from "@/lib/currency";
+import { unoptimizedFor } from "@/lib/image-hosts";
 
 export function CheckoutOrderSummary({
   couponCode,
@@ -74,7 +75,9 @@ export function CheckoutOrderSummary({
                   src={item.productImage}
                   alt={item.productName}
                   fill
+                  sizes="80px"
                   className="object-cover"
+                  unoptimized={unoptimizedFor(item.productImage)}
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-white/[0.06]">

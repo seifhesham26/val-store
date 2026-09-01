@@ -1,6 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { unoptimizedFor } from "@/lib/image-hosts";
+
+/** Placeholder art. Hoisted so the tag and the optimise guard read one value. */
+const PROMO_IMAGE = "https://picsum.photos/seed/promo-winter/800/800";
 
 interface PromoBannerProps {
   preHeadline?: string;
@@ -23,12 +27,12 @@ export function PromoBanner({
         {/* Image Side */}
         <div className="relative aspect-square md:aspect-auto md:min-h-[400px]">
           <Image
-            src="https://picsum.photos/seed/promo-winter/800/800"
+            src={PROMO_IMAGE}
             alt={headline}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover"
-            unoptimized
+            unoptimized={unoptimizedFor(PROMO_IMAGE)}
           />
           {/* Subtle overlay */}
           <div className="absolute inset-0 bg-black/20" />

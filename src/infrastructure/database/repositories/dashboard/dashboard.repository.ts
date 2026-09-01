@@ -99,41 +99,31 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
    * Get recent orders for the dashboard
    */
   async getRecentOrders(limit: number = 5): Promise<RecentOrder[]> {
-    const recentOrders = await db
+    // One query with a join, not one per row. There is no `orders → user`
+    // relation to lean on, so the join is explicit — but it is still a join.
+    const rows = await db
       .select({
         id: orders.id,
         orderNumber: orders.orderNumber,
         totalAmount: orders.totalAmount,
         createdAt: orders.createdAt,
         userId: orders.userId,
+        customerName: user.name,
       })
       .from(orders)
+      .leftJoin(user, eq(orders.userId, user.id))
       .orderBy(desc(orders.createdAt))
       .limit(limit);
 
-    // Fetch customer names for each order
-    const ordersWithCustomers = await Promise.all(
-      recentOrders.map(async (order) => {
-        let customerName = "Guest";
-        if (order.userId) {
-          const [customer] = await db
-            .select({ name: user.name })
-            .from(user)
-            .where(eq(user.id, order.userId))
-            .limit(1);
-          customerName = customer?.name || "Unknown";
-        }
-        return {
-          id: order.id,
-          orderNumber: order.orderNumber,
-          customerName,
-          totalAmount: order.totalAmount,
-          createdAt: order.createdAt,
-        };
-      })
-    );
-
-    return ordersWithCustomers;
+    return rows.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      // No user id means a guest order; a user id with no row means the account
+      // was deleted (orders.userId is ON DELETE SET NULL, so this is rare).
+      customerName: order.userId ? (order.customerName ?? "Unknown") : "Guest",
+      totalAmount: order.totalAmount,
+      createdAt: order.createdAt,
+    }));
   }
 
   /**

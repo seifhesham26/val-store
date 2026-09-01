@@ -18,11 +18,23 @@ interface UseInfiniteScrollOptions {
   onLoadMore: () => void;
   /** Whether to enable the observer */
   enabled?: boolean;
-  /** Root margin for intersection observer (default: "100px") */
+  /** Root margin for intersection observer (default: PREFETCH_MARGIN) */
   rootMargin?: string;
   /** Threshold for intersection (default: 0.1) */
   threshold?: number;
 }
+
+/**
+ * How far ahead of the sentinel to start loading the next page.
+ *
+ * This was 100px, which meant the request only began once the customer was
+ * essentially already at the bottom — so they met the spinner every single
+ * time, on every page, no matter how fast the query was. Roughly a screen's
+ * worth of lead time is enough for the next page to arrive before it is
+ * scrolled into view, which is the difference between "infinite scroll" and
+ * "scroll, wait, scroll, wait".
+ */
+const PREFETCH_MARGIN = "800px";
 
 interface UseInfiniteScrollReturn {
   /** Ref to attach to the sentinel element */
@@ -34,7 +46,7 @@ interface UseInfiniteScrollReturn {
 export function useInfiniteScroll({
   onLoadMore,
   enabled = true,
-  rootMargin = "100px",
+  rootMargin = PREFETCH_MARGIN,
   threshold = 0.1,
 }: UseInfiniteScrollOptions): UseInfiniteScrollReturn {
   const [isNearBottom, setIsNearBottom] = useState(false);

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../../trpc";
-import { revalidateTag } from "next/cache";
 import { container } from "@/application/container";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 
 // Validation schemas
@@ -62,19 +62,6 @@ const listProductsSchema = z.object({
   limit: z.number().min(1).max(100).optional().default(10),
   cursor: z.number().min(1).optional(), // Page number as cursor for infinite scroll
 });
-
-/**
- * Drop the homepage's cached view of the catalogue.
- *
- * `isFeatured`, the price and the active flag are all read through
- * `unstable_cache`, so an edit that is not announced here stays invisible on the
- * storefront for up to a minute — long enough for an admin to conclude the save
- * did not work and press it again.
- */
-function revalidateCatalogue() {
-  revalidateTag("featured-products", "max");
-  revalidateTag("all-products", "max");
-}
 
 export const productsRouter = router({
   // List all products with infinite scroll support

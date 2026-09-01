@@ -8,6 +8,10 @@ import {
 } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { ProductEntity } from "@/domain/products/entities/product.entity";
 import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
+import {
+  containsPattern,
+  LIKE_ESCAPE_CHAR,
+} from "@/domain/shared/like-pattern";
 
 /**
  * Product Repository Implementation using Drizzle ORM
@@ -67,6 +71,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
       },
       orderBy: [desc(products.createdAt)],
       limit: filters?.limit,
+      offset: filters?.offset,
     });
 
     return productsList.map((p) => this.mapToEntity(p));
@@ -90,27 +95,6 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
         images: true,
       },
       limit,
-      orderBy: [desc(products.createdAt)],
-    });
-
-    return productsList.map((p) => this.mapToEntity(p));
-  }
-
-  /**
-   * Search products by name or description
-   */
-  async search(query: string): Promise<ProductEntity[]> {
-    const searchTerm = `%${query}%`;
-
-    const productsList = await db.query.products.findMany({
-      where: and(
-        eq(products.isActive, true),
-        sql`(${products.name} ILIKE ${searchTerm} OR ${products.description} ILIKE ${searchTerm})`
-      ),
-      with: {
-        variants: true,
-        images: true,
-      },
       orderBy: [desc(products.createdAt)],
     });
 
@@ -345,6 +329,29 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
 
     if (filters?.excludeId) {
       conditions.push(ne(products.id, filters.excludeId));
+    }
+
+    if (filters?.gender) {
+      conditions.push(
+        eq(products.gender, filters.gender as "men" | "women" | "unisex" | "kids")
+      );
+    }
+
+    // "On sale" is a comparison, not a flag: a sale price equal to or above the
+    // base price is not a discount, and the storefront badge agrees.
+    if (filters?.isOnSale) {
+      conditions.push(
+        sql`${products.salePrice} IS NOT NULL AND ${products.salePrice} < ${products.basePrice}`
+      );
+    }
+
+    // Escaped so a term containing % or _ is matched literally rather than as
+    // a wildcard — see `containsPattern`.
+    const pattern = containsPattern(filters?.search);
+    if (pattern) {
+      conditions.push(
+        sql`(${products.name} ILIKE ${pattern} ESCAPE ${LIKE_ESCAPE_CHAR} OR ${products.description} ILIKE ${pattern} ESCAPE ${LIKE_ESCAPE_CHAR})`
+      );
     }
 
     return conditions;

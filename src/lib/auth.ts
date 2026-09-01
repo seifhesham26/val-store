@@ -80,18 +80,33 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // Update session every 24 hours
-    async generateSessionData(user: { id: string }) {
-      // Pull role from user_profiles table and attach it to session
-      const [profile] = await db
-        .select({ role: userProfiles.role })
-        .from(userProfiles)
-        .where(eq(userProfiles.userId, user.id))
-        .limit(1);
 
-      return {
-        role: profile?.role ?? "customer",
-      } as const;
+    /**
+     * Serve the session from a short-lived signed cookie instead of querying
+     * the `session` table on every request.
+     *
+     * Without this, every authenticated call — every cart read, every stock
+     * poll — costs a database round trip before the procedure even starts. The
+     * cookie is signed, so it cannot be forged; five minutes bounds how long a
+     * revoked session can keep working, which is the trade being made.
+     */
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 5,
     },
+
+    /*
+     * There was a `generateSessionData` here that read the role from
+     * `user_profiles` and returned it to be stored on the session. It was
+     * dead: the `session` table has no `role` column and none was declared in
+     * `additionalFields`, so the value had nowhere to persist and was
+     * discarded — after paying for the query on every sign-in.
+     *
+     * The role is resolved in `createContext` instead, through the short-TTL
+     * cache in `server/utils/auth-helpers.ts`. Keeping it out of the session
+     * also means a demotion takes effect in a minute rather than surviving in
+     * a seven-day session.
+     */
   },
 
   // Social login providers

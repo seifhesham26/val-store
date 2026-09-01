@@ -11,21 +11,27 @@
  * reaches it. Discovering it from a rejected add-to-cart is both a wasted round
  * trip and a bad experience. The server still validates every write; this is
  * purely so the interface can be honest up front.
+ *
+ * **Sharing is the whole point, and it used to be the bug.** The query keys on
+ * the ids it is handed, so every product card — each passing its own variants —
+ * got its own request and its own polling timer. Under a
+ * `VariantStockProvider` this hook now registers its ids with that one shared
+ * query and reads the answer from it. Without a provider (the product detail
+ * page) it falls back to querying for itself, which is one request for the one
+ * product being looked at.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import {
+  useSharedVariantStock,
+  type VariantStockLookup,
+} from "@/components/providers/variant-stock-provider";
 
 /** How long a cached stock figure is trusted before a background refresh. */
 export const STOCK_STALE_MS = 15_000;
 
-export interface VariantStock {
-  /** Units available for a variant, or null while unknown. */
-  get: (variantId: string | null | undefined) => number | null;
-  isLoading: boolean;
-  /** Force an immediate refresh — call after anything that consumes stock. */
-  refresh: () => void;
-}
+export type VariantStock = VariantStockLookup;
 
 export function useVariantStock(
   variantIds: (string | null | undefined)[]
@@ -40,19 +46,33 @@ export function useVariantStock(
 
   const ids = useMemo(() => (key ? key.split(",") : []), [key]);
 
+  const shared = useSharedVariantStock();
+
+  // `register` is stable for the provider's lifetime; depending on the whole
+  // context value would re-register on every stock refresh.
+  const register = shared?.register;
+
+  useEffect(() => {
+    if (!register || ids.length === 0) return;
+    return register(ids);
+  }, [register, ids]);
+
   const utils = trpc.useUtils();
+
+  // Only queries when nothing upstream is already doing it for us.
+  const standalone = shared === null && ids.length > 0;
 
   const { data, isLoading } = trpc.public.products.getStock.useQuery(
     { variantIds: ids },
     {
-      enabled: ids.length > 0,
+      enabled: standalone,
       staleTime: STOCK_STALE_MS,
-      refetchInterval: STOCK_STALE_MS,
+      refetchInterval: standalone ? STOCK_STALE_MS : false,
       refetchOnWindowFocus: true,
     }
   );
 
-  return useMemo(
+  const own = useMemo<VariantStock>(
     () => ({
       get: (variantId) => {
         if (!variantId) return null;
@@ -66,4 +86,6 @@ export function useVariantStock(
     }),
     [data, isLoading, utils]
   );
+
+  return shared ?? own;
 }

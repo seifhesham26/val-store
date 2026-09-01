@@ -1,6 +1,19 @@
+import dynamic from "next/dynamic";
 import { MetricsCards } from "@/components/admin/dashboard/MetricsCards";
-import { SalesChart } from "@/components/admin/dashboard/SalesChart";
 import { RecentOrders } from "@/components/admin/dashboard/RecentOrders";
+
+/**
+ * Split recharts out of the dashboard's initial bundle. The metric cards and
+ * the recent-orders table are what an admin actually opens this page for, and
+ * neither needs the charting library to render.
+ *
+ * No `ssr: false` here — this is a server component, where that option is not
+ * allowed. The split still happens; the chart is simply also rendered on the
+ * server first.
+ */
+const SalesChart = dynamic(() =>
+  import("@/components/admin/dashboard/SalesChart").then((m) => m.SalesChart)
+);
 
 export default function DashboardPage() {
   return (

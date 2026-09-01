@@ -8,6 +8,13 @@
       "when": 1787993550972,
       "tag": "0000_long_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788180659800,
+      "tag": "0001_glossy_scourge",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-08-31): `type-check` clean, `lint` 0 errors / 5 unused-var warnings, 80 tests passing.
+Baseline as of last check (2026-09-01): `type-check` clean, `lint` 0 errors / 4 unused-var warnings, 162 unit tests passing, `build` producing 92 static pages, plus an integration suite that needs a database.
 
 ## Commands
 
@@ -17,7 +17,8 @@ pnpm dev              # dev server
 pnpm build            # production build
 pnpm lint             # eslint (next core-web-vitals + typescript)
 pnpm type-check       # tsc --noEmit
-pnpm test             # vitest run
+pnpm test             # vitest run — unit only, no database needed. This is what CI runs.
+pnpm test:integration # vitest against a REAL database (reads DATABASE_URL from .env)
 pnpm vitest run src/domain/orders/entities/order.test.ts   # single test file
 pnpm vitest run -t "canTransitionTo"                        # single test by name
 
@@ -63,7 +64,13 @@ Checkout depends on cart + order repos, so `createCheckoutModule()` takes them a
 
 Root router is `src/server/index.ts` → `{ admin, auth, public }`. `src/server/trpc.ts` defines `publicProcedure`, `protectedProcedure` (session required), `adminProcedure` (role `admin`/`super_admin`).
 
-Context is built per-request from the Better Auth session, then the role is looked up from `user_profiles` (roles live there, **not** on the Better Auth `user` table). Client access is `trpc.<admin|auth|public>.<router>.<procedure>` via `src/lib/trpc.ts`; `vanillaTrpc` exists for imperative calls outside React Query (used by the login form).
+**Context is lazy, and that is load-bearing in two directions.** `TRPCContext` exposes a memoised `getUser()` rather than a resolved `user`; `isAuthed`/`isAdmin` await it, so handlers below them still read `ctx.user` as a non-null `AuthUser`. A `publicProcedure` that never asks does **zero** auth queries — which is the point, since catalogue reads used to pay for a session lookup plus a `user_profiles` role query before running. Roles live in `user_profiles`, **not** on the Better Auth `user` table, and are cached in-process for 60s (`invalidateUserRole` drops one on write). The `session` table has no `role` column, so do not try to read a role off the session — a `generateSessionData` that did exactly that was removed as dead.
+
+The other direction is caching: `ctx.touchedAuth()` reports whether anything in the request resolved the user, and `responseMeta` in `src/app/api/trpc/[trpc]/route.ts` uses it to decide whether the HTTP response may be cached publicly. **`httpBatchLink` puts several calls into one HTTP response**, so one user-scoped call in a batch would poison a shared cache. The rule lives in `src/server/utils/response-cache-policy.ts` — pure and exhaustively tested — and fails closed. If you add a procedure that reads user data, make sure it goes through `getUser()`; that is what keeps its response out of the CDN.
+
+`createAnonymousCaller()` (`src/server/caller.ts`) is how server components reach storefront procedures in-process. Everything reached through it must be a `publicProcedure`.
+
+Client access is `trpc.<admin|auth|public>.<router>.<procedure>` via `src/lib/trpc.ts`; `vanillaTrpc` exists for imperative calls outside React Query (used by the login form).
 
 Note: most `public.*` routers are actually `protectedProcedure` (cart, checkout, orders, wishlist, address, profile, coupons, notifications) — "public" means "storefront", not "unauthenticated".
 
@@ -150,12 +157,18 @@ Every P0 and all but one P1 are now fixed. What is left:
 - Value objects written but never used: `Money`, `Email`, `PasswordValueObject` (enforces strong-password rules no form applies — signup and reset both check only length ≥ 8), `ProductSKU`, `AddressValueObject`. Wired in: `PhoneValueObject`, `CategorySlug`, `OrderStatus`, and the shared `slugify`.
 - Unused components: `ProductSidebar` (a mockup with dead buttons), `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout`.
 - `src/components/account/AddressList.tsx` and `AddressFormDialog.tsx` are byte-identical duplicates of the versions in `account/addresses/`; only the nested ones are imported.
-- `DrizzleProductRepository.search()` does a proper SQL `ILIKE` query — and is never called. `public.products.search` loads all products and filters in JS instead.
 - Committed build artifacts: `build_output.log`, `build_output3.log`, `type_output.log`, `tmp/tsc_errors.txt`.
+- Six dead shadcn primitives were deleted (`carousel`, `chart`, `command`, `drawer`, `input-otp`, `resizable`) along with ten unused dependencies. If you reach for one of those components, reinstall it deliberately — do not assume it is still there.
 
 ### Performance
 
-`public.products.list`/`search` and `ListProductsUseCase`/`ListOrdersUseCase` all fetch everything then `.slice()`. `getMyOrders` pulls 1000 rows per page request **and** runs the expired-checkout sweep first. `public.categories.list` and `public.products.getFeatured` still call `findAll()` once per category inside a loop — the homepage no longer does, and `countProductsByCategory` exists for exactly this. `getRecentOrders` fetches each customer name in its own query.
+Two passes are done and **`docs/PERFORMANCE.md` is the current record** — measured numbers, what changed, and what is still outstanding. The short version:
+
+- **The unit of cost is a round trip**, not a slow query. The database is Neon in `eu-central-1`: ~58ms warm, ~560ms to open a cold connection. postgres.js **pipelines** queries down one connection, so four queries issued together cost about *one* round trip — which is why `max: 1` is the fastest pool setting for a single request and why `DATABASE_POOL_MAX` defaults to 1. Raise it to 5 only for a long-lived Node server; see the table in `src/db/index.ts`.
+- **Collection pages are server components.** `/collections/*` resolve page 1 through `getCachedFirstProductPage` and seed the client grid with `initialData`, so they prerender with products in the HTML. `/products/[slug]` and `/collections/[slug]` have `generateStaticParams`. When adding a collection page, follow that shape — do not add another client component that fetches on mount.
+- **The cached fetchers call the routers**, not reimplementations of their queries, so a server-rendered page 1 cannot drift from the page 2 the client fetches.
+
+Two things are still outstanding, both outside the code: Neon's autosuspend (a multi-second wake on the first request after idle — the most likely remaining cause of "the site feels slow"), and applying `drizzle/0001_glossy_scourge.sql` for two composite indexes.
 
 ### Smaller things
 
@@ -186,7 +199,10 @@ These are working. They are listed because each is easy to break again — the f
 - **Only style with tokens that exist.** `globals.css` defines `--destructive` but **no `--destructive-foreground`**, so `text-destructive-foreground` silently applies nothing and the element inherits — which reads as "working" against whichever body colour happens to be behind it. Prefer `buttonVariants({ variant: "destructive" })` (it uses `text-white`) over hand-written colour classes, and grep `globals.css` before reaching for a `--*-foreground` you have not seen there.
 - Domain classes use constructor-parameter properties (`ProductEntity`, `OrderEntity`, `CartItemEntity`) or private-props + static factory (`Customer`, `SiteSettingsEntity`); value objects use private constructors with static `create`/`from*`. Entities that mutate return new instances rather than mutating in place.
 - `zod` is imported both as `"zod"` and `"zod/v4"` depending on the file — match whatever the file already uses.
-- Tests only cover pure domain logic (`src/domain/**/*.test.ts`), colocated with the entity. There are no repository, router, or component tests.
+- **Any admin write that changes what a product card shows must call `revalidateCatalogue()`** (`src/server/utils/revalidate-catalogue.ts`). A card renders `primaryImage`, `variants` and `inStock`, so the variants and images routers count just as much as the products one — all three were found silently stale because only products announced its writes. The catalogue TTL (5 min, `CATALOGUE_REVALIDATE` in `src/lib/cache.ts`) is a backstop; the tags are the actual correctness mechanism, which is why the TTL is not longer.
+- **Two suites.** `pnpm test` is unit-only and needs no database — `src/**/*.test.ts`, colocated with what they cover, and the only thing CI runs. `pnpm test:integration` runs `src/**/*.integration.test.ts` against a real database via `vitest.integration.config.ts`; it is excluded from the default `include` so it can never break CI, which has no `DATABASE_URL`.
+- **Integration tests are read-only by rule.** They assert that the SQL the repositories emit agrees with the domain logic it replaced — `refundableOnly` against `OrderEntity.canRefund()`, `returnedOnly` against `getRefundedItems()`, the batched card lookups against the per-product ones. That comparison is the whole point, so keep them read-only and safe to point at real data. They log a summary of what they found, so a failure is diagnosable from the output alone.
+- Component tests still do not exist; there is no DOM testing library installed. Where client logic is worth testing, extract it into a plain module and test that instead — `src/lib/variant-stock-registry.ts` is the pattern: the ref-counting lives outside React, and `VariantStockProvider` is a thin wrapper over it.
 
 ## Docs in-repo
 

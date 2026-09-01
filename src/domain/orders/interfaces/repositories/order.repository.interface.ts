@@ -42,6 +42,21 @@ export interface OrderFilters {
   endDate?: Date;
   minAmount?: number;
   maxAmount?: number;
+  /** Max rows to return. */
+  limit?: number;
+  /** Rows to skip. Pair with `limit` for pagination. */
+  offset?: number;
+  /**
+   * Only orders with captured money that has not been fully returned — the
+   * SQL equivalent of `OrderEntity.canRefund()`.
+   *
+   * Derived state, but expressible: it reads the order's status and its payment
+   * row. Keeping it in SQL is what lets the admin list stay paginated; applying
+   * it in JavaScript would mean loading every order to find one page of them.
+   */
+  refundableOnly?: boolean;
+  /** Only orders with at least one unit sent back. */
+  returnedOnly?: boolean;
 }
 
 export interface OrderRepositoryInterface {

@@ -12,6 +12,7 @@ import {
   UserProfileEntity,
   UserRole,
 } from "@/domain/customers/entities/user-profile.entity";
+import { invalidateUserRole } from "@/server/utils/auth-helpers";
 
 export class DrizzleUserProfileRepository implements UserProfileRepositoryInterface {
   /**
@@ -89,6 +90,11 @@ export class DrizzleUserProfileRepository implements UserProfileRepositoryInterf
       })
       .where(eq(userProfiles.id, profile.id))
       .returning();
+
+    // The role is cached per process for a minute to keep it off the critical
+    // path of every authenticated request. A write here is the one moment we
+    // know that cache is wrong, so drop it rather than wait out the TTL.
+    invalidateUserRole(updated.userId);
 
     return this.mapToEntity(updated);
   }
