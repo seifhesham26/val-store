@@ -10,6 +10,7 @@ import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 import { ProductImageEntity } from "@/domain/products/entities/product-image.entity";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
 
 // Validation schemas
 const addImageSchema = z.object({
@@ -54,7 +55,10 @@ export const imagesRouter = router({
    */
   add: adminProcedure.input(addImageSchema).mutation(async ({ input }) => {
     const useCase = container.getAddProductImageUseCase();
-    return useCase.execute(input);
+    const image = await useCase.execute(input);
+    // A storefront card renders its primary image, so this changed the grid.
+    revalidateCatalogue();
+    return image;
   }),
 
   /**
@@ -65,6 +69,7 @@ export const imagesRouter = router({
     .mutation(async ({ input }) => {
       const useCase = container.getRemoveProductImageUseCase();
       await useCase.execute({ imageId: input.id });
+      revalidateCatalogue();
       return { success: true };
     }),
 
@@ -76,6 +81,9 @@ export const imagesRouter = router({
     .mutation(async ({ input }) => {
       const repo = container.getProductImageRepository();
       await repo.setPrimary(input.productId, input.imageId);
+      // This is *the* field the card shows; without this the grid keeps
+      // showing the old primary image until the cache expires on its own.
+      revalidateCatalogue();
       return { success: true };
     }),
 });

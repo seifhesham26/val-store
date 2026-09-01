@@ -13,13 +13,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { appRouter } from "@/server";
 import { container } from "@/application/container";
+import { createAnonymousCaller } from "@/server/caller";
 import { client } from "@/db";
 
 // The storefront endpoints are all `publicProcedure`, so an anonymous context
-// is the real thing rather than a stub.
-const caller = appRouter.createCaller({ user: null });
+// is the real thing rather than a stub. This is the same caller the server
+// components use, so these tests exercise the server-rendering path too.
+const caller = createAnonymousCaller();
 
 const productRepo = container.getProductRepository();
 const imageRepo = container.getProductImageRepository();

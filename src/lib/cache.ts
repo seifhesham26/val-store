@@ -12,6 +12,7 @@
 
 import { unstable_cache } from "next/cache";
 import { container } from "@/application/container";
+import { createAnonymousCaller } from "@/server/caller";
 
 // Cache tags for easy invalidation
 const CACHE_TAGS = {
@@ -25,6 +26,23 @@ const CACHE_TAGS = {
 
 // Default revalidation time (60 seconds)
 const DEFAULT_REVALIDATE = 60;
+
+/**
+ * Revalidation for catalogue data, which is tag-invalidated.
+ *
+ * Every admin write that changes what a product card shows now calls
+ * `revalidateCatalogue()` — including the variant and image mutations, which
+ * previously called nothing at all and left the storefront stale after an
+ * edit. The tags are therefore the correctness mechanism and this TTL is only
+ * a backstop for a write path nobody remembered to announce.
+ *
+ * Five minutes rather than the hour it could be: this audit found two write
+ * paths with no invalidation at all, so the demonstrated rate of missed tags
+ * in this codebase is not zero, and a stale-for-an-hour storefront is a much
+ * worse failure than a stale-for-five-minutes one. Raise it once the tag
+ * coverage has stayed complete through a few more features.
+ */
+const CATALOGUE_REVALIDATE = 300;
 
 /**
  * Get hero section content with caching
@@ -278,8 +296,13 @@ export const getCachedProductBySlug = unstable_cache(
     const imageRepo = container.getProductImageRepository();
     const variantRepo = container.getProductVariantRepository();
 
-    const images = await imageRepo.findByProduct(product.id);
-    const variants = await variantRepo.findByProduct(product.id);
+    // Independent queries. Awaited in series they cost two round trips to the
+    // database; issued together postgres.js pipelines them down one connection
+    // and they cost roughly one.
+    const [images, variants] = await Promise.all([
+      imageRepo.findByProduct(product.id),
+      variantRepo.findByProduct(product.id),
+    ]);
 
     return {
       id: product.id,
@@ -385,6 +408,95 @@ export const getCachedRelatedProducts = unstable_cache(
   },
   ["related-products"],
   { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+);
+
+/**
+ * Every active product slug, for `generateStaticParams`.
+ *
+ * Deliberately a bare list of strings rather than whole entities: this runs at
+ * build time for the sole purpose of enumerating routes, and pulling full
+ * products to read one field each would be wasteful.
+ */
+export const getCachedProductSlugs = unstable_cache(
+  async () => {
+    const repo = container.getProductRepository();
+    const products = await repo.findAll({ isActive: true });
+    return products.map((p) => p.slug);
+  },
+  ["product-slugs"],
+  { revalidate: CATALOGUE_REVALIDATE, tags: ["all-products"] }
+);
+
+/** Every active category slug, for `generateStaticParams`. */
+export const getCachedCategorySlugs = unstable_cache(
+  async () => {
+    const repo = container.getCategoryRepository();
+    const categories = await repo.findActive();
+    return categories.map((c) => c.slug);
+  },
+  ["category-slugs"],
+  { revalidate: CATALOGUE_REVALIDATE, tags: [CACHE_TAGS.CATEGORIES] }
+);
+
+/**
+ * The filters a collection page can pin its grid to. Mirrors the subset of
+ * `public.products.list` input that the storefront grids actually vary.
+ */
+export interface ProductListPageFilters {
+  categoryId?: string;
+  gender?: string;
+  isFeatured?: boolean;
+  isOnSale?: boolean;
+  limit?: number;
+}
+
+/**
+ * Page 1 of a product grid, resolved on the server.
+ *
+ * This is the fix for the collection pages' worst waterfall. They rendered a
+ * client component that fetched page 1 over HTTP after the bundle downloaded
+ * and hydrated, so the chain to first product was: shell, bundle, hydrate,
+ * request, four queries, paint. The server had everything it needed the whole
+ * time.
+ *
+ * It calls the *same procedure* the client would have called rather than
+ * reimplementing the query, so the payload handed to `initialData` cannot
+ * drift from what page 2 returns — a mismatch there would show as cards
+ * changing shape the moment the customer scrolled.
+ */
+export const getCachedFirstProductPage = unstable_cache(
+  async (filters: ProductListPageFilters) => {
+    const caller = createAnonymousCaller();
+    return caller.public.products.list({
+      ...filters,
+      limit: filters.limit ?? 12,
+      cursor: 1,
+    });
+  },
+  ["product-list-first-page"],
+  { revalidate: CATALOGUE_REVALIDATE, tags: ["all-products"] }
+);
+
+/** The exact payload shape `InfiniteProductGrid` seeds its query cache with. */
+export type ProductListPage = Awaited<
+  ReturnType<typeof getCachedFirstProductPage>
+>;
+
+/**
+ * A category resolved by slug, for `/collections/[slug]`.
+ *
+ * That page was a client component that fetched the category first and only
+ * then let the grid start fetching products — two sequential round trips after
+ * hydration to turn a slug into an id, for data that changes when an admin
+ * edits a category and not otherwise.
+ */
+export const getCachedCategoryBySlug = unstable_cache(
+  async (slug: string) => {
+    const caller = createAnonymousCaller();
+    return caller.public.categories.getBySlug({ slug });
+  },
+  ["category-by-slug"],
+  { revalidate: CATALOGUE_REVALIDATE, tags: [CACHE_TAGS.CATEGORIES] }
 );
 
 // Export cache tags for revalidation

@@ -1,18 +1,34 @@
 /**
  * Accessories Collection Page
  *
- * Uses InfiniteProductGrid with accessories filter.
- * Note: Currently filtered by checking for 'accessories' in product names/descriptions
- * since we don't have a dedicated accessories category in the database yet.
+ * Seeded with a server-rendered first page.
+ *
+ * Note: this applies no filter at all — there is no accessories category in
+ * the database yet, so it currently shows the same set as /collections/all
+ * (ISSUES). Preserved as-is; this change is about how the page loads.
  */
 
+import type { Metadata } from "next";
 import { InfiniteProductGrid } from "@/components/products/InfiniteProductGrid";
+import { getCachedFirstProductPage } from "@/lib/cache";
 
-export default function CollectionsAccessoriesPage() {
+const TITLE = "Accessories";
+const DESCRIPTION =
+  "Complete your look with our curated selection of accessories.";
+
+export const metadata: Metadata = {
+  title: `${TITLE} | Valkyrie`,
+  description: DESCRIPTION,
+};
+
+export default async function CollectionsAccessoriesPage() {
+  const initialPage = await getCachedFirstProductPage({});
+
   return (
     <InfiniteProductGrid
-      title="Accessories"
-      description="Complete your look with our curated selection of accessories."
+      title={TITLE}
+      description={DESCRIPTION}
+      initialPage={initialPage}
     />
   );
 }

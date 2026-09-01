@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -14,10 +15,50 @@ import {
   type Period,
 } from "@/components/admin/analytics/AnalyticsHeader";
 import { AnalyticsKPICards } from "@/components/admin/analytics/AnalyticsKPICards";
-import { RevenueTrendChart } from "@/components/admin/analytics/RevenueTrendChart";
-import { OrderStatusChart } from "@/components/admin/analytics/OrderStatusChart";
 import { TopProductsList } from "@/components/admin/analytics/TopProductsList";
 import { formatCurrency } from "@/lib/currency";
+
+/**
+ * Charts are loaded on demand.
+ *
+ * Recharts is by some distance the largest thing in the admin bundle, and it
+ * was imported statically into a page whose KPI cards, header and top-products
+ * list can all render without it. Splitting it means the page paints its
+ * numbers first and pulls the charting library alongside, rather than behind.
+ *
+ * `ssr: false` because these render nothing useful on the server anyway — they
+ * are driven entirely by a client-side query — and skipping them avoids the
+ * usual recharts hydration warnings about measured container sizes.
+ */
+const RevenueTrendChart = dynamic(
+  () =>
+    import("@/components/admin/analytics/RevenueTrendChart").then(
+      (m) => m.RevenueTrendChart
+    ),
+  { ssr: false, loading: () => <ChartPlaceholder className="lg:col-span-5" /> }
+);
+
+const OrderStatusChart = dynamic(
+  () =>
+    import("@/components/admin/analytics/OrderStatusChart").then(
+      (m) => m.OrderStatusChart
+    ),
+  { ssr: false, loading: () => <ChartPlaceholder className="lg:col-span-2" /> }
+);
+
+/** Holds the chart's footprint so the grid does not reflow when it arrives. */
+function ChartPlaceholder({ className }: { className?: string }) {
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <div className="h-5 w-40 rounded bg-muted animate-pulse" />
+      </CardHeader>
+      <CardContent>
+        <div className="h-[300px] rounded bg-muted animate-pulse" />
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AnalyticsPage() {
   const [days, setDays] = useState<Period>(30);
