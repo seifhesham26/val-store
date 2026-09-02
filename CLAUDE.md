@@ -220,7 +220,11 @@ These are working. They are listed because each is easy to break again — the f
 
 `docs/ISSUES.md` is current and verified — the defect catalogue described above.
 
-Everything else in `docs/` and all of `clothing-brand-project/` is planning/roadmap markdown written before implementation. Those describe intent, not current state — verify against code before trusting them.
+`docs/POST-LAUNCH.md` is the other half: work deferred past the production cutover, the checks that belong at the cutover, and the limitations that were chosen rather than missed. Nothing in it is a defect. **Read it before adding anything to the issues catalogue** — several entries there look like bugs and are decisions, and the cutover section names the one setting whose absence fails silently (`UPSTASH_*`, without which every rate limiter no-ops with no warning).
+
+`docs/PERFORMANCE.md` is the performance record — measured numbers, what changed, what is still outstanding.
+
+**That is the whole of `docs/` now.** Fifteen files were deleted on 2026-09-03: eight pre-implementation domain roadmaps, `connections.md`, a merged branch’s UI checklist, the P0/P1/P3 test plans, and the plan and spec for a pass that had shipped. All of them described intent or a finished branch rather than current state, which is the specific way documentation becomes actively misleading — this catalogue had already been caught listing 23 fixed items as open. `git log --diff-filter=D -- docs/` recovers any of them.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

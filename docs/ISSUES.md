@@ -7,9 +7,11 @@ Each entry gives the location, what actually happens, why, and a concrete fix.
 > ## Status: 2026-09-02 remediation pass
 >
 > Everything below was worked through on `feat/p3-pass2-remediation`. Read
-> `docs/superpowers/specs/2026-09-02-p3-pass2-design.md` for the decisions taken
-> and `docs/P3-TEST-PLAN.md` for what still needs a human to verify — which is
-> most of the visual work.
+> The design spec and test plan for that pass were deleted on 2026-09-03 —
+> both described a finished branch, and a stale plan is worse than none. The
+> manual checks that still applied moved into `docs/POST-LAUNCH.md` as the
+> pre-launch smoke test. `git log --diff-filter=D -- docs/` recovers the
+> originals if a decision needs re-reading.
 >
 > **Ten defects this catalogue did not record** were found while implementing
 > it. In rough order of consequence:
@@ -823,7 +825,7 @@ This has now been hit five separate times and fixed five separate times: `AlertD
 
 **What happens** The repository now writes `STORE_CURRENCY` explicitly (`order.repository.ts:188,220`), but rows created before that fell through to the column default and say `USD`, while Stripe actually charged EGP. `site_settings.currency` has the same `USD` default.
 
-**Impact today is nil** — nothing reads either column — but `docs/P1-TEST-PLAN.md` §9 asks you to verify them in Drizzle Studio, where old rows will read `USD` and look like a live bug.
+**Impact today is nil** — nothing reads either column — but the (now deleted) P1 test plan asked you to verify them in Drizzle Studio, where old rows will read `USD` and look like a live bug.
 
 **Fix** One backfill (`UPDATE orders SET currency = 'EGP' WHERE currency = 'USD'`, same for `payments`), and change the column defaults to match the store rather than leaving a default that is wrong for this deployment.
 
