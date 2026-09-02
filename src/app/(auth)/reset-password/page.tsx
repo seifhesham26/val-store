@@ -24,8 +24,8 @@ import {
 } from "@/components/ui/card";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
-
-const MIN_PASSWORD_LENGTH = 8;
+import { PasswordValueObject } from "@/domain/customers/value-objects/password.value-object";
+import { PasswordStrengthMeter } from "@/components/auth/PasswordStrengthMeter";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -65,8 +65,9 @@ function ResetPasswordForm() {
     event.preventDefault();
     setError("");
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    const passwordValidation = PasswordValueObject.validate(password);
+    if (!passwordValidation.isValid) {
+      setError(passwordValidation.errors[0]);
       return;
     }
 
@@ -125,6 +126,7 @@ function ResetPasswordForm() {
               onChange={(event) => setPassword(event.target.value)}
               placeholder="At least 8 characters"
             />
+            <PasswordStrengthMeter password={password} />
           </div>
 
           <div className="space-y-2">

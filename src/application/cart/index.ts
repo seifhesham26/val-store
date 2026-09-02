@@ -12,3 +12,4 @@ export {
   type CheckCartStockOutput,
 } from "./use-cases/check-cart-stock.use-case";
 export { ChangeCartItemVariantUseCase } from "./use-cases/change-cart-item-variant.use-case";
+export { MergeGuestCartItemsUseCase } from "./use-cases/merge-guest-cart-items.use-case";

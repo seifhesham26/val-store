@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useCartStore } from "@/lib/stores/cart-store";
@@ -85,6 +87,24 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
 
   const effectiveSelectedAddressId = selectedAddressId ?? defaultAddressId;
 
+  // Billing address. Defaults to "same as shipping" — the checkbox starts
+  // checked — so the common case needs no extra input from the customer.
+  const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+  const [selectedBillingAddressId, setSelectedBillingAddressId] = useState<
+    string | null
+  >(null);
+
+  const defaultBillingAddressId = useMemo(() => {
+    // Prefer an address the customer has already tagged "billing"; fall back
+    // to the same default the shipping picker uses.
+    const billingTagged = addresses.find((a) => a.addressType === "billing");
+    return billingTagged?.id ?? defaultAddressId;
+  }, [addresses, defaultAddressId]);
+
+  const effectiveBillingAddressId = billingSameAsShipping
+    ? effectiveSelectedAddressId
+    : (selectedBillingAddressId ?? defaultBillingAddressId);
+
   // Checkout mutations
   const createStripeSession = trpc.public.checkout.createSession.useMutation({
     onError: (err) => {
@@ -108,6 +128,11 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
   const placeOrder = async () => {
     if (!effectiveSelectedAddressId) {
       toast.error("Please select an address");
+      return;
+    }
+
+    if (!billingSameAsShipping && !effectiveBillingAddressId) {
+      toast.error("Please select a billing address");
       return;
     }
 
@@ -135,6 +160,7 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
     if (paymentMethod === "stripe") {
       const res = await createStripeSession.mutateAsync({
         shippingAddressId: effectiveSelectedAddressId,
+        billingAddressId: effectiveBillingAddressId,
         couponCode: couponCodeToApply,
       });
       if (res?.url) {
@@ -145,6 +171,7 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
 
     const res = await createCodOrder.mutateAsync({
       shippingAddressId: effectiveSelectedAddressId,
+      billingAddressId: effectiveBillingAddressId,
       couponCode: couponCodeToApply,
     });
     router.push(`/checkout/success?order_id=${res.orderId}`);
@@ -171,6 +198,32 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
               selectedAddressId={effectiveSelectedAddressId}
               onAddressChange={setSelectedAddressId}
             />
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="billing-same-as-shipping"
+                checked={billingSameAsShipping}
+                onCheckedChange={(checked) =>
+                  setBillingSameAsShipping(checked === true)
+                }
+              />
+              <Label
+                htmlFor="billing-same-as-shipping"
+                className="text-white cursor-pointer"
+              >
+                Billing address same as shipping
+              </Label>
+            </div>
+
+            {!billingSameAsShipping && (
+              <CheckoutAddressSelection
+                addresses={addresses}
+                selectedAddressId={effectiveBillingAddressId}
+                onAddressChange={setSelectedBillingAddressId}
+                title="Billing Address"
+                description="Used to verify your payment method."
+              />
+            )}
 
             <CheckoutPaymentMethod
               paymentMethod={paymentMethod}

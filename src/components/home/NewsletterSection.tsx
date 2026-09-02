@@ -25,6 +25,10 @@ export function NewsletterSection({
       await subscribeMutation.mutateAsync({ email });
       setEmail("");
     } catch (error) {
+      // Logged rather than discarded. The previous catch bound `error` and
+      // never used it, so a rate limit, a network failure and a rejected
+      // address all looked identical from the server side.
+      console.error("[Newsletter] Subscribe failed:", error);
       toast.error("Failed to subscribe. Please try again.");
     }
   };

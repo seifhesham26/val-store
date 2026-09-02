@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { db } from "@/db";
 import { container } from "@/application/container";
 import { userProfiles, customers } from "@/db/schema";
@@ -8,6 +9,7 @@ import {
   checkRateLimit,
   passwordResetRateLimiter,
 } from "@/server/utils/rate-limiter";
+import { PasswordValueObject } from "@/domain/customers/value-objects/password.value-object";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -107,6 +109,65 @@ export const auth = betterAuth({
      * also means a demotion takes effect in a minute rather than surviving in
      * a seven-day session.
      */
+  },
+
+  /**
+   * Stated rather than inherited.
+   *
+   * The app throttles the paths it owns through Upstash — phone lookup in
+   * `server/routers/auth.ts`, password reset in `sendResetPassword` above —
+   * but sign-in and sign-up run inside Better Auth and were relying on
+   * whatever its defaults happened to be. These are those paths written down,
+   * so a version bump cannot quietly loosen them.
+   */
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: 900, max: 10 },
+      "/sign-up/email": { window: 3600, max: 5 },
+      "/forget-password": { window: 3600, max: 5 },
+    },
+  },
+
+  /**
+   * Server-side password policy.
+   *
+   * `PasswordValueObject` was written to enforce uppercase, lowercase, digit
+   * and special-character rules but had zero importers - the signup form and
+   * this file's own `sendResetPassword` path only ever checked length, so a
+   * client that skipped the browser JS (curl, a modified build) could still
+   * set a weak password. Better Auth exposes no dedicated
+   * "validate this password" option: `emailAndPassword.password.hash` only
+   * hands back a hasher, with no request path to scope it to signup/reset
+   * and not, say, login. `hooks.before` does have that path, via
+   * `ctx.path` - this is the same shape the built-in `haveIBeenPwned` plugin
+   * uses to target the same two endpoints, so it is a supported extension
+   * point rather than a workaround.
+   *
+   * `/sign-in/email` deliberately isn't checked here - rejecting a login
+   * because an old, already-weak password doesn't meet a policy adopted
+   * later would lock people out of their own accounts.
+   */
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      const plainPassword =
+        ctx.path === "/sign-up/email"
+          ? (ctx.body as { password?: unknown } | undefined)?.password
+          : ctx.path === "/reset-password"
+            ? (ctx.body as { newPassword?: unknown } | undefined)?.newPassword
+            : undefined;
+
+      if (typeof plainPassword !== "string") {
+        return;
+      }
+
+      const { isValid, errors } = PasswordValueObject.validate(plainPassword);
+      if (!isValid) {
+        throw new APIError("BAD_REQUEST", { message: errors.join(", ") });
+      }
+    }),
   },
 
   // Social login providers

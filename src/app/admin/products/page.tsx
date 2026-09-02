@@ -5,8 +5,6 @@ import {
   ProductsListHeader,
   type ProductFilters,
 } from "@/components/admin/products/list/ProductsListHeader";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   ProductsTable,
   type ProductsTableHandle,

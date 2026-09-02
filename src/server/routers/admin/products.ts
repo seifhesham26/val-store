@@ -86,13 +86,8 @@ export const productsRouter = router({
       return useCase.execute({ id: input.id });
     }),
 
-  // Get product by slug
-  getBySlug: adminProcedure
-    .input(z.object({ slug: z.string() }))
-    .query(async ({ input }) => {
-      const useCase = container.getGetProductUseCase();
-      return useCase.execute({ slug: input.slug });
-    }),
+  // `getBySlug` was deleted (ISSUES.md #28) — no caller; the admin product
+  // list and edit pages both key off `id`, not `slug`.
 
   // Create new product
   create: adminProcedure

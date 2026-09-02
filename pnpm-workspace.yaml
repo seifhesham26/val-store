@@ -1,3 +1,23 @@
+# Not a monorepo. This file exists to pin security overrides, and — since
+# pnpm 10 — to answer its build-script prompt explicitly.
+#
+# pnpm writes an `allowBuilds` stub with the literal text "set this to true or
+# false" the first time it meets an unapproved build script, and `pnpm install`
+# exits non-zero until the stub is answered. Leaving it unanswered breaks the
+# husky pre-commit hook, which runs `pnpm lint-staged`.
+#
+# All four are first-party build tooling already in this project's dependency
+# tree, and three of them are load-bearing for performance:
+#   esbuild         — needs its postinstall to link the platform binary
+#   sharp           — Next's image optimiser; without it image handling degrades
+#   unrs-resolver   — native module resolution for lint and build
+#   msgpackr-extract — optional native accelerator for cache serialisation
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+  unrs-resolver: true
+
 overrides:
-  esbuild@<=0.24.2: '>=0.25.0'
-  next@>=16.0.0-beta.0 <16.0.9: '>=16.0.9'
+  esbuild@<=0.24.2: ">=0.25.0"
+  next@>=16.0.0-beta.0 <16.0.9: ">=16.0.9"

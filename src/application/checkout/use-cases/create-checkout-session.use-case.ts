@@ -17,6 +17,7 @@ export interface CreateCheckoutSessionInput {
   userId: string;
   email: string;
   shippingAddressId: string;
+  billingAddressId: string;
   couponCode?: string;
 }
 
@@ -35,7 +36,8 @@ export class CreateCheckoutSessionUseCase {
   async execute(
     input: CreateCheckoutSessionInput
   ): Promise<CreateCheckoutSessionOutput> {
-    const { userId, email, shippingAddressId, couponCode } = input;
+    const { userId, email, shippingAddressId, billingAddressId, couponCode } =
+      input;
 
     // Ensure cart exists (CreateOrderUseCase also checks, but we want to avoid creating sessions for empty carts)
     const cartItems = await this.cartRepository.findByUserId(userId);
@@ -48,6 +50,7 @@ export class CreateCheckoutSessionUseCase {
     const { order } = await this.createOrderUseCase.execute({
       userId,
       shippingAddressId,
+      billingAddressId,
       paymentMethod: "stripe",
       couponCode,
     });

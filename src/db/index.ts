@@ -42,14 +42,21 @@ const connectionString = process.env.DATABASE_URL;
  * every level, so more is not better.
  *
  * Therefore:
- *   - Serverless / per-request isolates (Vercel): leave this at 1. Each
- *     instance serves one request at a time, so the crossover never arrives.
- *   - A long-lived Node server or container: set DATABASE_POOL_MAX=5.
+ *   - Serverless / per-request isolates (Vercel): 1. Each instance serves one
+ *     request at a time, so the crossover never arrives.
+ *   - A long-lived Node server or container: 5.
  *
  * Neon's `-pooler` endpoint already fronts the database with pgBouncer, so a
  * larger value here is safe from the database's side.
+ *
+ * Chosen automatically rather than left as a decision anyone has to remember.
+ * Vercel sets `VERCEL=1`, and each of its invocations serves one request at a
+ * time, so the crossover never arrives and `max: 1` is right. Anywhere else is
+ * assumed to be a long-lived server or container, where 5 wins from about four
+ * concurrent requests upward. `DATABASE_POOL_MAX` still overrides both.
  */
-const POOL_MAX = Number(process.env.DATABASE_POOL_MAX ?? 1) || 1;
+const POOL_MAX =
+  Number(process.env.DATABASE_POOL_MAX ?? (process.env.VERCEL ? 1 : 5)) || 1;
 
 // Create the connection client
 const client = postgres(connectionString, {

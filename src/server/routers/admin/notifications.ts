@@ -5,7 +5,7 @@
  */
 
 import { router, adminProcedure } from "@/server/trpc";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { DrizzleNotificationsRepository } from "@/infrastructure/database/repositories/notifications/notifications.repository";
 
 const notificationsRepo = new DrizzleNotificationsRepository();
@@ -42,8 +42,8 @@ export const adminNotificationsRouter = router({
    */
   markAsRead: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      await notificationsRepo.markAsRead(input.id);
+    .mutation(async ({ input, ctx }) => {
+      await notificationsRepo.markAsRead(input.id, ctx.user.id);
       return { success: true };
     }),
 
@@ -60,16 +60,11 @@ export const adminNotificationsRouter = router({
    */
   delete: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      await notificationsRepo.delete(input.id);
+    .mutation(async ({ input, ctx }) => {
+      await notificationsRepo.delete(input.id, ctx.user.id);
       return { success: true };
     }),
 
-  /**
-   * Clear all notifications
-   */
-  clearAll: adminProcedure.mutation(async ({ ctx }) => {
-    await notificationsRepo.deleteAll(ctx.user.id);
-    return { success: true };
-  }),
+  // `clearAll` was deleted (ISSUES.md #28) — no caller; the notification
+  // bell only exposes mark-as-read and per-item delete.
 });

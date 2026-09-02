@@ -106,6 +106,7 @@ export function ProductCard({
           productId={id}
           productName={name}
           productImage={primaryImage}
+          productPrice={salePrice ?? price}
           variants={variants}
         />
       </div>

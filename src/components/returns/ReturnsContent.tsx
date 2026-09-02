@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ReturnsContent() {
   return (
-    <div className="prose dark:prose-invert max-w-none">
+    <div className="prose-val max-w-none">
       <h2>Return Eligibility</h2>
 
       <div className="grid md:grid-cols-2 gap-8 not-prose mb-8">

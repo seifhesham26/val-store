@@ -2,6 +2,13 @@ import { z } from "zod";
 import { publicProcedure, router } from "../../trpc";
 import { newsletterSubscribers } from "@/db/schema";
 import { db } from "@/db";
+import { headers } from "next/headers";
+import { TRPCError } from "@trpc/server";
+import {
+  apiRateLimiter,
+  checkRateLimit,
+  getClientIp,
+} from "@/server/utils/rate-limiter";
 
 export const newsletterRouter = router({
   subscribe: publicProcedure
@@ -11,6 +18,24 @@ export const newsletterRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      // An unauthenticated insert into a table anyone can reach, previously
+      // with no throttle at all. `apiRateLimiter` was defined for exactly this
+      // and had no consumer anywhere in the codebase.
+      //
+      // No-ops silently when UPSTASH_* is absent, so local development is
+      // unaffected.
+      const ip = getClientIp(await headers());
+      const { allowed } = await checkRateLimit(
+        apiRateLimiter,
+        `newsletter:${ip}`
+      );
+      if (!allowed) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many requests. Please try again shortly.",
+        });
+      }
+
       try {
         await db
           .insert(newsletterSubscribers)
@@ -23,7 +48,10 @@ export const newsletterRouter = router({
         return { success: true, message: "Successfully subscribed" };
       } catch (error) {
         console.error("Failed to subscribe to newsletter:", error);
-        throw new Error("Failed to subscribe to newsletter");
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to subscribe to newsletter",
+        });
       }
     }),
 });

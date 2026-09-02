@@ -14,6 +14,7 @@ import {
   Twitter,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
+import { useCartStore } from "@/lib/stores/cart-store";
 
 interface NavLink {
   label: string;
@@ -188,6 +189,10 @@ export function MobileMenu({
                   await signOut({
                     fetchOptions: {
                       onSuccess: () => {
+                        // See AccountSidebar: the redirect is a full page load
+                        // and would otherwise rehydrate this account's cart
+                        // for whoever uses the browser next.
+                        useCartStore.getState().clearCart();
                         onClose();
                         window.location.href = "/login";
                       },

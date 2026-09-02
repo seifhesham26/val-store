@@ -9,6 +9,20 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
+/**
+ * Id prefix for a line added while signed out.
+ *
+ * A server-synced line carries the real `cart_items.id` uuid; a guest line
+ * has no server row yet, so it needs an id from somewhere else to stay
+ * addressable by `updateQuantity`/`removeItem` before it does. The prefix
+ * doubles as a marker: `CartProvider` uses it to tell "still needs merging
+ * into the server cart" apart from "already synced," without any separate
+ * flag or ref-based tracking of the sign-in transition — which matters
+ * because a full-page reload during login remounts the provider and loses
+ * any in-memory transition state, but not this prefix.
+ */
+export const GUEST_CART_ITEM_ID_PREFIX = "guest-";
+
 export interface CartItem {
   id: string;
   productId: string;
@@ -34,6 +48,7 @@ interface CartActions {
   updateQuantity: (cartItemId: string, quantity: number) => void;
   removeItem: (cartItemId: string) => void;
   clearCart: () => void;
+  clearSignedOutItems: () => void;
   openCart: () => void;
   closeCart: () => void;
   toggleCart: () => void;
@@ -93,6 +108,20 @@ export const useCartStore = create<CartStore>()(
         })),
 
       clearCart: () => set({ items: [] }),
+
+      // The sign-out backstop in `CartProvider` used to call `clearCart`
+      // outright, which was correct when a logged-out visitor's cart was
+      // always empty. Now a guest cart is real data that must survive
+      // whatever unauthenticated moment the backstop reacts to, so this
+      // drops only the lines a previous account actually synced — the ones
+      // that could leak to the next person on a shared browser — and keeps
+      // any line still waiting for its first sign-in to merge.
+      clearSignedOutItems: () =>
+        set((state: CartState) => ({
+          items: state.items.filter((item: CartItem) =>
+            item.id.startsWith(GUEST_CART_ITEM_ID_PREFIX)
+          ),
+        })),
 
       openCart: () => set({ isOpen: true }),
       closeCart: () => set({ isOpen: false }),

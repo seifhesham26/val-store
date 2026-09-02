@@ -5,7 +5,7 @@
  */
 
 import { router, adminProcedure } from "@/server/trpc";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";
 import { inventoryChangeTypeEnum } from "@/db/schema";

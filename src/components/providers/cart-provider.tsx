@@ -10,7 +10,11 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/lib/auth-client";
 import { trpc } from "@/lib/trpc";
-import { useCartStore, type CartItem } from "@/lib/stores/cart-store";
+import {
+  useCartStore,
+  GUEST_CART_ITEM_ID_PREFIX,
+  type CartItem,
+} from "@/lib/stores/cart-store";
 import { toast } from "sonner";
 
 interface CartProviderProps {
@@ -18,10 +22,11 @@ interface CartProviderProps {
 }
 
 export function CartProvider({ children }: CartProviderProps) {
-  const { data: session } = useSession();
+  const { data: session, isPending: isSessionPending } = useSession();
   const isAuthenticated = !!session?.user;
 
-  const { setItems, setLoading } = useCartStore();
+  const { setItems, setLoading, clearSignedOutItems } = useCartStore();
+  const utils = trpc.useUtils();
 
   // Fetch cart from server for authenticated users
   const { data: serverCart, isLoading } = trpc.public.cart.get.useQuery(
@@ -51,12 +56,104 @@ export function CartProvider({ children }: CartProviderProps) {
     }
   }, [isAuthenticated, serverCart, setItems]);
 
+  const mergeGuestItems = trpc.public.cart.mergeGuestItems.useMutation();
+  const mergeInFlightRef = useRef(false);
+
+  // Merge a guest cart into the server cart.
+  //
+  // Triggered by the id prefix rather than by watching for an
+  // unauthenticated -> authenticated transition: a transition tracked in a
+  // ref is lost if login does a full-page navigation, which remounts this
+  // provider. The prefix survives that remount because it is persisted with
+  // the item. So this runs whenever the settled session is authenticated
+  // and the store still holds `guest-` prefixed lines — items added before
+  // sign-in that have never made it into a server row. A returning
+  // authenticated user whose local cart is entirely server-synced items
+  // finds nothing to merge and this is a no-op.
+  //
+  // `mergeGuestItems.mutate` fires synchronously off the current store
+  // snapshot, so it does not matter whether the sync effect above later
+  // overwrites the store with a not-yet-merged server cart before this
+  // mutation's response comes back — the merge already has what it needs.
+  useEffect(() => {
+    if (isSessionPending || !isAuthenticated || mergeInFlightRef.current) {
+      return;
+    }
+
+    const guestLines = useCartStore
+      .getState()
+      .items.filter((item) => item.id.startsWith(GUEST_CART_ITEM_ID_PREFIX));
+
+    if (guestLines.length === 0) {
+      return;
+    }
+
+    mergeInFlightRef.current = true;
+    mergeGuestItems.mutate(
+      {
+        items: guestLines.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+        })),
+      },
+      {
+        onSuccess: () => {
+          utils.public.cart.get.invalidate();
+        },
+        onError: () => {
+          toast.error(
+            "Some items from your cart couldn't be carried over. Please double-check your cart."
+          );
+        },
+        onSettled: () => {
+          mergeInFlightRef.current = false;
+        },
+      }
+    );
+    // `mergeGuestItems`/`utils` are new references every render; re-running
+    // this on every render would refire the mutation with the same stale
+    // closure state instead of reacting to the session settling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isSessionPending]);
+
+  // Backstop for the three sign-out handlers.
+  //
+  // The sync effect above only runs when a server cart *arrives*, so for a
+  // logged-out visitor a stale persisted cart is never displaced. Each
+  // sign-out path clears it directly — this covers session expiry and any
+  // route that ends up here without going through one of them.
+  //
+  // Waiting for `isPending` to settle is load-bearing, not defensive: while
+  // the session request is in flight `session` is undefined, so an unguarded
+  // check reads as "logged out" on every single page load. That would clear
+  // a cart the server is about to restore — and now that guest carts are
+  // real, `clearSignedOutItems` rather than `clearCart` is what runs here:
+  // it drops only server-synced lines (which could belong to whichever
+  // account just signed out) and keeps any line still waiting for its first
+  // sign-in to merge, so a guest cart survives session expiry and stray
+  // routes the same way it survives a page reload.
+  useEffect(() => {
+    if (!isSessionPending && !isAuthenticated) {
+      clearSignedOutItems();
+    }
+  }, [isSessionPending, isAuthenticated, clearSignedOutItems]);
+
   // Update loading state
   useEffect(() => {
     setLoading(isLoading);
   }, [isLoading, setLoading]);
 
   return <>{children}</>;
+}
+
+/** Product data the store needs to render a guest cart line locally. */
+export interface GuestCartItemDetails {
+  productName: string;
+  productPrice: number;
+  productImage: string | null;
+  variantLabel: string | null;
+  maxStock: number;
 }
 
 /**
@@ -98,12 +195,18 @@ export function useCart() {
     onSuccess: invalidateCart,
   });
 
-  // Add item - sync with server if authenticated
+  // Add item - sync with server if authenticated, otherwise write straight
+  // to the local store. `guestDetails` is the display data (name, price,
+  // image, stock) the caller already has on hand for the product being
+  // added — the guest branch has no server round trip to fetch it from, and
+  // none of it is trusted again once it matters: CartProvider's merge
+  // re-resolves both price and stock from the database at sign-in.
   const addItem = useCallback(
     async (
       productId: string,
       quantity: number = 1,
-      variantId: string | null = null
+      variantId: string | null = null,
+      guestDetails?: GuestCartItemDetails
     ) => {
       if (isAuthenticated) {
         store.setSyncing(true);
@@ -112,19 +215,29 @@ export function useCart() {
         } finally {
           store.setSyncing(false);
         }
-      } else {
-        // For guests, show a toast with a redirect to login
-        toast.info("Please sign in to add items to your cart", {
-          action: {
-            label: "Sign In",
-            onClick: () => {
-              window.location.href = `/login?redirect=${encodeURIComponent(
-                window?.location?.pathname || "/"
-              )}`;
-            },
-          },
-        });
+        return;
       }
+
+      if (!guestDetails) {
+        // No display data to show locally with — this means a call site
+        // hasn't been updated to pass it, not that the guest did anything
+        // wrong, but silently dropping the click would look identical to a
+        // real failure from where the customer is standing.
+        toast.error("Could not add this item to your cart");
+        return;
+      }
+
+      store.addItem({
+        id: `${GUEST_CART_ITEM_ID_PREFIX}${crypto.randomUUID()}`,
+        productId,
+        variantId,
+        variantLabel: guestDetails.variantLabel,
+        productName: guestDetails.productName,
+        productPrice: guestDetails.productPrice,
+        productImage: guestDetails.productImage,
+        quantity,
+        maxStock: guestDetails.maxStock,
+      });
     },
     [isAuthenticated, addMutation, store]
   );
@@ -135,7 +248,15 @@ export function useCart() {
       // 1. Instantly update the local Zustand store for snappy UI
       store.updateQuantity(cartItemId, quantity);
 
-      if (isAuthenticated) {
+      // A `guest-` id has no server row to update yet — even if sign-in has
+      // already flipped `isAuthenticated`, the merge may not have landed.
+      // Sending it as a cartItemId would fail uuid validation outright, so
+      // it stays local until the merge replaces it with a real one.
+      const isUnmergedGuestLine = cartItemId.startsWith(
+        GUEST_CART_ITEM_ID_PREFIX
+      );
+
+      if (isAuthenticated && !isUnmergedGuestLine) {
         // Clear previous timer for this cart item
         if (updateTimersRef.current[cartItemId]) {
           clearTimeout(updateTimersRef.current[cartItemId]);
@@ -158,7 +279,12 @@ export function useCart() {
   // Remove item
   const removeItem = useCallback(
     async (cartItemId: string) => {
-      if (isAuthenticated) {
+      // See updateQuantity: a `guest-` id may not have a server row yet even
+      // once `isAuthenticated` is true, if the merge hasn't landed.
+      if (
+        isAuthenticated &&
+        !cartItemId.startsWith(GUEST_CART_ITEM_ID_PREFIX)
+      ) {
         store.setSyncing(true);
         try {
           // Optimistically update local state

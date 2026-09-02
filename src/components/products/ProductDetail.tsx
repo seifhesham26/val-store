@@ -122,23 +122,33 @@ export function ProductDetail({ product }: ProductDetailProps) {
       return;
     }
 
-    if (!isAuthenticated) {
-      toast.info("Please sign in to add items to your cart", {
-        action: {
-          label: "Sign In",
-          onClick: () => {
-            window.location.href = `/login?redirect=${encodeURIComponent(
-              window?.location?.pathname || "/"
-            )}`;
-          },
-        },
-      });
-      return;
-    }
-
     setIsAdding(true);
     try {
-      await addItem(product.id, effectiveQuantity, selectedVariant?.id ?? null);
+      // Guests get a real cart now. The sign-in gate that used to stand here
+      // made the store's guest branch unreachable — `useCart` keeps guest lines
+      // in localStorage and merges them into the server cart on sign-in, and
+      // the details below are what it needs to render a line before there is a
+      // server row to read one from.
+      //
+      // Prices are display-only: the merge re-resolves both price and stock
+      // from the database, so a cart left open for days cannot carry a stale
+      // price into an order.
+      await addItem(
+        product.id,
+        effectiveQuantity,
+        selectedVariant?.id ?? null,
+        {
+          productName: product.name,
+          productPrice: product.salePrice ?? product.price,
+          productImage: product.images?.[0] ?? null,
+          variantLabel: selectedVariant
+            ? [selectedVariant.size, selectedVariant.color]
+                .filter(Boolean)
+                .join(" / ")
+            : null,
+          maxStock: maxQuantity ?? effectiveQuantity,
+        }
+      );
       toast.success(`${product.name} added to cart`);
       openCart();
     } catch (error) {

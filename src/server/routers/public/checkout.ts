@@ -22,6 +22,10 @@ export const checkoutRouter = router({
     .input(
       z.object({
         shippingAddressId: z.string().min(1),
+        // Required, not defaulted server-side: the client always makes an
+        // explicit choice (the "same as shipping" checkbox, checked by
+        // default, sends shippingAddressId back here itself).
+        billingAddressId: z.string().min(1),
         couponCode: z.string().trim().min(1).optional(),
       })
     )
@@ -31,6 +35,7 @@ export const checkoutRouter = router({
         userId: ctx.user.id,
         email: ctx.user.email,
         shippingAddressId: input.shippingAddressId,
+        billingAddressId: input.billingAddressId,
         couponCode: input.couponCode,
       });
     }),
@@ -42,6 +47,10 @@ export const checkoutRouter = router({
     .input(
       z.object({
         shippingAddressId: z.string().min(1),
+        // Required, not defaulted server-side: the client always makes an
+        // explicit choice (the "same as shipping" checkbox, checked by
+        // default, sends shippingAddressId back here itself).
+        billingAddressId: z.string().min(1),
         couponCode: z.string().trim().min(1).optional(),
       })
     )
@@ -50,8 +59,13 @@ export const checkoutRouter = router({
       const { order } = await useCase.execute({
         userId: ctx.user.id,
         shippingAddressId: input.shippingAddressId,
+        billingAddressId: input.billingAddressId,
         paymentMethod: "cash_on_delivery",
         couponCode: input.couponCode,
+        // The card path gets the address from the Stripe session; COD has no
+        // gateway to ask, so the confirmation address comes from the session
+        // user here.
+        customerEmail: ctx.user.email,
       });
 
       return { orderId: order.id };

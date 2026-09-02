@@ -5,7 +5,7 @@
  */
 
 import { router, protectedProcedure } from "@/server/trpc";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupons/coupon.repository";
 import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-coupon.use-case";
 

@@ -72,6 +72,7 @@ export default function AddressesPage() {
       zipCode: formData.get("zipCode") as string,
       country: formData.get("country") as string,
       phone: formData.get("phone") as string,
+      addressType: formData.get("addressType") as "shipping" | "billing",
     };
 
     if (editingAddress) {

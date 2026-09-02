@@ -32,6 +32,13 @@ interface QuickAddSliderBarProps {
   productId: string;
   productName: string;
   productImage?: string | null;
+  /**
+   * What a guest line should display until the merge replaces it.
+   *
+   * Display only — the server re-resolves price and stock when a guest cart is
+   * merged on sign-in, so a stale figure here can never reach an order.
+   */
+  productPrice: number;
   variants: QuickAddVariant[];
 }
 
@@ -39,6 +46,7 @@ export function QuickAddSliderBar({
   productId,
   productName,
   productImage,
+  productPrice,
   variants,
 }: QuickAddSliderBarProps) {
   // Derive unique sizes and colors from variants
@@ -80,20 +88,6 @@ export function QuickAddSliderBar({
     e.preventDefault();
     e.stopPropagation();
 
-    if (!isAuthenticated) {
-      toast.info("Please sign in to add items to your cart", {
-        action: {
-          label: "Sign In",
-          onClick: () => {
-            window.location.href = `/login?redirect=${encodeURIComponent(
-              window?.location?.pathname || "/"
-            )}`;
-          },
-        },
-      });
-      return;
-    }
-
     if (!inStock) {
       toast.error("This combination is out of stock");
       return;
@@ -101,7 +95,19 @@ export function QuickAddSliderBar({
 
     setIsAdding(true);
     try {
-      await addItem(productId, 1, matchingVariant?.id ?? null);
+      // Guests included. The gate that used to stand above this made the
+      // store's guest branch unreachable from the grid.
+      await addItem(productId, 1, matchingVariant?.id ?? null, {
+        productName,
+        productPrice,
+        productImage: productImage ?? null,
+        variantLabel:
+          [selectedSize, selectedColor].filter(Boolean).join(" / ") || null,
+        // The grid's variant shape carries only a boolean, so when the live
+        // cache has no figure yet we allow one unit and let the merge resolve
+        // the real ceiling from the database.
+        maxStock: liveStock ?? 1,
+      });
       setJustAdded(true);
       toast.success(`${productName} added to cart`);
       openCart();

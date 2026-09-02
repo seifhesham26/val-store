@@ -8,6 +8,7 @@ interface AddressFormData {
   zipCode: string;
   country: string;
   phone?: string | null;
+  addressType?: "shipping" | "billing";
 }
 
 interface AddressFormDialogProps {
@@ -81,6 +82,27 @@ export function AddressFormDialog({
             defaultValue={editingAddress?.phone || undefined}
             required
           />
+          <div className="space-y-1.5">
+            <label
+              htmlFor="addressType"
+              className="block text-sm font-medium text-gray-300"
+            >
+              Address Type
+            </label>
+            <select
+              id="addressType"
+              name="addressType"
+              defaultValue={editingAddress?.addressType ?? "shipping"}
+              className="w-full px-3 py-2 bg-white/[0.06] border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-val-accent/50 focus:border-val-accent/50 transition-colors"
+            >
+              <option value="shipping" className="bg-zinc-900">
+                Shipping
+              </option>
+              <option value="billing" className="bg-zinc-900">
+                Billing
+              </option>
+            </select>
+          </div>
           <div className="flex gap-3 pt-2">
             <Button
               type="button"

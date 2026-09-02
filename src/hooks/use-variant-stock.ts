@@ -28,8 +28,13 @@ import {
   type VariantStockLookup,
 } from "@/components/providers/variant-stock-provider";
 
-/** How long a cached stock figure is trusted before a background refresh. */
-export const STOCK_STALE_MS = 15_000;
+/**
+ * How long a cached stock figure is trusted before a background refresh.
+ *
+ * Kept in step with `GRID_REFRESH_MS`. See the note there for why browsing
+ * tolerates a minute of staleness and the cart does not.
+ */
+export const STOCK_STALE_MS = 60_000;
 
 export type VariantStock = VariantStockLookup;
 

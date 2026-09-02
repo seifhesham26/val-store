@@ -10,7 +10,7 @@ const indicators: TrustIndicator[] = [
   {
     icon: Truck,
     title: "Free Shipping",
-    description: "On orders over $200",
+    description: "On every order, no minimum",
   },
   {
     icon: RefreshCw,

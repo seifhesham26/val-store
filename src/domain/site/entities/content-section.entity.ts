@@ -5,13 +5,9 @@
  * Content is stored as JSON string, validated by Zod schemas.
  */
 
-export type SectionType =
-  | "hero"
-  | "announcement"
-  | "promo_banner"
-  | "brand_story"
-  | "newsletter"
-  | "instagram";
+// `promo_banner`, `brand_story`, `newsletter` and `instagram` were removed
+// (ISSUES.md #29) — see `content-schemas.ts` for why.
+export type SectionType = "hero" | "announcement";
 
 export interface ContentSectionProps {
   id: string;
@@ -32,6 +28,10 @@ export interface ContentSectionHistoryProps {
   version: number;
   createdAt: Date;
   createdBy?: string | null;
+  // Resolved by the repository via a join against `user`, same pattern as
+  // inventory logs' `createdByName` — the admin id alone is not worth
+  // showing next to a revert button. Optional/absent if the join wasn't run.
+  createdByName?: string | null;
 }
 
 export class ContentSectionEntity {
@@ -130,6 +130,10 @@ export class ContentSectionHistoryEntity {
 
   get createdBy(): string | null {
     return this.props.createdBy ?? null;
+  }
+
+  get createdByName(): string | null {
+    return this.props.createdByName ?? null;
   }
 
   getContentParsed<T>(): T {

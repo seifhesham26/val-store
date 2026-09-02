@@ -1,12 +1,17 @@
 /**
  * New Arrivals Collection Page
  *
- * Uses InfiniteProductGrid with isFeatured filter, seeded with a
- * server-rendered first page.
+ * Seeded with a server-rendered first page.
  *
- * Note: this filters on `isFeatured`, not on recency — a pre-existing quirk
- * (ISSUES) left as-is here, since this change is about how the page loads and
- * not about which products it chooses.
+ * This used to filter on `isFeatured`, which is curation, not recency — so
+ * "New Arrivals" showed whatever an admin had pinned, and a product added
+ * yesterday never appeared unless someone featured it.
+ *
+ * The fix needs no sort parameter: the product repository already orders by
+ * `createdAt DESC` by default, so dropping the wrong filter *is* the recency
+ * ordering. A `limit` stands in for a recency window — the newest twelve is a
+ * more useful definition of "new" for a 36-product catalogue than an arbitrary
+ * date cutoff that could return nothing.
  */
 
 import type { Metadata } from "next";
@@ -22,11 +27,10 @@ export const metadata: Metadata = {
 };
 
 export default async function CollectionsNewPage() {
-  const initialPage = await getCachedFirstProductPage({ isFeatured: true });
+  const initialPage = await getCachedFirstProductPage({});
 
   return (
     <InfiniteProductGrid
-      isFeatured
       title={TITLE}
       description={DESCRIPTION}
       initialPage={initialPage}

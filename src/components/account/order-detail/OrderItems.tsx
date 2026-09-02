@@ -27,7 +27,19 @@ export function OrderItems({ items }: { items: OrderItem[] }) {
                 {item.variantDetails && (
                   <p className="text-sm text-gray-400">{item.variantDetails}</p>
                 )}
-                <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+                {/* `refundedQuantity` was already in this payload and unread,
+                    so a returned line looked identical to a delivered one —
+                    the same string the admin items card showed before it was
+                    taught to spell out what came back. */}
+                {item.refundedQuantity > 0 ? (
+                  <p className="text-sm text-amber-400">
+                    {item.refundedQuantity} of {item.quantity} returned
+                    {item.quantity > item.refundedQuantity &&
+                      ` · ${item.quantity - item.refundedQuantity} still yours`}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+                )}
               </div>
               <p className="font-medium text-white">
                 {formatCurrency(item.price * item.quantity)}

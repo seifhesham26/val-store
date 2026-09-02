@@ -54,83 +54,18 @@ export const announcementContentSchema = z.object({
 export type AnnouncementContent = z.infer<typeof announcementContentSchema>;
 
 // ============================================
-// PROMO BANNER
-// ============================================
-
-export const promoBannerContentSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  subtitle: z.string().optional().default(""),
-  description: z.string().optional().default(""),
-  image: urlOrAssetPath.optional(),
-  imagePosition: z.enum(["left", "right"]).optional().default("right"),
-  ctaText: z.string().optional().default("Shop Now"),
-  ctaLink: z.string().optional().default("/collections/sale"),
-  backgroundColor: z.string().optional().default("#1f1f1f"),
-  accentColor: z.string().optional().default("#a855f7"),
-});
-
-export type PromoBannerContent = z.infer<typeof promoBannerContentSchema>;
-
-// ============================================
-// BRAND STORY
-// ============================================
-
-export const brandStoryContentSchema = z.object({
-  preheading: z.string().optional().default("Our Story"),
-  title: z.string().min(1, "Title is required"),
-  paragraphs: z.array(z.string()).min(1, "At least one paragraph required"),
-  image: urlOrAssetPath.optional(),
-  imagePosition: z.enum(["left", "right"]).optional().default("left"),
-  ctaText: z.string().optional().default("Learn More"),
-  ctaLink: z.string().optional().default("/about"),
-});
-
-export type BrandStoryContent = z.infer<typeof brandStoryContentSchema>;
-
-// ============================================
-// NEWSLETTER
-// ============================================
-
-export const newsletterContentSchema = z.object({
-  title: z.string().optional().default("Join the Valkyrie Community"),
-  subtitle: z
-    .string()
-    .optional()
-    .default("Subscribe for exclusive offers and updates"),
-  incentive: z.string().optional().default("Get 10% off your first order"),
-  buttonText: z.string().optional().default("Subscribe"),
-  backgroundColor: z.string().optional(),
-  privacyText: z
-    .string()
-    .optional()
-    .default("By subscribing, you agree to our Privacy Policy."),
-});
-
-export type NewsletterContent = z.infer<typeof newsletterContentSchema>;
-
-// ============================================
-// INSTAGRAM FEED
-// ============================================
-
-export const instagramContentSchema = z.object({
-  handle: z.string().optional().default("@valkyrie"),
-  profileUrl: z.string().url("Must be a valid URL").optional(),
-  images: z.array(urlOrAssetPath).optional().default([]),
-});
-
-export type InstagramContent = z.infer<typeof instagramContentSchema>;
-
-// ============================================
 // SECTION TYPE MAPPING
+//
+// `promo_banner`, `brand_story`, `newsletter` and `instagram` used to have
+// schemas here too, but `PromoBanner`, `BrandStory` and `NewsletterSection`
+// have always rendered hardcoded props — nothing ever read these back — and
+// there was no Instagram component at all. Deleted rather than left as dead
+// weight claiming to drive components they don't (ISSUES.md #29).
 // ============================================
 
 export const contentSchemaMap = {
   hero: heroContentSchema,
   announcement: announcementContentSchema,
-  promo_banner: promoBannerContentSchema,
-  brand_story: brandStoryContentSchema,
-  newsletter: newsletterContentSchema,
-  instagram: instagramContentSchema,
 } as const;
 
 export type SectionTypeKey = keyof typeof contentSchemaMap;
@@ -142,13 +77,7 @@ export type SectionTypeKey = keyof typeof contentSchemaMap;
 export function validateSectionContent(
   sectionType: SectionTypeKey,
   content: unknown
-):
-  | HeroContent
-  | AnnouncementContent
-  | PromoBannerContent
-  | BrandStoryContent
-  | NewsletterContent
-  | InstagramContent {
+): HeroContent | AnnouncementContent {
   const schema = contentSchemaMap[sectionType];
   return schema.parse(content);
 }
@@ -175,20 +104,4 @@ export function parseAnnouncementContent(
   content: unknown
 ): AnnouncementContent {
   return announcementContentSchema.parse(content);
-}
-
-export function parsePromoBannerContent(content: unknown): PromoBannerContent {
-  return promoBannerContentSchema.parse(content);
-}
-
-export function parseBrandStoryContent(content: unknown): BrandStoryContent {
-  return brandStoryContentSchema.parse(content);
-}
-
-export function parseNewsletterContent(content: unknown): NewsletterContent {
-  return newsletterContentSchema.parse(content);
-}
-
-export function parseInstagramContent(content: unknown): InstagramContent {
-  return instagramContentSchema.parse(content);
 }

@@ -31,8 +31,12 @@ function createContainer() {
   const notifications = createNotificationModule({
     getInventoryRepository: inventory.getInventoryRepository,
   });
+  // `services` is created below; the arrow defers the property access until
+  // first use, by which time it exists — the same deferral inventory and
+  // notifications use for their cycle.
   const orders = createOrderModule({
     getNotificationService: notifications.getNotificationService,
+    getEmailService: () => services.getEmailService(),
   });
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
@@ -45,6 +49,11 @@ function createContainer() {
     getCartRepository: cart.getCartRepository,
     getValidateCouponUseCase: couponsModule.getValidateCouponUseCase,
     getNotificationService: notifications.getNotificationService,
+    getSendOrderConfirmationUseCase: orders.getSendOrderConfirmationUseCase,
+    // Arrow, not a direct reference: `address` is declared below this call, so
+    // reading the property eagerly would hit the temporal dead zone. Same
+    // deferral the inventory/notifications cycle uses.
+    getAddressRepository: () => address.getAddressRepository(),
   });
   const wishlist = createWishlistModule();
   const address = createAddressModule();

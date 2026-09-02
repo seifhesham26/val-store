@@ -93,7 +93,6 @@ export interface OrderRepositoryInterface {
   /**
    * Update an existing order
    */
-  update(order: OrderEntity): Promise<OrderEntity>;
 
   /**
    * Update order status
@@ -148,11 +147,6 @@ export interface OrderRepositoryInterface {
    * Delete an order
    */
   delete(orderId: string): Promise<void>;
-
-  /**
-   * Get total revenue (sum of all paid orders)
-   */
-  getTotalRevenue(): Promise<number>;
 
   /**
    * Get order count by status

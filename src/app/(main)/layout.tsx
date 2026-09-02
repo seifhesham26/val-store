@@ -7,6 +7,7 @@ import { CartStockProvider } from "@/components/providers/cart-stock-provider";
 import { VariantStockProvider } from "@/components/providers/variant-stock-provider";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { CartStockDialog } from "@/components/cart/CartStockDialog";
+import { StorefrontTheme } from "@/components/providers/storefront-theme";
 
 export default function MainLayout({
   children,
@@ -21,6 +22,7 @@ export default function MainLayout({
               many grids it holds. Mounted at the layout so the homepage's three
               separate grids share it too. */}
           <VariantStockProvider>
+            <StorefrontTheme />
             <ServerAnnouncementBar />
             <Navbar />
             <main className="min-h-screen">{children}</main>

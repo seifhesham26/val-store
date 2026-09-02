@@ -18,9 +18,16 @@ export interface NotificationsRepositoryInterface {
     adminUserId: string,
     options?: { unreadOnly?: boolean; limit?: number }
   ): Promise<AdminNotification[]>;
-  markAsRead(id: string): Promise<void>;
+  /**
+   * The owner is required, not optional.
+   *
+   * These two took an id alone, so any admin holding another admin's
+   * notification UUID could mark it read or delete it outright. The sibling
+   * methods below always scoped correctly; nothing forced the difference.
+   */
+  markAsRead(id: string, adminUserId: string): Promise<void>;
   markAllAsRead(adminUserId: string): Promise<void>;
   getUnreadCount(adminUserId: string): Promise<number>;
-  delete(id: string): Promise<void>;
+  delete(id: string, adminUserId: string): Promise<void>;
   deleteAll(adminUserId: string): Promise<void>;
 }

@@ -11,6 +11,7 @@ import { RemoveCartItemUseCase } from "./use-cases/remove-cart-item.use-case";
 import { ClearCartUseCase } from "./use-cases/clear-cart.use-case";
 import { CheckCartStockUseCase } from "./use-cases/check-cart-stock.use-case";
 import { ChangeCartItemVariantUseCase } from "./use-cases/change-cart-item-variant.use-case";
+import { MergeGuestCartItemsUseCase } from "./use-cases/merge-guest-cart-items.use-case";
 
 /**
  * Reconciling the cart against live stock needs the variant repository, which
@@ -32,6 +33,7 @@ export function createCartModule(deps: CartModuleDeps) {
   let clearCart: ClearCartUseCase | undefined;
   let checkCartStock: CheckCartStockUseCase | undefined;
   let changeCartItemVariant: ChangeCartItemVariantUseCase | undefined;
+  let mergeGuestCartItems: MergeGuestCartItemsUseCase | undefined;
 
   return {
     getCartRepository,
@@ -52,6 +54,11 @@ export function createCartModule(deps: CartModuleDeps) {
       )),
     getChangeCartItemVariantUseCase: () =>
       (changeCartItemVariant ??= new ChangeCartItemVariantUseCase(
+        getCartRepository(),
+        deps.getProductVariantRepository()
+      )),
+    getMergeGuestCartItemsUseCase: () =>
+      (mergeGuestCartItems ??= new MergeGuestCartItemsUseCase(
         getCartRepository(),
         deps.getProductVariantRepository()
       )),
