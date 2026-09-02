@@ -4,7 +4,7 @@
  * Manage stock levels, view logs, adjust inventory.
  */
 
-import { router, adminProcedure } from "@/server/trpc";
+import { router, adminProcedure, adminWriteProcedure } from "@/server/trpc";
 import { z } from "zod";
 import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";
@@ -57,7 +57,7 @@ export const adminInventoryRouter = router({
   /**
    * Adjust stock for a variant
    */
-  adjustStock: adminProcedure
+  adjustStock: adminWriteProcedure
     .input(
       z.object({
         variantId: z.string().uuid(),

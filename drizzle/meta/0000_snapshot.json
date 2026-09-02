@@ -1756,7 +1756,7 @@
           "type": "varchar(3)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'USD'"
+          "default": "'EGP'"
         },
         "shipping_address_id": {
           "name": "shipping_address_id",
@@ -1955,7 +1955,7 @@
           "type": "varchar(3)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'USD'"
+          "default": "'EGP'"
         },
         "transaction_id": {
           "name": "transaction_id",
@@ -2843,7 +2843,7 @@
           "type": "varchar(3)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'USD'"
+          "default": "'EGP'"
         },
         "locale": {
           "name": "locale",

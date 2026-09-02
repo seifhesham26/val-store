@@ -14,10 +14,24 @@
 -- the owner. If the extension cannot be created, none of the indexes below can
 -- be either — that is fine, and nothing else depends on them.
 --
--- Apply with `pnpm db:push`, or paste into the Neon SQL editor.
--- Do NOT run `pnpm db:migrate`: the database was built with `db:push`, so
--- `__drizzle_migrations` is likely empty and migrate would try to replay the
--- 0000 baseline against tables that already exist.
+-- >>> DO NOT PASTE THIS FILE INTO A LIVE DATABASE. <<<
+--
+-- The `CREATE INDEX` statements below are correct for an empty or offline
+-- database and wrong for one taking orders: each takes an ACCESS EXCLUSIVE
+-- lock and blocks every write to its table until the build finishes. On a live
+-- store that is an outage.
+--
+-- `docs/POST-LAUNCH.md` has the step-by-step procedure — the same indexes with
+-- CONCURRENTLY, which cannot run inside a transaction and so must be sent one
+-- statement at a time, plus how to check for an invalid index afterwards, how
+-- to confirm the planner actually uses them, and how to roll back. Follow that
+-- rather than this file whenever the database has traffic.
+--
+-- On an empty database: `pnpm db:push`, or paste into the Neon SQL editor.
+-- Do NOT run `pnpm db:migrate`: this file is not in `meta/_journal.json`
+-- (deliberately — a failed CREATE EXTENSION would abort the whole deploy), and
+-- migrate would try to replay the 0000 baseline against tables that already
+-- exist.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
 

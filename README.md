@@ -1,10 +1,10 @@
 # Val Store
 
-Premium streetwear e-commerce platform built with Next.js 15, TypeScript, and modern best practices.
+Premium streetwear e-commerce platform built with Next.js 16, TypeScript, and modern best practices.
 
 ## Tech Stack
 
-- **Framework:** Next.js 15 with App Router
+- **Framework:** Next.js 16 with App Router
 - **Language:** TypeScript
 - **Database:** PostgreSQL with Drizzle ORM
 - **Authentication:** Better Auth

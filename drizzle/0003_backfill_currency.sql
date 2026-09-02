@@ -1,21 +1,24 @@
--- Currency backfill.
+-- Currency backfill — ONLY for a database that predates 2026-09-03.
 --
--- NOT YET APPLIED. This is the last loose end of the currency work.
+-- A fresh database no longer needs any of this. The baseline
+-- (`0000_long_ultragirl.sql`) and both snapshots under `meta/` created these
+-- three columns with `DEFAULT 'USD'` while `src/db/schema.ts` declared `EGP`,
+-- so `db:push` produced EGP and `db:migrate` produced USD — the same database
+-- built two ways gave two different answers. The baseline now says EGP, which
+-- makes both paths agree and supersedes the `ALTER … SET DEFAULT` half below.
 --
--- `orders.currency` and `payments.currency` are `varchar(3) DEFAULT 'USD'`.
--- The repository now writes STORE_CURRENCY explicitly, but every row created
--- before that fell through to the column default and says `USD` — while
--- Stripe was charging EGP the whole time. `site_settings.currency` has the
--- same wrong default.
+-- What the original note here got wrong, checked against the live database on
+-- 2026-09-03: it assumed the `USD` rows had been charged in EGP and recorded
+-- wrongly. They had not been charged at all. All 25 of them were seed
+-- fixtures from Jan–Feb 2026 with **no `payments` row**, while all 19 real
+-- (EGP) orders had one. So the UPDATEs below do not correct a mischarge; they
+-- only stop seed data reading like a live bug in Drizzle Studio.
 --
--- Impact today is nil, because nothing reads either column. It matters because
--- the P1 test plan asks you to verify these in Drizzle Studio, where the old
--- rows read `USD` and look exactly like a live bug.
+-- Run this only if you are keeping an existing database. If you are rebuilding
+-- from scratch, skip it — the baseline already does the right thing.
 --
--- Set to the currency this deployment actually charges in. If you are not
--- running EGP, change the literals below BEFORE running this — and note the
--- schema default in `src/db/schema.ts` was changed to match EGP, so change
--- that too.
+-- If you are not running EGP, change the literals below BEFORE running this,
+-- and change `src/db/schema.ts` and the baseline to match.
 --
 -- Safe to run twice: each statement is scoped to rows still holding the wrong
 -- value, so a second run updates nothing.

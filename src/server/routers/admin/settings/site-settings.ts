@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { revalidateTag } from "next/cache";
-import { adminProcedure } from "../../../trpc";
+import { adminProcedure, adminWriteProcedure } from "../../../trpc";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 
@@ -64,7 +64,7 @@ export const siteSettingsProcedures = {
     return settings.toObject();
   }),
 
-  updateSiteSettings: adminProcedure
+  updateSiteSettings: adminWriteProcedure
     .input(updateSiteSettingsSchema)
     .mutation(async ({ input, ctx }) => {
       const repo = container.getSiteConfigRepository();

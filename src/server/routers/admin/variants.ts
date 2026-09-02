@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { router, adminProcedure } from "../../trpc";
+import { router, adminProcedure, adminWriteProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
 import { TRPCError } from "@trpc/server";
@@ -91,19 +91,21 @@ export const variantsRouter = router({
   /**
    * Add a new variant to a product
    */
-  add: adminProcedure.input(addVariantSchema).mutation(async ({ input }) => {
-    const useCase = container.getAddProductVariantUseCase();
-    const variant = await useCase.execute(input);
-    // Cards carry their variants so Quick Add can record one, so the cached
-    // grid is now missing an option a customer should be able to pick.
-    revalidateCatalogue();
-    return variant;
-  }),
+  add: adminWriteProcedure
+    .input(addVariantSchema)
+    .mutation(async ({ input }) => {
+      const useCase = container.getAddProductVariantUseCase();
+      const variant = await useCase.execute(input);
+      // Cards carry their variants so Quick Add can record one, so the cached
+      // grid is now missing an option a customer should be able to pick.
+      revalidateCatalogue();
+      return variant;
+    }),
 
   /**
    * Update an existing variant
    */
-  update: adminProcedure
+  update: adminWriteProcedure
     .input(updateVariantSchema)
     .mutation(async ({ input, ctx }) => {
       const repo = container.getProductVariantRepository();
@@ -168,7 +170,7 @@ export const variantsRouter = router({
   /**
    * Delete a variant
    */
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const repo = container.getProductVariantRepository();
@@ -184,7 +186,7 @@ export const variantsRouter = router({
    * `AdjustStockUseCase` so every movement writes an `inventory_logs` row with
    * who did it and why — the same path the Inventory page uses.
    */
-  updateStock: adminProcedure
+  updateStock: adminWriteProcedure
     .input(updateStockSchema)
     .mutation(async ({ input, ctx }) => {
       const useCase = container.getAdjustStockUseCase();
