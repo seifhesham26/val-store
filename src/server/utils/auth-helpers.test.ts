@@ -32,6 +32,7 @@ const {
   invalidateUserRole,
   clearRoleCache,
   isAdminRole,
+  isAdminAreaRole,
   isAdmin,
 } = await import("./auth-helpers");
 
@@ -158,5 +159,37 @@ describe("isAdminRole", () => {
         isAdminRole(role)
       );
     }
+  });
+});
+
+/**
+ * The read tier. `worker` is the whole reason this function exists: it used to
+ * appear in the enum and the `UserRole` union and be checked nowhere, so it
+ * granted exactly nothing.
+ */
+describe("isAdminAreaRole", () => {
+  it("admits worker, admin and super_admin", () => {
+    expect(isAdminAreaRole("worker")).toBe(true);
+    expect(isAdminAreaRole("admin")).toBe(true);
+    expect(isAdminAreaRole("super_admin")).toBe(true);
+  });
+
+  it("still rejects customer", () => {
+    expect(isAdminAreaRole("customer")).toBe(false);
+  });
+
+  it("is strictly wider than isAdminRole, and differs only on worker", () => {
+    const roles: UserRole[] = ["customer", "worker", "admin", "super_admin"];
+
+    for (const role of roles) {
+      // Write access must always imply read access, or an admin could be
+      // refused a screen they are allowed to change.
+      if (isAdminRole(role)) expect(isAdminAreaRole(role)).toBe(true);
+    }
+
+    const differing = roles.filter(
+      (role) => isAdminAreaRole(role) !== isAdminRole(role)
+    );
+    expect(differing).toEqual(["worker"]);
   });
 });

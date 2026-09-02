@@ -6,6 +6,7 @@ import {
   getUserRole,
   requireAuth,
   requireAdmin,
+  requireAdminArea,
 } from "./utils/auth-helpers";
 
 /**
@@ -145,9 +146,24 @@ const isAuthed = t.middleware(async ({ ctx, next }) => {
 });
 
 /**
- * Middleware for admin routes (requires admin or super_admin role)
+ * Middleware for reaching the admin area at all (worker, admin, super_admin).
  */
-const isAdmin = t.middleware(async ({ ctx, next }) => {
+const isAdminArea = t.middleware(async ({ ctx, next }) => {
+  const user = await ctx.getUser();
+  requireAuth(user);
+  requireAdminArea(user);
+  return next({
+    ctx: {
+      ...ctx,
+      user,
+    },
+  });
+});
+
+/**
+ * Middleware for changing admin-managed data (admin, super_admin).
+ */
+const isAdminWriter = t.middleware(async ({ ctx, next }) => {
   const user = await ctx.getUser();
   requireAuth(user);
   requireAdmin(user);
@@ -170,5 +186,28 @@ export const publicProcedure = t.procedure;
 // Protected procedure - requires authentication
 export const protectedProcedure = t.procedure.use(isAuthed);
 
-// Admin procedure - requires admin or super_admin role
-export const adminProcedure = t.procedure.use(isAdmin);
+/**
+ * Read access to the admin area — worker, admin, super_admin.
+ *
+ * Every admin **query** uses this. It keeps the name `adminProcedure` because
+ * that is what 14 routers already say and renaming it would have produced a
+ * 60-file diff whose only content was a rename, burying the two lines that
+ * actually change who can do what.
+ */
+export const adminProcedure = t.procedure.use(isAdminArea);
+
+/**
+ * Write access to admin-managed data — admin, super_admin only.
+ *
+ * Every admin **mutation** uses this, with one deliberate exception:
+ * `admin.notifications.{markAsRead,markAllAsRead,delete}` stay on
+ * `adminProcedure`, because they only ever touch rows scoped to `ctx.user.id`.
+ * A read-only worker still has their own notification bell, and dismissing
+ * your own notification is not an edit to anything anyone else can see.
+ *
+ * The asymmetry to remember: a new mutation that forgets to use this one is
+ * writable by a worker. There is no way to make that fail closed at the type
+ * level while `adminProcedure` remains the permissive tier, so the guard is
+ * the `trpc.test.ts` case asserting every admin mutation is write-gated.
+ */
+export const adminWriteProcedure = t.procedure.use(isAdminWriter);

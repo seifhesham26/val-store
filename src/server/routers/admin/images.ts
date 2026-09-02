@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { router, adminProcedure } from "../../trpc";
+import { router, adminProcedure, adminWriteProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 import { ProductImageEntity } from "@/domain/products/entities/product-image.entity";
@@ -53,7 +53,7 @@ export const imagesRouter = router({
   /**
    * Add a new image to a product
    */
-  add: adminProcedure.input(addImageSchema).mutation(async ({ input }) => {
+  add: adminWriteProcedure.input(addImageSchema).mutation(async ({ input }) => {
     const useCase = container.getAddProductImageUseCase();
     const image = await useCase.execute(input);
     // A storefront card renders its primary image, so this changed the grid.
@@ -64,7 +64,7 @@ export const imagesRouter = router({
   /**
    * Delete an image
    */
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const useCase = container.getRemoveProductImageUseCase();
@@ -76,7 +76,7 @@ export const imagesRouter = router({
   /**
    * Set an image as primary
    */
-  setPrimary: adminProcedure
+  setPrimary: adminWriteProcedure
     .input(setPrimarySchema)
     .mutation(async ({ input }) => {
       const repo = container.getProductImageRepository();

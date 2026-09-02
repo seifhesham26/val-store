@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { adminProcedure } from "../../../trpc";
+import { adminProcedure, adminWriteProcedure } from "../../../trpc";
 import { container } from "@/application/container";
 import { revalidateTag } from "next/cache";
 import {
@@ -44,16 +44,13 @@ export const contentSectionsProcedures = {
       };
     }),
 
-  getAllContentSections: adminProcedure.query(async () => {
-    const repo = container.getSiteConfigRepository();
-    const sections = await repo.getAllContentSections();
-    return sections.map((s) => ({
-      ...s.toObject(),
-      content: JSON.parse(s.content),
-    }));
-  }),
+  // `getAllContentSections` was deleted (ISSUES.md #28) — it had no caller.
+  // The admin edits one section at a time through `getContentSection`, and the
+  // storefront reads through the cached fetchers in `src/lib/cache.ts`, so
+  // nothing ever wanted every section at once. The repository method went with
+  // it; `getActiveContentSections` is the one that is actually used.
 
-  updateContentSection: adminProcedure
+  updateContentSection: adminWriteProcedure
     .input(updateContentSectionSchema)
     .mutation(async ({ input, ctx }) => {
       const repo = container.getSiteConfigRepository();
@@ -76,7 +73,7 @@ export const contentSectionsProcedures = {
       };
     }),
 
-  toggleSectionStatus: adminProcedure
+  toggleSectionStatus: adminWriteProcedure
     .input(z.object({ sectionType: sectionTypeSchema }))
     .mutation(async ({ input, ctx }) => {
       const repo = container.getSiteConfigRepository();
@@ -109,7 +106,7 @@ export const contentSectionsProcedures = {
       }));
     }),
 
-  revertToVersion: adminProcedure
+  revertToVersion: adminWriteProcedure
     .input(
       z.object({
         sectionType: sectionTypeSchema,

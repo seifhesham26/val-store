@@ -42,6 +42,7 @@ export function AccountSidebar() {
           // from localStorage before any session check runs — so without this
           // the next person on a shared browser sees these items as their own.
           useCartStore.getState().clearCart();
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate full page load: sign-out has to reset the Better Auth client session store
           window.location.href = "/";
         },
       },

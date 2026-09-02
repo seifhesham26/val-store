@@ -4,7 +4,7 @@
  * CRUD operations for coupon management.
  */
 
-import { router, adminProcedure } from "@/server/trpc";
+import { router, adminProcedure, adminWriteProcedure } from "@/server/trpc";
 import { z } from "zod";
 import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupons/coupon.repository";
 import { TRPCError } from "@trpc/server";
@@ -60,23 +60,25 @@ export const adminCouponsRouter = router({
   /**
    * Create a new coupon
    */
-  create: adminProcedure.input(couponSchema).mutation(async ({ input }) => {
-    // Check for duplicate code
-    const existing = await couponRepo.findByCode(input.code);
-    if (existing) {
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "A coupon with this code already exists",
-      });
-    }
+  create: adminWriteProcedure
+    .input(couponSchema)
+    .mutation(async ({ input }) => {
+      // Check for duplicate code
+      const existing = await couponRepo.findByCode(input.code);
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A coupon with this code already exists",
+        });
+      }
 
-    return couponRepo.create(input);
-  }),
+      return couponRepo.create(input);
+    }),
 
   /**
    * Update an existing coupon
    */
-  update: adminProcedure
+  update: adminWriteProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -94,7 +96,7 @@ export const adminCouponsRouter = router({
   /**
    * Delete a coupon
    */
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       await couponRepo.delete(input.id);
@@ -104,7 +106,7 @@ export const adminCouponsRouter = router({
   /**
    * Toggle coupon active status
    */
-  toggleActive: adminProcedure
+  toggleActive: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const coupon = await couponRepo.findById(input.id);
