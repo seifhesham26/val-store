@@ -53,11 +53,16 @@ export function AddressList({
             <h3 className="text-base font-semibold text-white">
               {address.name}
             </h3>
-            {address.isDefault && (
-              <span className="text-xs bg-val-accent/15 text-val-accent px-2 py-1 rounded-full">
-                Default
+            <div className="flex items-center gap-2">
+              <span className="text-xs bg-white/[0.06] text-gray-300 px-2 py-1 rounded-full capitalize">
+                {address.addressType}
               </span>
-            )}
+              {address.isDefault && (
+                <span className="text-xs bg-val-accent/15 text-val-accent px-2 py-1 rounded-full">
+                  Default
+                </span>
+              )}
+            </div>
           </div>
           <p className="text-sm text-gray-400 mb-4 leading-relaxed">
             {address.street}

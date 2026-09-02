@@ -33,13 +33,17 @@ import { createVariantStockRegistry } from "@/lib/variant-stock-registry";
 /**
  * How often the shared copy refreshes.
  *
- * Deliberately the same fifteen seconds the per-card queries used, so this
- * change is purely a reduction in *how many* requests are made and not in how
- * fresh the answer is — the product page's quantity ceiling stays exactly as
- * current as it was. Affordable now that it is one request rather than one per
- * card.
+ * Raised from fifteen seconds to sixty. Fifteen was inherited from the
+ * per-card queries this replaced and never re-examined once it became one
+ * shared request. Browsing is the wrong place to spend a poll: a stock badge
+ * that is a minute stale costs nothing, because the figure that actually
+ * protects the sale is checked at add-to-cart and again inside the order
+ * transaction, where variant rows are locked FOR UPDATE.
+ *
+ * The cart's own check (`STOCK_CHECK_MS`) deliberately stays at fifteen — that
+ * is the surface where a stale figure becomes a failed checkout.
  */
-const GRID_REFRESH_MS = 15_000;
+const GRID_REFRESH_MS = 60_000;
 
 /** Coalesces a burst of card mounts into a single query input. */
 const REGISTRATION_FLUSH_MS = 50;

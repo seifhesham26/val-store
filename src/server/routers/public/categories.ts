@@ -71,49 +71,8 @@ export const publicCategoriesRouter = router({
       };
     }),
 
-  /**
-   * Get featured categories for homepage with product counts
-   */
-  getFeatured: publicProcedure
-    .input(z.object({ limit: z.number().min(1).max(10).optional().default(6) }))
-    .query(async ({ input }) => {
-      const siteConfigRepo = container.getSiteConfigRepository();
-      const categoryRepo = container.getCategoryRepository();
-
-      // Get featured items of type 'category'
-      const featuredItems = await siteConfigRepo.getFeaturedItemsByType(
-        "homepage_categories",
-        "category"
-      );
-
-      const curatedIds = featuredItems
-        .slice(0, input.limit)
-        .map((item) => item.itemId);
-
-      if (curatedIds.length === 0) return [];
-
-      // Three queries total. This was one `findById` plus one full product
-      // scan per curated category.
-      const [categories, counts] = await Promise.all([
-        categoryRepo.findByIds(curatedIds),
-        categoryRepo.countProductsByCategory({ activeOnly: true }),
-      ]);
-
-      const byId = new Map(categories.map((c) => [c.id, c]));
-
-      // Re-apply the admin's curated order — `findByIds` does not guarantee it.
-      return curatedIds.flatMap((id) => {
-        const category = byId.get(id);
-        if (!category?.isActive) return [];
-        return [
-          {
-            id: category.id,
-            name: category.name,
-            slug: category.slug,
-            imageUrl: category.imageUrl,
-            productCount: counts.get(category.id) ?? 0,
-          },
-        ];
-      });
-    }),
+  // `getFeatured` (curated homepage category cards via `featured_items`) was
+  // deleted (ISSUES.md #28) — it had no caller. The homepage server component
+  // reads the same curation straight from the repository through
+  // `getCachedFeaturedCategories` in `src/lib/cache.ts` instead.
 });

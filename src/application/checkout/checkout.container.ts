@@ -11,12 +11,16 @@ import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-
 import { CreateCheckoutSessionUseCase } from "./use-cases/create-checkout-session.use-case";
 import { CreateOrderUseCase } from "./use-cases/create-order.use-case";
 import { NotificationService } from "@/application/notifications/notification.service";
+import { SendOrderConfirmationUseCase } from "@/application/orders/use-cases/send-order-confirmation.use-case";
+import { AddressRepositoryInterface } from "@/domain/address/interfaces/repositories/address.repository.interface";
 
 export function createCheckoutModule(deps: {
   getOrderRepository: () => DrizzleOrderRepository;
   getCartRepository: () => DrizzleCartRepository;
   getValidateCouponUseCase: () => ValidateCouponUseCase;
   getNotificationService: () => NotificationService;
+  getSendOrderConfirmationUseCase: () => SendOrderConfirmationUseCase;
+  getAddressRepository: () => AddressRepositoryInterface;
 }) {
   let createCheckoutSession: CreateCheckoutSessionUseCase | undefined;
   let createOrder: CreateOrderUseCase | undefined;
@@ -26,7 +30,9 @@ export function createCheckoutModule(deps: {
       deps.getOrderRepository(),
       deps.getCartRepository(),
       deps.getValidateCouponUseCase(),
-      deps.getNotificationService()
+      deps.getNotificationService(),
+      deps.getSendOrderConfirmationUseCase(),
+      deps.getAddressRepository()
     ));
 
   return {

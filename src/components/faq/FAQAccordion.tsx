@@ -39,7 +39,7 @@ const faqs = [
   {
     question: "Do you offer gift wrapping?",
     answer:
-      "Yes! Gift wrapping is available at checkout for an additional $5. You can also include a personalized message.",
+      "Not yet. We are working on it — for now, orders arrive in our standard packaging.",
   },
   {
     question: "How do I contact customer support?",

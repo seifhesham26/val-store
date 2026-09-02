@@ -5,35 +5,22 @@ import { revalidateTag } from "next/cache";
 import {
   heroContentSchema,
   announcementContentSchema,
-  promoBannerContentSchema,
-  brandStoryContentSchema,
-  newsletterContentSchema,
-  instagramContentSchema,
 } from "@/domain/site/value-objects/content-schemas";
 
 // ============================================
 // VALIDATION SCHEMAS
+//
+// `promo_banner`, `brand_story`, `newsletter` and `instagram` were removed
+// (ISSUES.md #29) — their components never read this content back, so the
+// schemas were decorative. Only the two section types wired end to end
+// remain.
 // ============================================
 
-export const sectionTypeSchema = z.enum([
-  "hero",
-  "announcement",
-  "promo_banner",
-  "brand_story",
-  "newsletter",
-  "instagram",
-]);
+export const sectionTypeSchema = z.enum(["hero", "announcement"]);
 
 export const updateContentSectionSchema = z.object({
   sectionType: sectionTypeSchema,
-  content: z.union([
-    heroContentSchema,
-    announcementContentSchema,
-    promoBannerContentSchema,
-    brandStoryContentSchema,
-    newsletterContentSchema,
-    instagramContentSchema,
-  ]),
+  content: z.union([heroContentSchema, announcementContentSchema]),
   displayOrder: z.number().optional(),
   isActive: z.boolean().optional(),
 });
@@ -136,6 +123,13 @@ export const contentSectionsProcedures = {
         input.version,
         ctx.user.id
       );
+
+      // Same pair `updateContentSection` invalidates — a revert is a write
+      // like any other, and skipping this would leave it the one CMS write
+      // that doesn't announce itself.
+      revalidateTag(`cms-${input.sectionType}`, "max");
+      revalidateTag("cms-sections", "max");
+
       return {
         ...reverted.toObject(),
         content: JSON.parse(reverted.content),

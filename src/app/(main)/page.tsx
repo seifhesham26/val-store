@@ -9,7 +9,7 @@ import { TrustIndicators } from "@/components/home/TrustIndicators";
 
 export default function Home() {
   return (
-    <main>
+    <>
       <ServerHeroSection />
       <ServerFeaturedCategories />
       <BrandStory />
@@ -18,6 +18,6 @@ export default function Home() {
       <PromoBanner />
       <NewsletterSection />
       <TrustIndicators />
-    </main>
+    </>
   );
 }

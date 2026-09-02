@@ -26,17 +26,26 @@ export function MetricsCards() {
     );
   }
 
+  // The first two cards carried hardcoded sub-labels — "+20.1% from last
+  // month" and "+180 from yesterday" — that nothing computed. Sitting directly
+  // under a live figure, in the position a real delta occupies, they read as
+  // measurements. A card with no sub-label is honest; a card with a fabricated
+  // one is not.
+  //
+  // Both are now labelled with the window they actually cover. The second used
+  // to be titled "New Orders" over an unbounded COUNT(*) while the card beside
+  // it was windowed to 30 days.
   const metricsData = [
     {
-      title: "Total Revenue",
+      title: "Revenue",
       value: formatCurrency(metrics?.revenue ?? 0),
-      change: "+20.1% from last month",
+      change: "Collected, last 30 days · net of refunds",
       icon: DollarSign,
     },
     {
-      title: "New Orders",
+      title: "Orders",
       value: `${metrics?.orders || 0}`,
-      change: "+180 from yesterday",
+      change: "Placed, last 30 days",
       icon: ShoppingCart,
     },
     {

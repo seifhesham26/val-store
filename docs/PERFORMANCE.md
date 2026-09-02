@@ -24,11 +24,11 @@ first-hit.
 **The database:** Neon Postgres, `eu-central-1` (Frankfurt), via the `-pooler`
 endpoint — so there is already a pgBouncer in front of it.
 
-| | |
-|---|---|
-| Warm query round trip | **~58 ms** |
-| First connection in a fresh process | **~560 ms** |
-| One observed outlier connect | **3851 ms** (see PERF-06) |
+|                                     |                           |
+| ----------------------------------- | ------------------------- |
+| Warm query round trip               | **~58 ms**                |
+| First connection in a fresh process | **~560 ms**               |
+| One observed outlier connect        | **3851 ms** (see PERF-06) |
 
 Two facts about that 58 ms shape everything below.
 
@@ -70,15 +70,15 @@ Those pages now ship their first screen of products **in the HTML**. The
 bundle-download, hydrate, request, query chain that used to stand between a
 customer and the first product card is gone from the critical path entirely.
 
-| | before | after |
-|---|---|---|
-| Static/prerendered pages | 83 | **92** |
-| Auth DB queries on an anonymous catalogue request | 2 | **0** |
-| Auth DB queries on a repeat authenticated request | 2 | **0** (cookie + role cache) |
-| Round trips before first product card | 2–3 after hydration | **0** |
-| `loading.tsx` / `error.tsx` boundaries | 0 | 8 |
-| Unit tests | 124 | **162** |
-| Production dependencies | 47 | **38** |
+|                                                   | before              | after                       |
+| ------------------------------------------------- | ------------------- | --------------------------- |
+| Static/prerendered pages                          | 83                  | **92**                      |
+| Auth DB queries on an anonymous catalogue request | 2                   | **0**                       |
+| Auth DB queries on a repeat authenticated request | 2                   | **0** (cookie + role cache) |
+| Round trips before first product card             | 2–3 after hydration | **0**                       |
+| `loading.tsx` / `error.tsx` boundaries            | 0                   | 8                           |
+| Unit tests                                        | 124                 | **162**                     |
+| Production dependencies                           | 47                  | **38**                      |
 
 ---
 
@@ -113,7 +113,7 @@ moment a customer scrolled.
 ### PERF-02 — `/collections/[slug]` did that waterfall twice ✅
 
 It was a client component that fetched the category by slug and only then let
-the grid fetch products — two *sequential* client round trips before a single
+the grid fetch products — two _sequential_ client round trips before a single
 card appeared, the first spent turning a slug into an id.
 
 **Done.** Now a server component. Both the category and page 1 resolve
@@ -140,16 +140,16 @@ acknowledgement, and nothing streams.
 
 **Done.** Five `loading.tsx` and two `error.tsx` plus one `not-found.tsx`:
 
-| file | renders |
-|---|---|
-| `(main)/loading.tsx` | branded loader |
-| `(main)/collections/loading.tsx` | `CollectionGridSkeleton` |
-| `(main)/products/[slug]/loading.tsx` | two-column product skeleton |
-| `(main)/account/loading.tsx` | branded loader |
-| `admin/loading.tsx` | light-themed card skeletons |
-| `(main)/error.tsx` | storefront-themed retry |
-| `admin/error.tsx` | admin-themed retry |
-| `(main)/collections/[slug]/not-found.tsx` | the old inline panel |
+| file                                      | renders                     |
+| ----------------------------------------- | --------------------------- |
+| `(main)/loading.tsx`                      | branded loader              |
+| `(main)/collections/loading.tsx`          | `CollectionGridSkeleton`    |
+| `(main)/products/[slug]/loading.tsx`      | two-column product skeleton |
+| `(main)/account/loading.tsx`              | branded loader              |
+| `admin/loading.tsx`                       | light-themed card skeletons |
+| `(main)/error.tsx`                        | storefront-themed retry     |
+| `admin/error.tsx`                         | admin-themed retry          |
+| `(main)/collections/[slug]/not-found.tsx` | the old inline panel        |
 
 The grid skeleton was extracted to `CollectionGridSkeleton` and is now rendered
 from both directions — `loading.tsx` and the client grid's own loading state —
@@ -165,7 +165,7 @@ near-black on near-white and nearly invisible there.
 
 `createContext` ran on every request and always did two sequential database
 queries — a Better Auth session lookup, then a `user_profiles` role query —
-*before* the procedure ran, for a `publicProcedure` that never reads
+_before_ the procedure ran, for a `publicProcedure` that never reads
 `ctx.user`.
 
 **Done, in three parts:**
@@ -209,7 +209,7 @@ has a specific bad consequence.
 response. If any call in the batch were user-scoped, caching that response
 publicly would serve one customer's data to another.
 
-The guard is `touchedAuth()` — whether *anything* in the request resolved the
+The guard is `touchedAuth()` — whether _anything_ in the request resolved the
 user — and it is deliberately stronger than checking that the user came back
 null. `protectedProcedure` and `adminProcedure` always resolve the user, so
 `false` means the batch was entirely public procedures. A response that never
@@ -232,7 +232,7 @@ that widens the rule fails the test.
 
 ---
 
-### PERF-06 — Neon autosuspend ⏳ *not code — your call*
+### PERF-06 — Neon autosuspend ⏳ _not code — your call_
 
 Steady-state cold connect is ~560 ms and warm queries are 58 ms, but one
 measurement took **3851 ms** to open a single connection. Neon suspends compute
@@ -255,12 +255,12 @@ but I measured one wake, not a distribution.
 My first instinct was that `max: 1` serialises everything and should obviously
 be raised. I wrote the benchmark to confirm it, and it said the opposite:
 
-| concurrent requests | `max: 1` | `max: 5` | `max: 10` |
-|---|---|---|---|
-| 1 | **71 ms** | 118 ms | 117 ms |
-| 2 | **90 ms** | 121 ms | 124 ms |
-| 4 | 128 ms | **93 ms** | 145 ms |
-| 8 | 221 ms | **152 ms** | 266 ms |
+| concurrent requests | `max: 1`  | `max: 5`   | `max: 10` |
+| ------------------- | --------- | ---------- | --------- |
+| 1                   | **71 ms** | 118 ms     | 117 ms    |
+| 2                   | **90 ms** | 121 ms     | 124 ms    |
+| 4                   | 128 ms    | **93 ms**  | 145 ms    |
+| 8                   | 221 ms    | **152 ms** | 266 ms    |
 
 **`max: 1` is fastest for a single request, and not narrowly.** postgres.js
 pipelines, so one connection sends all four catalogue queries together and gets
@@ -316,7 +316,7 @@ the demonstrated rate of missed tags here is not zero, and a stale-for-an-hour
 storefront is a much worse failure than a stale-for-five-minutes one. Raise it
 further once tag coverage has survived a few more features.
 
-Stock changed by *customer orders* still is not tag-invalidated, and
+Stock changed by _customer orders_ still is not tag-invalidated, and
 deliberately so: `VariantStockProvider` polls live stock and overrides the
 cached flag within 15 s.
 
@@ -375,7 +375,7 @@ placeholders sized to the charts' actual column spans so the grid does not
 reflow. `ssr: false` on the analytics page (a client component); plain dynamic
 on the dashboard, where `ssr: false` is not permitted in a server component.
 
-### PERF-15 — Composite indexes ⏳ *needs a database write*
+### PERF-15 — Composite indexes ⏳ _needs a database write_
 
 `drizzle/0001_glossy_scourge.sql` adds `idx_products_active_created` and
 `idx_orders_user_created`. I verified against the live database that the
@@ -403,18 +403,52 @@ interval, not per-card queries.
 
 ## Still outstanding
 
-Two items, neither of them code:
+> **Updated 2026-09-02.** Two of the three below were closed in the P3/Pass-2
+> remediation pass; see `docs/superpowers/specs/2026-09-02-p3-pass2-design.md`.
+> What is left is genuinely not code.
 
-1. **PERF-06 — Neon autosuspend.** Disable scale-to-zero or raise the suspend
-   delay; confirm the app region matches `eu-central-1`. This is most likely
-   the largest remaining real-world contributor to "the live site feels slow".
-2. **PERF-15 — apply the migration.** `pnpm db:push`, or run
-   `drizzle/0001_glossy_scourge.sql`.
+1. **PERF-06 — Neon autosuspend.** ⏳ **Still open, and still the largest
+   remaining real-world contributor to "the live site feels slow".** Disable
+   scale-to-zero or raise the suspend delay; confirm the app region matches
+   `eu-central-1`. A cold connect was measured at 3851 ms against a warm query's
+   58 ms — no amount of application work competes with that.
+2. **PERF-15 — apply the migration.** ⏳ Still needs a database write.
+   `pnpm db:push`, or run `drizzle/0001_glossy_scourge.sql` — verified
+   idempotent. **Do not run `pnpm db:migrate`:** the database was built with
+   `db:push`, so `__drizzle_migrations` is likely empty and migrate would try to
+   replay the 0000 baseline against tables that already exist.
+3. **PERF-07 — `DATABASE_POOL_MAX`.** ✅ **No longer a decision.** The default is
+   deployment-aware: `process.env.VERCEL ? 1 : 5`, which is the measured answer
+   for each deployment shape. An explicit env var still overrides it.
 
-And one decision:
+### Closed in the same pass
 
-3. **PERF-07 — `DATABASE_POOL_MAX`.** Left at 1, which is right for Vercel. Set
-   it to 5 if this runs as a long-lived Node server.
+- **PERF-16 — stock polling.** ✅ Grid polling moved from 15 s to 60 s
+  (`GRID_REFRESH_MS`, `STOCK_STALE_MS`). The cart's own check
+  (`STOCK_CHECK_MS`) deliberately stays at 15 s: browsing tolerates a stale
+  badge because the figure that protects the sale is re-checked at add-to-cart
+  and again inside the order transaction, where variant rows are locked
+  `FOR UPDATE`. The cart is where a stale figure becomes a failed checkout.
+- **Search indexes.** `drizzle/0002_search_trgm.sql` is written and unapplied.
+  `ILIKE '%term%'` has a leading wildcard that no btree index can serve, so it
+  is a sequential scan; `pg_trgm` with `gin_trgm_ops` fixes that. Deliberately
+  premature at 36 products — apply when the catalogue reaches the thousands.
+- **A search bug found while looking at this.** The LIKE-escaping fix from #22
+  had only reached the products repository. Both customer search paths still
+  interpolated raw, so a search for `%` matched every row _and_ forced a full
+  scan. Now routed through `containsPattern`.
+
+### Corrections to this document
+
+The **"Still open in this area"** note under ISSUES.md's P2-Performance section
+claimed the collection pages "remain fully client-side". That was already false
+when written — PERF-01 server-rendered them, which is what took the build from
+83 static pages to 92. Corrected there.
+
+`sharp` was checked because pnpm reports it among its ignored build scripts: it
+loads correctly with libvips 8.17.3 and its prebuilt `@img/sharp-win32-x64`
+binary. Sharp 0.34+ ships platform packages rather than compiling in a
+postinstall, so the warning is vestigial and image optimisation is unaffected.
 
 ---
 
@@ -434,11 +468,11 @@ running it now also covers the server-rendering route.
 
 New tests, all unit, no database:
 
-| file | tests | covers |
-|---|---|---|
-| `server/utils/response-cache-policy.test.ts` | 14 | the CDN-caching rule, exhaustively |
-| `server/trpc.test.ts` | 14 | lazy context, memoisation, `touchedAuth` |
-| `server/utils/auth-helpers.test.ts` | 10 | role cache: hits, TTL, invalidation |
+| file                                         | tests | covers                                   |
+| -------------------------------------------- | ----- | ---------------------------------------- |
+| `server/utils/response-cache-policy.test.ts` | 14    | the CDN-caching rule, exhaustively       |
+| `server/trpc.test.ts`                        | 14    | lazy context, memoisation, `touchedAuth` |
+| `server/utils/auth-helpers.test.ts`          | 10    | role cache: hits, TTL, invalidation      |
 
 ---
 
@@ -464,7 +498,7 @@ Two of the findings in the first draft of this document were wrong, and both
 were caught by checking rather than reasoning.
 
 **The pool.** I expected `max: 1` to be the headline bug and wrote the benchmark
-to confirm it. It showed the opposite — `max: 1` is the *fastest* setting for a
+to confirm it. It showed the opposite — `max: 1` is the _fastest_ setting for a
 single request — and the naive fix would have made the common case ~65% slower.
 The reason turned out to be worth knowing on its own: postgres.js pipelines, so
 on a 58 ms link one connection beats four.

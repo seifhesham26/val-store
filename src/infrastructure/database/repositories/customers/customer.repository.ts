@@ -6,7 +6,11 @@
 
 import { db } from "@/db";
 import { customers } from "@/db/schema";
-import { eq, ilike, or, count } from "drizzle-orm";
+import { eq, count, sql } from "drizzle-orm";
+import {
+  containsPattern,
+  LIKE_ESCAPE_CHAR,
+} from "@/domain/shared/like-pattern";
 import { Customer } from "@/domain/customers/entities/customer.entity";
 import { CustomerRepositoryInterface } from "@/domain/customers/interfaces/repositories/customer.repository.interface";
 
@@ -106,12 +110,13 @@ export class DrizzleCustomerRepository implements CustomerRepositoryInterface {
 
     let query = db.select().from(customers);
 
-    if (search) {
+    // Escaped so a term containing % or _ is matched literally rather than as
+    // a wildcard — see `containsPattern`. Unescaped, a search for "%" built
+    // the pattern `%%%`, which matches every row and forces a sequential scan.
+    const pattern = containsPattern(search);
+    if (pattern) {
       query = query.where(
-        or(
-          ilike(customers.phone, `%${search}%`),
-          ilike(customers.preferredName, `%${search}%`)
-        )
+        sql`(${customers.phone} ILIKE ${pattern} ESCAPE ${LIKE_ESCAPE_CHAR} OR ${customers.preferredName} ILIKE ${pattern} ESCAPE ${LIKE_ESCAPE_CHAR})`
       ) as typeof query;
     }
 

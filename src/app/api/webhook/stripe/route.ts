@@ -7,13 +7,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { stripeService } from "@/infrastructure/services/stripe.service";
-import { ResendEmailService } from "@/infrastructure/services/resend-email.service";
 import { container } from "@/application/container";
 import { db } from "@/db";
 import { cartItems, payments } from "@/db/schema";
 import { eq } from "drizzle-orm";
-
-const emailService = new ResendEmailService();
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -90,36 +87,23 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Send order confirmation email
-      if (customerEmail && session.payment_status === "paid") {
-        try {
-          // Fetch line items for the email
-          const fullSession = await stripeService.getCheckoutSession(
-            session.id
-          );
-          const lineItems = fullSession.line_items?.data || [];
-
-          const orderNumber = session.id.slice(-12).toUpperCase();
-          const items = lineItems.map((item) => ({
-            name: item.description || "Product",
-            quantity: item.quantity || 1,
-            price: (item.amount_total || 0) / 100,
-          }));
-          const total = (session.amount_total || 0) / 100;
-
-          await emailService.sendOrderConfirmation(customerEmail, orderNumber, {
-            items,
-            total,
-            shippingAddress: "Address will be confirmed separately",
-          });
-        } catch (error) {
-          console.error(
-            JSON.stringify({
-              error: "Failed to send order confirmation email",
-              details: error instanceof Error ? error.message : String(error),
-            })
-          );
-        }
+      // Send order confirmation email, built from the order rather than from
+      // this session. The session knows nothing about the VLK- order number or
+      // the shipping address, which is why it used to send a slice of the
+      // session id and the literal text "Address will be confirmed
+      // separately". Both are on the order entity already.
+      //
+      // This also removes a round trip: the old code re-fetched the session
+      // purely to read its line items.
+      if (
+        customerEmail &&
+        metadata?.orderId &&
+        session.payment_status === "paid"
+      ) {
+        await container.getSendOrderConfirmationUseCase().execute({
+          orderId: metadata.orderId,
+          email: customerEmail,
+        });
       }
 
       // Clear cart if we have user info

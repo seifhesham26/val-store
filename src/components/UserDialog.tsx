@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { User, LogOut, Settings, ShoppingBag, Shield } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
+import { useCartStore } from "@/lib/stores/cart-store";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -32,7 +33,10 @@ export function UserDialog({ user }: UserDialogProps) {
     await signOut({
       fetchOptions: {
         onSuccess: () => {
-          localStorage.removeItem("user");
+          // Was `localStorage.removeItem("user")`, a key nothing in the
+          // codebase writes. This is the cleanup that line looked like it
+          // was meant to be.
+          useCartStore.getState().clearCart();
           window.location.href = "/login";
         },
       },

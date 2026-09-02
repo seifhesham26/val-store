@@ -23,10 +23,14 @@ const addVariantSchema = z.object({
   isAvailable: z.boolean().default(true),
 });
 
-// Deliberately no `stockQuantity`. Variant metadata and stock levels are
-// different operations with different consequences: renaming a colour is not an
-// inventory movement, and a stock change must leave an audit row. Stock goes
-// through `updateStock` below, which does.
+// Stock stays separate from the metadata fields, because they are different
+// operations with different consequences: renaming a colour is not an
+// inventory movement, and a stock change must leave an audit row.
+//
+// It is accepted here as an optional sibling rather than folded into `data`
+// so one save is one request. The form used to call `update` and then
+// `updateStock` from the browser, so a failure on the second left the metadata
+// already saved — the same shape as the half-created product bug, smaller.
 const updateVariantSchema = z.object({
   id: z.string().uuid(),
   data: z.object({
@@ -36,6 +40,15 @@ const updateVariantSchema = z.object({
     priceAdjustment: z.number().optional(),
     isAvailable: z.boolean().optional(),
   }),
+  stock: z
+    .object({
+      quantity: z.number().int().min(0),
+      changeType: z
+        .enum(["restock", "adjustment", "damaged", "return"])
+        .default("adjustment"),
+      reason: z.string().max(500).optional(),
+    })
+    .optional(),
 });
 
 const updateStockSchema = z.object({
@@ -92,10 +105,41 @@ export const variantsRouter = router({
    */
   update: adminProcedure
     .input(updateVariantSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const repo = container.getProductVariantRepository();
 
-      // Get existing variant
+      // Stock first, deliberately.
+      //
+      // It is the half that validates and writes the audit row, so if it
+      // fails nothing at all has been written. The reverse order can leave
+      // metadata saved against a stock change that was then rejected, which is
+      // exactly the failure the browser-side split produced.
+      //
+      // Not a single database transaction: AdjustStockUseCase reaches the
+      // database through InventoryRepositoryInterface, which has no
+      // transaction-aware executor. Threading one through is a separate
+      // refactor; this removes the two-request window without pretending to
+      // atomicity it does not have.
+      if (input.stock) {
+        const stockResult = await container.getAdjustStockUseCase().execute({
+          variantId: input.id,
+          newQuantity: input.stock.quantity,
+          changeType: input.stock.changeType,
+          reason: input.stock.reason,
+          userId: ctx.user.id,
+        });
+
+        if (!stockResult.success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: stockResult.error ?? "Failed to update stock",
+          });
+        }
+      }
+
+      // Read after the adjustment on purpose: the entity below is rebuilt from
+      // `existing.stockQuantity`, so reading first would write the pre-
+      // adjustment level straight back over the change just made.
       const existing = await repo.findById(input.id);
       if (!existing) {
         throw new Error(`Variant with ID "${input.id}" not found`);

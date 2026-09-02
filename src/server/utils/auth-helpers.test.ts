@@ -27,9 +27,15 @@ vi.mock("@/db", () => {
   };
 });
 
-const { getUserRole, invalidateUserRole, clearRoleCache } = await import(
-  "./auth-helpers"
-);
+const {
+  getUserRole,
+  invalidateUserRole,
+  clearRoleCache,
+  isAdminRole,
+  isAdmin,
+} = await import("./auth-helpers");
+
+type UserRole = "customer" | "worker" | "admin" | "super_admin";
 
 const USER = "user-1";
 const OTHER = "user-2";
@@ -126,5 +132,31 @@ describe("invalidateUserRole", () => {
 
   it("is harmless for a user that was never cached", () => {
     expect(() => invalidateUserRole("nobody")).not.toThrow();
+  });
+});
+
+/**
+ * The admin predicate. `uploadthing.ts` used to hardcode these two role
+ * strings against a session field that does not exist, so the gate rejected
+ * everyone; the predicate lives here now and both callers share it.
+ */
+describe("isAdminRole", () => {
+  it("accepts admin and super_admin", () => {
+    expect(isAdminRole("admin")).toBe(true);
+    expect(isAdminRole("super_admin")).toBe(true);
+  });
+
+  it("rejects customer and worker", () => {
+    expect(isAdminRole("customer")).toBe(false);
+    expect(isAdminRole("worker")).toBe(false);
+  });
+
+  it("agrees with isAdmin for the same role", () => {
+    const roles: UserRole[] = ["customer", "worker", "admin", "super_admin"];
+    for (const role of roles) {
+      expect(isAdmin({ id: "u", email: "e", name: null, role })).toBe(
+        isAdminRole(role)
+      );
+    }
   });
 });

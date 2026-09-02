@@ -72,7 +72,7 @@ export class ProductImageEntity {
    * Get a thumbnail URL (if using CDN with transformations)
    * Override this for specific CDN implementations
    */
-  getThumbnailUrl(_width: number = 200): string {
+  getThumbnailUrl(): string {
     // For UploadThing, images are served as-is
     // For other CDNs, you might add transformation params
     return this.imageUrl;

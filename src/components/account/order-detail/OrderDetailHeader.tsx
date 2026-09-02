@@ -12,12 +12,22 @@ const statusColors: Record<string, string> = {
 
 interface OrderDetailHeaderProps {
   orderId: string;
+  /**
+   * The real VLK-YYYYMMDD-XXXXXX identifier.
+   *
+   * This header used to render `orderId.slice(-8)` — a UUID fragment — while
+   * the orders list one click earlier showed the real number, so the same
+   * order had two identities depending on the screen and the one a customer
+   * would quote to support was on the wrong one.
+   */
+  orderNumber: string | null;
   status: string;
   createdAt: Date;
 }
 
 export function OrderDetailHeader({
   orderId,
+  orderNumber,
   status,
   createdAt,
 }: OrderDetailHeaderProps) {
@@ -35,7 +45,7 @@ export function OrderDetailHeader({
       </Button>
       <div>
         <h2 className="text-2xl font-bold text-white">
-          Order #{orderId.slice(-8)}
+          {orderNumber ?? `Order #${orderId.slice(-8)}`}
         </h2>
         <p className="text-gray-500">
           Placed on{" "}

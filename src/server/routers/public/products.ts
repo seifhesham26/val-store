@@ -104,72 +104,11 @@ export const publicProductsRouter = router({
       };
     }),
 
-  /**
-   * Get product by slug (public detail page)
-   */
-  getBySlug: publicProcedure
-    .input(z.object({ slug: z.string() }))
-    .query(async ({ input }) => {
-      const repo = container.getProductRepository();
-      const product = await repo.findBySlug(input.slug);
-
-      if (!product || !product.isActive) {
-        return null;
-      }
-
-      // One product, so the two lookups run together rather than in sequence.
-      const [images, variants] = await Promise.all([
-        container.getProductImageRepository().findByProduct(product.id),
-        container.getProductVariantRepository().findByProduct(product.id),
-      ]);
-
-      return {
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        description: product.description,
-        basePrice: product.basePrice,
-        salePrice: product.salePrice,
-        categoryId: product.categoryId,
-        gender: product.gender,
-        material: product.material,
-        careInstructions: product.careInstructions,
-        metaTitle: product.metaTitle,
-        metaDescription: product.metaDescription,
-        images: images.map((img) => ({
-          id: img.id,
-          imageUrl: img.imageUrl,
-          altText: img.altText,
-          isPrimary: img.isPrimary,
-          displayOrder: img.displayOrder,
-        })),
-        variants: variants
-          .filter((v) => v.isAvailable)
-          .map((v) => ({
-            id: v.id,
-            size: v.size,
-            color: v.color,
-            priceAdjustment: v.priceAdjustment,
-            inStock: v.stockQuantity > 0,
-            availableStock: v.stockQuantity,
-          })),
-      };
-    }),
-
-  /**
-   * Get featured products for homepage
-   */
-  getFeatured: publicProcedure
-    .input(z.object({ limit: z.number().min(1).max(20).optional().default(8) }))
-    .query(async ({ input }) => {
-      const products = await container.getProductRepository().findAll({
-        isActive: true,
-        isFeatured: true,
-        limit: input.limit,
-      });
-
-      return withCardData(products);
-    }),
+  // `getBySlug` (product detail) and `getFeatured` (homepage) were deleted
+  // (ISSUES.md #28) — neither had a caller. `/products/[slug]` reads through
+  // `getCachedProductBySlug` and the homepage through
+  // `getCachedFeaturedProducts`, both in `src/lib/cache.ts`, calling the
+  // repository directly rather than this router.
 
   /**
    * Search products with infinite scroll support

@@ -12,6 +12,7 @@ import {
   contentSections,
   contentSectionsHistory,
   featuredItems,
+  user,
 } from "@/db/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import {
@@ -232,9 +233,22 @@ export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
   async getContentHistory(
     sectionType: string
   ): Promise<ContentSectionHistoryEntity[]> {
+    // Left-joined for the admin name, same pattern as inventory logs'
+    // `createdByName` — a bare user id next to a Revert button tells the
+    // admin nothing.
     const results = await db
-      .select()
+      .select({
+        id: contentSectionsHistory.id,
+        sectionId: contentSectionsHistory.sectionId,
+        sectionType: contentSectionsHistory.sectionType,
+        content: contentSectionsHistory.content,
+        version: contentSectionsHistory.version,
+        createdAt: contentSectionsHistory.createdAt,
+        createdBy: contentSectionsHistory.createdBy,
+        createdByName: user.name,
+      })
       .from(contentSectionsHistory)
+      .leftJoin(user, eq(contentSectionsHistory.createdBy, user.id))
       .where(eq(contentSectionsHistory.sectionType, sectionType))
       .orderBy(desc(contentSectionsHistory.version));
 
@@ -247,6 +261,7 @@ export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
         version: r.version,
         createdAt: r.createdAt,
         createdBy: r.createdBy,
+        createdByName: r.createdByName,
       })
     );
   }

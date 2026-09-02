@@ -69,13 +69,6 @@ export function VariantsSection({
     onError: (error) => toast.error(error.message),
   });
 
-  // Stock is a separate mutation from the rest of the variant: it writes an
-  // inventory_logs row, so it has to say who changed it and why. Saving a row
-  // whose stock is untouched does not call this at all.
-  const updateStockMutation = trpc.admin.variants.updateStock.useMutation({
-    onError: (error) => toast.error(error.message),
-  });
-
   const deleteMutation = trpc.admin.variants.delete.useMutation({
     onSuccess: () => {
       toast.success("Variant deleted");
@@ -176,15 +169,9 @@ export function VariantsSection({
       const stockChanged =
         !!stored && stored.stockQuantity !== variant.stockQuantity;
 
-      if (stockChanged) {
-        await updateStockMutation.mutateAsync({
-          id: variant.id,
-          quantity: variant.stockQuantity,
-          changeType: "adjustment",
-          reason: "Edited on the product page",
-        });
-      }
-
+      // One request. Stock still routes through AdjustStockUseCase server-side
+      // so every movement leaves an audit row — it is just no longer a second
+      // call from the browser that could fail after the metadata had saved.
       await updateMutation.mutateAsync({
         id: variant.id,
         data: {
@@ -193,6 +180,13 @@ export function VariantsSection({
           color: variant.color || null,
           priceAdjustment: variant.priceAdjustment,
         },
+        stock: stockChanged
+          ? {
+              quantity: variant.stockQuantity,
+              changeType: "adjustment" as const,
+              reason: "Edited on the product page",
+            }
+          : undefined,
       });
     }
   };

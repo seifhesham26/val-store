@@ -53,11 +53,22 @@ export class DrizzleNotificationsRepository implements NotificationsRepositoryIn
     });
   }
 
-  async markAsRead(id: string): Promise<void> {
+  /**
+   * Scoped to the owning admin.
+   *
+   * An id alone let one admin silently clear another's queue. A non-matching
+   * row no-ops, which leaks nothing about whether the id exists.
+   */
+  async markAsRead(id: string, adminUserId: string): Promise<void> {
     await db
       .update(adminNotifications)
       .set({ isRead: true })
-      .where(eq(adminNotifications.id, id));
+      .where(
+        and(
+          eq(adminNotifications.id, id),
+          eq(adminNotifications.adminUserId, adminUserId)
+        )
+      );
   }
 
   async markAllAsRead(adminUserId: string): Promise<void> {
@@ -85,8 +96,16 @@ export class DrizzleNotificationsRepository implements NotificationsRepositoryIn
     return result?.count ?? 0;
   }
 
-  async delete(id: string): Promise<void> {
-    await db.delete(adminNotifications).where(eq(adminNotifications.id, id));
+  /** Scoped to the owning admin, for the same reason as `markAsRead`. */
+  async delete(id: string, adminUserId: string): Promise<void> {
+    await db
+      .delete(adminNotifications)
+      .where(
+        and(
+          eq(adminNotifications.id, id),
+          eq(adminNotifications.adminUserId, adminUserId)
+        )
+      );
   }
 
   async deleteAll(adminUserId: string): Promise<void> {

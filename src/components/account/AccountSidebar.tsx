@@ -18,6 +18,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCartStore } from "@/lib/stores/cart-store";
 import { authClient } from "@/lib/auth-client";
 
 const accountLinks = [
@@ -36,6 +37,11 @@ export function AccountSidebar() {
     await authClient.signOut({
       fetchOptions: {
         onSuccess: () => {
+          // The persisted cart belongs to the account that is leaving. The
+          // redirect below is a full page load, which rehydrates the store
+          // from localStorage before any session check runs — so without this
+          // the next person on a shared browser sees these items as their own.
+          useCartStore.getState().clearCart();
           window.location.href = "/";
         },
       },

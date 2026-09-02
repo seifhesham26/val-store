@@ -22,10 +22,21 @@ export interface AuthUser {
 }
 
 /**
+ * Whether a role grants admin access.
+ *
+ * The single source for that question. `uploadthing.ts` used to answer it by
+ * hardcoding the two strings and comparing them against a field the `session`
+ * table does not have, which meant its gate rejected everyone.
+ */
+export function isAdminRole(role: UserRole): boolean {
+  return ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]);
+}
+
+/**
  * Check if a user has admin privileges
  */
 export function isAdmin(user: AuthUser): boolean {
-  return ADMIN_ROLES.includes(user.role as (typeof ADMIN_ROLES)[number]);
+  return isAdminRole(user.role);
 }
 
 /**

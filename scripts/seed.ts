@@ -537,47 +537,12 @@ async function seed() {
         isActive: true,
         version: 1,
       },
-      {
-        sectionType: "newsletter",
-        content: JSON.stringify({
-          title: "Join the Valkyrie Community",
-          subtitle: "Subscribe for exclusive offers and updates",
-          incentive: "Get 10% off your first order",
-          buttonText: "Subscribe",
-          privacyText: "By subscribing, you agree to our Privacy Policy.",
-        }),
-        displayOrder: 5,
-        isActive: true,
-        version: 1,
-      },
-      {
-        sectionType: "instagram",
-        content: JSON.stringify({
-          handle: "@valkyrie",
-          profileUrl: "https://instagram.com/valkyrie",
-          images: [],
-        }),
-        displayOrder: 6,
-        isActive: true,
-        version: 1,
-      },
-      {
-        sectionType: "brand_story",
-        content: JSON.stringify({
-          preheading: "Our Story",
-          title: "Built for the Bold",
-          paragraphs: [
-            "Valkyrie was founded with a simple mission: to make premium streetwear accessible to everyone.",
-            "What started as a small online boutique has grown into a destination for fashion-forward individuals seeking quality, style, and authenticity.",
-          ],
-          imagePosition: "left",
-          ctaText: "Learn More",
-          ctaLink: "/about",
-        }),
-        displayOrder: 4,
-        isActive: true,
-        version: 1,
-      },
+      // `newsletter`, `instagram` and `brand_story` rows used to be seeded
+      // here too. Deleted (ISSUES.md #29) along with their schemas — the
+      // components that render those sections on the homepage
+      // (`NewsletterSection`, `BrandStory`) use hardcoded props and never
+      // read this content back, and there was no Instagram component at
+      // all, so the rows described a wiring that never existed.
     ];
 
     await db.insert(contentSections).values(contentSectionValues);

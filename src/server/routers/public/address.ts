@@ -16,6 +16,10 @@ const addressSchema = z.object({
   zipCode: z.string().optional(),
   country: z.string().optional(),
   phone: z.string().min(1, "Phone is required"),
+  // Defaults to "shipping" so existing callers that never sent this field
+  // (the checkout flow's implicit shipping-address creation, older clients)
+  // keep working unchanged.
+  addressType: z.enum(["shipping", "billing"]).default("shipping"),
 });
 
 export const addressRouter = router({
@@ -35,6 +39,7 @@ export const addressRouter = router({
       country: addr.country,
       phone: addr.phone,
       isDefault: addr.isDefault,
+      addressType: addr.addressType,
     }));
   }),
 
@@ -51,7 +56,7 @@ export const addressRouter = router({
         postalCode: input.zipCode ?? "",
         country: input.country ?? "",
         phone: input.phone,
-        addressType: "shipping",
+        addressType: input.addressType,
       });
       return { success: true };
     }),
@@ -73,6 +78,7 @@ export const addressRouter = router({
         postalCode: input.data.zipCode ?? "",
         country: input.data.country ?? "",
         phone: input.data.phone,
+        addressType: input.data.addressType,
       });
       return { success: true };
     }),

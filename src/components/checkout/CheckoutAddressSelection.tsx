@@ -19,17 +19,23 @@ export function CheckoutAddressSelection({
   addresses,
   selectedAddressId,
   onAddressChange,
+  title = "Delivery Address",
+  description = "Default address is preselected.",
 }: {
   addresses: AddressList;
   selectedAddressId: string;
   onAddressChange: (val: string) => void;
+  // Overridable so the same picker can be reused for the billing address
+  // selector without a second, near-identical component.
+  title?: string;
+  description?: string;
 }) {
   return (
     <Card className="bg-[#111] border-white/10 shadow-2xl rounded-xl overflow-hidden">
       <CardHeader>
-        <CardTitle className="text-white">Delivery Address</CardTitle>
+        <CardTitle className="text-white">{title}</CardTitle>
         <CardDescription className="text-gray-400">
-          Default address is preselected.
+          {description}
         </CardDescription>
       </CardHeader>
       <CardContent>

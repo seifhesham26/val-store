@@ -9,7 +9,6 @@
 import { router } from "../../trpc";
 import { publicProductsRouter } from "./products";
 import { publicCategoriesRouter } from "./categories";
-import { publicConfigRouter } from "./config";
 import { cartRouter } from "./cart";
 import { checkoutRouter } from "./checkout";
 import { ordersRouter } from "./orders";
@@ -25,7 +24,6 @@ import { newsletterRouter } from "./newsletter";
 export const publicRouter = router({
   products: publicProductsRouter,
   categories: publicCategoriesRouter,
-  config: publicConfigRouter,
   cart: cartRouter,
   checkout: checkoutRouter,
   orders: ordersRouter,

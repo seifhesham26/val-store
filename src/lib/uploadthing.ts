@@ -11,13 +11,15 @@ import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { getUserRole, isAdminRole } from "@/server/utils/auth-helpers";
 
 const f = createUploadthing();
 
 /**
- * Helper to get current user from session
+ * The signed-in user, or null. One reader for all three routes — there used to
+ * be two, which is part of how the admin gate below drifted out of sync.
  */
-async function getUser() {
+async function currentUser() {
   try {
     const session = await auth.api.getSession({
       headers: await headers(),
@@ -26,6 +28,28 @@ async function getUser() {
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve the uploader and require admin.
+ *
+ * The role comes from `user_profiles`, never from the session. The previous
+ * implementation read `session.session.role`, but the `session` table has no
+ * `role` column and none is declared in `additionalFields` — so that value was
+ * always `undefined`, the inequality was always true, and this gate rejected
+ * every uploader including super_admins. Product and category image uploads
+ * had been failing for everyone.
+ */
+async function requireAdminUploader() {
+  const user = await currentUser();
+  if (!user) throw new UploadThingError("Unauthorized");
+
+  const role = await getUserRole(user.id);
+  if (!isAdminRole(role)) {
+    throw new UploadThingError("Admin access required");
+  }
+
+  return { userId: user.id };
 }
 
 /**
@@ -41,24 +65,8 @@ export const uploadRouter = {
   productImage: f({
     image: { maxFileSize: "4MB", maxFileCount: 10 },
   })
-    .middleware(async () => {
-      const session = await auth.api.getSession({
-        headers: await headers(),
-      });
-      const user = session?.user;
-      if (!user) throw new UploadThingError("Unauthorized");
-
-      // Admin role check
-      const role = (session?.session as { role?: string })?.role;
-      if (role !== "admin" && role !== "super_admin") {
-        throw new UploadThingError("Admin access required");
-      }
-
-      return { userId: user.id };
-    })
-    .onUploadComplete(async ({ metadata, file }) => {
-      console.log("Product image uploaded by:", metadata.userId);
-      console.log("File URL:", file.ufsUrl);
+    .middleware(async () => requireAdminUploader())
+    .onUploadComplete(async ({ file }) => {
       return { url: file.ufsUrl };
     }),
 
@@ -66,27 +74,13 @@ export const uploadRouter = {
    * Category image uploader
    * - Single image per upload
    * - Max 2MB
+   * - Only admin/super_admin can upload
    */
   categoryImage: f({
     image: { maxFileSize: "2MB", maxFileCount: 1 },
   })
-    .middleware(async () => {
-      const session = await auth.api.getSession({
-        headers: await headers(),
-      });
-      const user = session?.user;
-      if (!user) throw new UploadThingError("Unauthorized");
-
-      // Admin role check
-      const role = (session?.session as { role?: string })?.role;
-      if (role !== "admin" && role !== "super_admin") {
-        throw new UploadThingError("Admin access required");
-      }
-
-      return { userId: user.id };
-    })
-    .onUploadComplete(async ({ metadata, file }) => {
-      console.log("Category image uploaded by:", metadata.userId);
+    .middleware(async () => requireAdminUploader())
+    .onUploadComplete(async ({ file }) => {
       return { url: file.ufsUrl };
     }),
 
@@ -100,12 +94,11 @@ export const uploadRouter = {
     image: { maxFileSize: "1MB", maxFileCount: 1 },
   })
     .middleware(async () => {
-      const user = await getUser();
+      const user = await currentUser();
       if (!user) throw new UploadThingError("Unauthorized");
       return { userId: user.id };
     })
-    .onUploadComplete(async ({ metadata, file }) => {
-      console.log("Avatar uploaded by:", metadata.userId);
+    .onUploadComplete(async ({ file }) => {
       return { url: file.ufsUrl };
     }),
 } satisfies FileRouter;

@@ -108,8 +108,15 @@ export const ordersRouter = router({
         });
       }
 
+      // Mirrors what `getMyOrders` already returns. This projection was a
+      // hand-written subset that predated the order-number, partial-return and
+      // payment-window work, so the one screen a customer opens to check an
+      // order knew none of it: the header rendered a UUID fragment while the
+      // list one click earlier showed the real number, and a partly returned
+      // order looked untouched.
       return {
         id: order.id,
+        orderNumber: order.orderNumber,
         status: order.status,
         items: order.items,
         subtotal: order.subtotal,
@@ -121,6 +128,11 @@ export const ordersRouter = router({
         createdAt: order.createdAt,
         shippedAt: order.shippedAt,
         deliveredAt: order.deliveredAt,
+        awaitingPayment: order.isAwaitingPayment(),
+        paymentDeadline: order.paymentDeadline(),
+        refundedAmount: order.refundedAmount(),
+        refundedItems: order.getRefundedItems(),
+        fullyRefunded: order.isFullyRefunded(),
       };
     }),
 

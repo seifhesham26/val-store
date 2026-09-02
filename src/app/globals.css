@@ -93,6 +93,16 @@
   --val-steel: #1e293b;
 }
 
+/*
+ * The storefront's palette. `<html>` carries `class="dark"` (set in the root
+ * layout), and the admin tree's next-themes provider overrides that element
+ * with `light` for /admin.
+ *
+ * ORDER IS LOAD-BEARING: `:root` and `.dark` have identical specificity
+ * (0,1,0) and both match <html class="dark">, so this block wins only because
+ * it appears after `:root`. Moving it above `:root` silently returns the whole
+ * storefront to the light palette, which is the bug this arrangement fixed.
+ */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -256,5 +266,61 @@
 
   .val-loader__mark {
     opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Long-form copy
+ *
+ * `AboutContent`, `ReturnsContent` and `ShippingPolicy` were written against
+ * `prose dark:prose-invert` from @tailwindcss/typography — which is not, and
+ * never has been, installed. Both classes were inert, and because Tailwind's
+ * preflight resets headings to `font-size: inherit` and strips list markers,
+ * those three pages rendered as undifferentiated walls of text: no heading
+ * hierarchy, no bullets, no paragraph spacing.
+ *
+ * Fixed here rather than by adding the plugin. Three small pages do not need a
+ * typography engine, and the plugin would ship CSS for a dozen element types
+ * these pages never use. `.not-prose` is honoured because ReturnsContent
+ * already relies on it to opt its card grid out.
+ * ------------------------------------------------------------------------- */
+
+@layer components {
+  .prose-val > h2 {
+    @apply mt-10 mb-3 text-xl font-semibold text-white first:mt-0;
+  }
+
+  .prose-val > h3 {
+    @apply mt-8 mb-2 text-lg font-medium text-white;
+  }
+
+  .prose-val > p {
+    @apply mb-4 leading-relaxed text-gray-400;
+  }
+
+  .prose-val > ul,
+  .prose-val > ol {
+    @apply mb-6 space-y-2 pl-5 text-gray-400;
+  }
+
+  .prose-val > ul {
+    @apply list-disc;
+  }
+
+  .prose-val > ol {
+    @apply list-decimal;
+  }
+
+  .prose-val > ul > li,
+  .prose-val > ol > li {
+    @apply leading-relaxed marker:text-val-accent;
+  }
+
+  .prose-val a {
+    @apply text-val-accent underline underline-offset-4 hover:text-val-accent-light;
+  }
+
+  .prose-val strong {
+    @apply font-semibold text-white;
   }
 }

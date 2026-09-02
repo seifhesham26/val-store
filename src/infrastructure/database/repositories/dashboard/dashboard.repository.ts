@@ -12,7 +12,11 @@ import {
   user,
   orderItems,
 } from "@/db/schema";
-import { sql, desc, gte, eq } from "drizzle-orm";
+import { sql, desc, gte, eq, and } from "drizzle-orm";
+import {
+  SUM_NET_REVENUE,
+  COLLECTED_PAYMENT,
+} from "@/infrastructure/database/queries/revenue";
 import {
   DashboardRepositoryInterface,
   DashboardMetrics,
@@ -31,20 +35,25 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Get total revenue (last 30 days)
+    // Revenue actually collected in the window, net of returns. This used to
+    // be an unfiltered SUM over every order, so abandoned checkouts, cancelled
+    // orders and fully refunded orders all counted at face value.
     const [revenueResult] = await db
       .select({
-        total: sql<string>`COALESCE(SUM(${orders.totalAmount}), 0)`,
+        total: sql<string>`${SUM_NET_REVENUE}`,
       })
       .from(orders)
       .where(gte(orders.createdAt, thirtyDaysAgo));
 
-    // Get order count
+    // Bounded to the same 30 days as revenue. It used to be COUNT(*) over the
+    // whole table while the card beside it was windowed, so two cards on the
+    // same row reported two different time ranges and neither said so.
     const [ordersResult] = await db
       .select({
         count: sql<number>`COUNT(*)`,
       })
-      .from(orders);
+      .from(orders)
+      .where(gte(orders.createdAt, thirtyDaysAgo));
 
     // Get low stock count (stock < 10)
     const [lowStockResult] = await db
@@ -80,7 +89,7 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
     const salesData = await db
       .select({
         date: sql<string>`DATE(${orders.createdAt})`,
-        total: sql<string>`SUM(${orders.totalAmount})`,
+        total: sql<string>`${SUM_NET_REVENUE}`,
         count: sql<number>`COUNT(*)`,
       })
       .from(orders)
@@ -144,7 +153,7 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
       // 1. Total revenue & order count for the period
       db
         .select({
-          totalRevenue: sql<string>`COALESCE(SUM(${orders.totalAmount}), 0)`,
+          totalRevenue: sql<string>`${SUM_NET_REVENUE}`,
           totalOrders: sql<number>`COUNT(*)`,
         })
         .from(orders)
@@ -155,7 +164,7 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
       db
         .select({
           date: sql<string>`DATE(${orders.createdAt})`,
-          total: sql<string>`SUM(${orders.totalAmount})`,
+          total: sql<string>`${SUM_NET_REVENUE}`,
           count: sql<number>`COUNT(*)`,
         })
         .from(orders)
@@ -173,7 +182,9 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
         })
         .from(orderItems)
         .innerJoin(orders, eq(orderItems.orderId, orders.id))
-        .where(gte(orders.createdAt, startDate))
+        // Same gate as the revenue figures: a "top product" built from
+        // abandoned checkouts is not a top product.
+        .where(and(gte(orders.createdAt, startDate), COLLECTED_PAYMENT))
         .groupBy(orderItems.productId, orderItems.productName)
         .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
         .limit(5),

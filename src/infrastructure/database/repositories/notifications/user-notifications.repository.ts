@@ -10,7 +10,7 @@ import {
   UserNotification,
   NewUserNotification,
 } from "@/db/schema";
-import { eq, and, desc, count, sql } from "drizzle-orm";
+import { eq, and, asc, desc, count } from "drizzle-orm";
 import {
   UserNotificationsRepositoryInterface,
   UserNotificationWithProduct,
@@ -41,14 +41,25 @@ export class DrizzleUserNotificationsRepository implements UserNotificationsRepo
         )
       : eq(userNotifications.userId, userId);
 
-    // Get primary image subquery
+    // The primary image, not the alphabetically first one.
+    //
+    // This was `MIN(image_url)` grouped by product, which returns *an* image —
+    // which is why it never looked broken — but not the row flagged
+    // `isPrimary`. Every other read path in the codebase resolves
+    // `images.find(img => img.isPrimary) ?? images[0]`, and this now agrees
+    // with them: DISTINCT ON keeps it to one round trip, and the ORDER BY
+    // inside is what selects the row.
     const primaryImage = db
-      .select({
+      .selectDistinctOn([productImages.productId], {
         productId: productImages.productId,
-        imageUrl: sql<string>`MIN(${productImages.imageUrl})`.as("imageUrl"),
+        imageUrl: productImages.imageUrl,
       })
       .from(productImages)
-      .groupBy(productImages.productId)
+      .orderBy(
+        productImages.productId,
+        desc(productImages.isPrimary),
+        asc(productImages.displayOrder)
+      )
       .as("primaryImage");
 
     const results = await db
@@ -75,11 +86,20 @@ export class DrizzleUserNotificationsRepository implements UserNotificationsRepo
     return results;
   }
 
-  async markAsRead(id: string): Promise<void> {
+  /**
+   * Scoped to the owner.
+   *
+   * An id alone would let any signed-in user act on another user's row. A
+   * non-matching row no-ops, which is the right behaviour — it leaks nothing
+   * about whether the id exists.
+   */
+  async markAsRead(id: string, userId: string): Promise<void> {
     await db
       .update(userNotifications)
       .set({ isRead: true })
-      .where(eq(userNotifications.id, id));
+      .where(
+        and(eq(userNotifications.id, id), eq(userNotifications.userId, userId))
+      );
   }
 
   async markAllAsRead(userId: string): Promise<void> {
@@ -107,8 +127,13 @@ export class DrizzleUserNotificationsRepository implements UserNotificationsRepo
     return result?.count ?? 0;
   }
 
-  async delete(id: string): Promise<void> {
-    await db.delete(userNotifications).where(eq(userNotifications.id, id));
+  /** Scoped to the owner, for the same reason as `markAsRead`. */
+  async delete(id: string, userId: string): Promise<void> {
+    await db
+      .delete(userNotifications)
+      .where(
+        and(eq(userNotifications.id, id), eq(userNotifications.userId, userId))
+      );
   }
 
   async deleteAll(userId: string): Promise<void> {

@@ -34,22 +34,12 @@ export class UserProfileEntity {
   /**
    * Check if user is a worker
    */
-  isWorker(): boolean {
-    return this.role === "worker";
-  }
 
   /**
    * Check if user is a customer
    */
   isCustomer(): boolean {
     return this.role === "customer";
-  }
-
-  /**
-   * Check if user can access admin panel (admin, super_admin, or worker)
-   */
-  canAccessAdminPanel(): boolean {
-    return this.isAdmin() || this.isWorker();
   }
 
   /**

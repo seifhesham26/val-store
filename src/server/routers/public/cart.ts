@@ -121,4 +121,34 @@ export const cartRouter = router({
     const useCase = container.getClearCartUseCase();
     return useCase.execute(ctx.user.id);
   }),
+
+  /**
+   * Fold a guest's locally-held cart lines into the server cart at sign-in.
+   *
+   * Only productId/variantId/quantity are accepted — a guest cart can sit in
+   * localStorage for days, so its price is stale display state and is never
+   * read here. The use case re-resolves both price and stock from the
+   * database before writing anything.
+   */
+  mergeGuestItems: protectedProcedure
+    .input(
+      z.object({
+        items: z
+          .array(
+            z.object({
+              productId: z.string().uuid(),
+              variantId: z.string().uuid().nullable(),
+              quantity: z.number().int().min(1),
+            })
+          )
+          .max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const useCase = container.getMergeGuestCartItemsUseCase();
+      return useCase.execute({
+        userId: ctx.user.id,
+        items: input.items,
+      });
+    }),
 });

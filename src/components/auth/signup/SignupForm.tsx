@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import Link from "next/link";
 import type { ExtendedSignUpEmail } from "@/types/auth";
 import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
+import { PasswordValueObject } from "@/domain/customers/value-objects/password.value-object";
+import { PasswordStrengthMeter } from "@/components/auth/PasswordStrengthMeter";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -70,8 +72,9 @@ export function SignupForm() {
       return;
     }
 
-    if (formData.password.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    const passwordValidation = PasswordValueObject.validate(formData.password);
+    if (!passwordValidation.isValid) {
+      toast.error(passwordValidation.errors[0]);
       return;
     }
 
@@ -194,6 +197,7 @@ export function SignupForm() {
           required
           className="bg-white/6 border-white/10 text-white placeholder:text-gray-500"
         />
+        <PasswordStrengthMeter password={formData.password} />
       </div>
 
       <div className="space-y-2">

@@ -423,6 +423,30 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
       await tx.update(orders).set(updates).where(eq(orders.id, orderId));
 
+      // Cash on delivery collects at the door, and nothing recorded it.
+      //
+      // `markAsPaid` is the only other writer of `payment_status = 'completed'`
+      // and all of its callers are Stripe paths, so a COD order's payment row
+      // stayed `pending` forever no matter what an admin did to it — which
+      // made every revenue figure blind to the payment method this store most
+      // likely depends on.
+      //
+      // Conditional on the row still being pending, so redelivering the same
+      // transition cannot double-write, and scoped to COD so it can never
+      // mark a card order paid that Stripe has not confirmed.
+      if (target === "delivered") {
+        await tx
+          .update(payments)
+          .set({ paymentStatus: "completed", updatedAt: new Date() })
+          .where(
+            and(
+              eq(payments.orderId, orderId),
+              eq(payments.paymentMethod, "cash_on_delivery"),
+              eq(payments.paymentStatus, "pending")
+            )
+          );
+      }
+
       if (!isClosing) return;
 
       const now = new Date();
@@ -830,10 +854,6 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   /**
    * Update an order - NOT IMPLEMENTED
    */
-  async update(): Promise<OrderEntity> {
-    throw new Error("Order update not implemented - use specific methods");
-  }
-
   /**
    * Delete an order
    */
@@ -866,21 +886,6 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     return result[0]?.count || 0;
-  }
-
-  /**
-   * Get total revenue
-   */
-  async getTotalRevenue(): Promise<number> {
-    // Only count paid/delivered orders
-    const result = await db
-      .select({
-        total: sql<string>`COALESCE(SUM(CAST(${orders.totalAmount} AS NUMERIC)), 0)`,
-      })
-      .from(orders)
-      .where(sql`${orders.status} IN ('processing', 'shipped', 'delivered')`);
-
-    return parseFloat(result[0]?.total || "0");
   }
 
   /**

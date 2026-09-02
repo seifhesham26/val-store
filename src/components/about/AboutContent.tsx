@@ -1,6 +1,6 @@
 export function AboutContent() {
   return (
-    <div className="prose dark:prose-invert max-w-3xl mx-auto">
+    <div className="prose-val max-w-3xl mx-auto">
       <h2>Our Story</h2>
       <p>
         Valkyrie was founded with a simple mission: to make premium streetwear

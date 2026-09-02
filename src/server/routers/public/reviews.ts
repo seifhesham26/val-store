@@ -5,7 +5,7 @@
  */
 
 import { router, publicProcedure, protectedProcedure } from "@/server/trpc";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { DrizzleReviewRepository } from "@/infrastructure/database/repositories/reviews/review.repository";
 import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";

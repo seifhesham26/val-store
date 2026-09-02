@@ -6,7 +6,7 @@
  * Manage hero section, announcements, and other homepage content.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -30,9 +30,13 @@ import { Slider } from "@/components/ui/slider";
 import { Save, Loader2, RefreshCw, History, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { ContentHistoryDialog } from "./ContentHistoryDialog";
 
 export function HomepageSettings() {
   const [isSaving, setIsSaving] = useState(false);
+  const [historySection, setHistorySection] = useState<
+    "hero" | "announcement" | null
+  >(null);
 
   // Fetch hero section content
   const {
@@ -88,8 +92,11 @@ export function HomepageSettings() {
     textAlignment: "center" as "left" | "center" | "right",
   });
 
-  // Initialize form when data loads
-  useState(() => {
+  // Re-sync whenever the server copy changes — not just on mount. A `useState`
+  // initializer here only ever ran once, so Refresh (and now Revert) updated
+  // `heroSection` while the form kept showing the pre-revert values until a
+  // full page reload. That defeated the point of a revert button.
+  useEffect(() => {
     if (heroSection?.content) {
       setHeroForm({
         title: heroSection.content.title || "",
@@ -101,7 +108,70 @@ export function HomepageSettings() {
         textAlignment: heroSection.content.textAlignment || "center",
       });
     }
-  });
+  }, [heroSection]);
+
+  /**
+   * Announcement form state.
+   *
+   * The whole announcement editor was decorative: uncontrolled `defaultValue`
+   * inputs, an "Add" button with no handler, and a Save button with no
+   * `onClick` at all — an admin could type a new message, press Save, and get
+   * no error and no change. Only the on/off Switch ever did anything.
+   *
+   * `announcement` is one of the two section types CLAUDE.md describes as
+   * wired end to end. Its *rendering* was; its editing was not.
+   */
+  const [announcementMessages, setAnnouncementMessages] = useState<
+    { text: string; link: string }[]
+  >([{ text: "", link: "" }]);
+
+  useEffect(() => {
+    const stored = announcementSection?.content?.messages;
+    setAnnouncementMessages(
+      stored?.length
+        ? stored.map((m: { text: string; link?: string }) => ({
+            text: m.text,
+            link: m.link ?? "",
+          }))
+        : [{ text: "", link: "" }]
+    );
+  }, [announcementSection]);
+
+  const setMessageField = (
+    index: number,
+    field: "text" | "link",
+    value: string
+  ) => {
+    setAnnouncementMessages((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, [field]: value } : m))
+    );
+  };
+
+  const handleSaveAnnouncement = async () => {
+    setIsSaving(true);
+    try {
+      // Blank rows are a UI affordance, not content — the schema requires at
+      // least one message, and the bar would otherwise rotate through empties.
+      const messages = announcementMessages
+        .map((m) => ({
+          text: m.text.trim(),
+          link: m.link.trim() || undefined,
+        }))
+        .filter((m) => m.text);
+
+      if (messages.length === 0) {
+        toast.error("Add at least one message before saving");
+        return;
+      }
+
+      await updateSection.mutateAsync({
+        sectionType: "announcement",
+        content: { messages },
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleSaveHero = async () => {
     setIsSaving(true);
@@ -249,7 +319,11 @@ export function HomepageSettings() {
 
           {/* Save Button */}
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHistorySection("hero")}
+            >
               <History className="h-4 w-4 mr-2" />
               View History
             </Button>
@@ -296,11 +370,10 @@ export function HomepageSettings() {
                 <Label htmlFor="announcement-message">Message</Label>
                 <Textarea
                   id="announcement-message"
-                  placeholder="Free shipping on orders over $100!"
+                  placeholder="Free shipping on orders over EGP 2,000"
                   rows={2}
-                  defaultValue={
-                    announcementSection?.content?.messages?.[0] || ""
-                  }
+                  value={announcementMessages[0]?.text ?? ""}
+                  onChange={(e) => setMessageField(0, "text", e.target.value)}
                 />
               </div>
 
@@ -308,40 +381,84 @@ export function HomepageSettings() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Additional Messages (rotate)</Label>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setAnnouncementMessages((prev) => [
+                        ...prev,
+                        { text: "", link: "" },
+                      ])
+                    }
+                  >
                     <Plus className="h-4 w-4 mr-1" />
                     Add
                   </Button>
                 </div>
+                {announcementMessages.slice(1).map((message, index) => (
+                  <div key={index + 1} className="flex items-center gap-2">
+                    <Input
+                      value={message.text}
+                      placeholder="Another message"
+                      onChange={(e) =>
+                        setMessageField(index + 1, "text", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setAnnouncementMessages((prev) =>
+                          prev.filter((_, i) => i !== index + 1)
+                        )
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
                 <div className="text-xs text-muted-foreground">
                   Add multiple messages to rotate in the announcement bar
                 </div>
               </div>
 
               {/* Link */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="announcement-link">Link URL (optional)</Label>
-                  <Input
-                    id="announcement-link"
-                    placeholder="/collections/sale"
-                    defaultValue={announcementSection?.content?.linkUrl || ""}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="announcement-link-text">Link Text</Label>
-                  <Input
-                    id="announcement-link-text"
-                    placeholder="Shop Now"
-                    defaultValue={announcementSection?.content?.linkText || ""}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="announcement-link">Link URL (optional)</Label>
+                <Input
+                  id="announcement-link"
+                  placeholder="/collections/sale"
+                  value={announcementMessages[0]?.link ?? ""}
+                  onChange={(e) => setMessageField(0, "link", e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Makes the first message clickable. There was a &quot;Link
+                  Text&quot; field here too; the schema has no home for it — a
+                  message is its own link text — so it has been removed rather
+                  than left looking editable.
+                </p>
               </div>
 
               {/* Save Button */}
-              <div className="flex justify-end pt-2">
-                <Button size="sm">
-                  <Save className="h-4 w-4 mr-2" />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHistorySection("announcement")}
+                >
+                  <History className="h-4 w-4 mr-2" />
+                  View History
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveAnnouncement}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
                   Save Announcement
                 </Button>
               </div>
@@ -349,6 +466,17 @@ export function HomepageSettings() {
           )}
         </CardContent>
       </Card>
+
+      <ContentHistoryDialog
+        sectionType={historySection ?? "hero"}
+        sectionLabel={
+          historySection === "announcement" ? "Announcement" : "Hero"
+        }
+        open={historySection !== null}
+        onOpenChange={(open) => {
+          if (!open) setHistorySection(null);
+        }}
+      />
     </div>
   );
 }

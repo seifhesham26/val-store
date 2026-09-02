@@ -5,7 +5,7 @@
  */
 
 import { router, protectedProcedure } from "@/server/trpc";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { DrizzleUserNotificationsRepository } from "@/infrastructure/database/repositories/notifications/user-notifications.repository";
 
 const notificationsRepo = new DrizzleUserNotificationsRepository();
@@ -42,8 +42,8 @@ export const publicNotificationsRouter = router({
    */
   markAsRead: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      await notificationsRepo.markAsRead(input.id);
+    .mutation(async ({ input, ctx }) => {
+      await notificationsRepo.markAsRead(input.id, ctx.user.id);
       return { success: true };
     }),
 
@@ -60,8 +60,8 @@ export const publicNotificationsRouter = router({
    */
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      await notificationsRepo.delete(input.id);
+    .mutation(async ({ input, ctx }) => {
+      await notificationsRepo.delete(input.id, ctx.user.id);
       return { success: true };
     }),
 });

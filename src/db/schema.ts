@@ -343,7 +343,12 @@ export const orders = pgTable(
       .default("0")
       .notNull(),
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    // EGP, not USD. A literal rather than STORE_CURRENCY because a column
+    // default has to be stable across environments — if it read the env var,
+    // `db:push` would propose a schema change whenever the var differed.
+    // Rows written before this default was corrected say USD though they were
+    // charged in EGP; drizzle/0003_backfill_currency.sql fixes them.
+    currency: varchar("currency", { length: 3 }).default("EGP").notNull(),
     // Which coupon produced `discountAmount`. Previously only `coupon_usages`
     // knew, which made it impossible to record the redemption *after* payment
     // — the order had no idea what to credit.
@@ -581,7 +586,12 @@ export const payments = pgTable(
       .default("pending")
       .notNull(),
     amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    // EGP, not USD. A literal rather than STORE_CURRENCY because a column
+    // default has to be stable across environments — if it read the env var,
+    // `db:push` would propose a schema change whenever the var differed.
+    // Rows written before this default was corrected say USD though they were
+    // charged in EGP; drizzle/0003_backfill_currency.sql fixes them.
+    currency: varchar("currency", { length: 3 }).default("EGP").notNull(),
     transactionId: varchar("transaction_id", { length: 255 }),
     paymentGatewayResponse: text("payment_gateway_response"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -707,9 +717,17 @@ export const siteSettings = pgTable("site_settings", {
   tiktokUrl: varchar("tiktok_url", { length: 255 }),
 
   // Store Settings
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-  locale: varchar("locale", { length: 10 }).notNull().default("en-US"),
-  timezone: varchar("timezone", { length: 50 }).notNull().default("UTC"),
+  //
+  // Read by nothing: currency is deployment config in `src/lib/currency.ts`,
+  // because a Stripe account is bound to the currency it charges in and every
+  // stored price is denominated in it — switching is a migration, not a
+  // dropdown. The defaults are corrected anyway so this row stops contradicting
+  // what the store actually does.
+  currency: varchar("currency", { length: 3 }).notNull().default("EGP"),
+  locale: varchar("locale", { length: 10 }).notNull().default("en-EG"),
+  timezone: varchar("timezone", { length: 50 })
+    .notNull()
+    .default("Africa/Cairo"),
 
   // SEO Defaults
   defaultMetaTitle: varchar("default_meta_title", { length: 255 }),

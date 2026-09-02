@@ -4,6 +4,61 @@ A catalogue of defects and gaps found by reading the codebase in full. Unlike th
 
 Each entry gives the location, what actually happens, why, and a concrete fix.
 
+> ## Status: 2026-09-02 remediation pass
+>
+> Everything below was worked through on `feat/p3-pass2-remediation`. Read
+> `docs/superpowers/specs/2026-09-02-p3-pass2-design.md` for the decisions taken
+> and `docs/P3-TEST-PLAN.md` for what still needs a human to verify — which is
+> most of the visual work.
+>
+> **Ten defects this catalogue did not record** were found while implementing
+> it. In rough order of consequence:
+>
+> 1. **Product and category image uploads were dead for everyone**, including
+>    super_admins. `src/lib/uploadthing.ts` read the admin role from
+>    `session.session.role`; the `session` table has no `role` column, so the
+>    value was always `undefined` and the gate rejected every uploader. This
+>    catalogue warns against exactly that mistake elsewhere.
+> 2. **A COD order never recorded that it collected money.** `markAsPaid` is the
+>    only writer of `payment_status = 'completed'` and every caller is a Stripe
+>    path, so gating revenue on the payments table — the obvious fix for P2-2 —
+>    would have reported near-zero for the payment method this store most likely
+>    depends on. The status machine is also backwards for COD: it puts `paid`
+>    before `shipped`.
+> 3. **The LIKE-escaping fix (#22) was incomplete.** `containsPattern` reached
+>    the products repository but not `customer.repository.ts:112-113` or
+>    `admin/customers.ts:52`; a search for `%` matched every row.
+> 4. **`admin.customers.getById` loaded every order** with every line and every
+>    joined product, unbounded, for a dialog that renders a summary.
+> 5. **`newsletter.subscribe` was an unthrottled anonymous insert**, while
+>    `apiRateLimiter` sat defined with zero consumers. Better Auth's own limits
+>    were never stated either.
+> 6. **Six domain repository interfaces import Drizzle row types** from
+>    `@/db/schema` — a wider breach of the inward-only rule than the three
+>    application files CLAUDE.md records. **Deliberately not fixed:** those types
+>    sit in interface signatures, so unwinding them is its own refactor.
+> 7. **Order creation never checked that an address belonged to the customer.**
+>    `CreateOrderUseCase` took `shippingAddressId` — and, once billing addresses
+>    were added, `billingAddressId` too — straight from the client and wrote them
+>    onto the order. Any signed-in customer could quote another customer's
+>    address id, and since the order detail page now resolves and renders the
+>    address, they would have been shown that person's name, street and phone.
+>    Found by reviewing the combined diff, not by any test.
+> 8. **The announcement editor was decorative.** Uncontrolled inputs, a dead Add
+>    button, and a Save button with no handler at all — over a schema whose
+>    messages are objects rather than strings, so the textarea was rendering an
+>    object. `announcement` is one of the two section types this repo describes
+>    as "wired end to end"; its rendering was, its editing was not.
+> 9. **No Content-Security-Policy**, and a deprecated `X-XSS-Protection` header.
+> 10. **`pnpm-workspace.yaml` held an unanswered `allowBuilds` stub** that made
+>     `pnpm install` exit non-zero, which broke the husky pre-commit hook.
+>
+> **Six entries below were stale** and have been corrected in place: #36's
+> warning count, P2-5's claim that no boundaries exist, P2-7's `drawer.tsx` and
+> its "all three are unused" (`sheet.tsx` is imported by `CartDrawer`, so it was
+> live), P2-13's file and dependency counts, and the P2-Performance note
+> claiming collection pages are still client-side.
+
 Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 124/124 unit tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
 
 Coverage improved with the P2 work but is still narrow. `pnpm test` is unit-only and is all CI runs; `pnpm test:integration` adds repository and router tests against a real database, and is where the SQL introduced by the performance work is checked against the domain logic it replaced. There are still no component tests.
@@ -278,11 +333,11 @@ and in a real browser, not by reasoning about the code.
 Measured on the actual data (36 active products, 516 variants, 13 categories),
 best of three runs:
 
-| Path | Before | After | |
-| --- | --- | --- | --- |
-| Storefront product grid, page 1 | 2877 ms | 472 ms | **6.1×** |
-| Product search | 1281 ms | 456 ms | **2.8×** |
-| Category list with counts | 1566 ms | 150 ms | **10.4×** |
+| Path                            | Before  | After  |           |
+| ------------------------------- | ------- | ------ | --------- |
+| Storefront product grid, page 1 | 2877 ms | 472 ms | **6.1×**  |
+| Product search                  | 1281 ms | 456 ms | **2.8×**  |
+| Category list with counts       | 1566 ms | 150 ms | **10.4×** |
 
 ### 21. Product and order lists fetch every row, then slice ✅
 
@@ -303,7 +358,7 @@ that ever changes, the predicate needs the same "latest row wins" rule
 
 ### 22. Search re-implements in JavaScript what the repository already does in SQL ✅
 
-Resolved by moving search *into* `ProductFilters` rather than by calling the old
+Resolved by moving search _into_ `ProductFilters` rather than by calling the old
 `search()` method — a separate method could not compose with `limit`/`offset`,
 which is what made the JavaScript version tempting in the first place. The
 now-genuinely-duplicate `DrizzleProductRepository.search()` is deleted, along
@@ -346,7 +401,7 @@ the next load.
 Found while measuring, and the single largest cost on the storefront.
 
 `useVariantStock` keys its query on the variant ids it is handed, and every
-`ProductCard` renders a `QuickAddSliderBar` that calls it with *that card's*
+`ProductCard` renders a `QuickAddSliderBar` that calls it with _that card's_
 variants — so each card had its own query key, its own request and its own
 `refetchInterval`. A twelve-card grid called `getStock` twelve times on load and
 twelve more every fifteen seconds, forever, growing as the customer scrolled.
@@ -746,7 +801,7 @@ Every P0 and all but one P1 are done — see [Resolved](#resolved). Nothing left
 
 **~~Then — performance, #21-25.~~ Done 2026-08-31** — see [P2](#p2--performance-), which also swept up P2-9 and three problems found while measuring: every product card ran its own live-stock query, the footer queried the database on every page, and images bypassed the optimiser entirely.
 
-**One action is outstanding:** `drizzle/0001_glossy_scourge.sql` adds two composite indexes and has **not been applied**. It is written to be idempotent, so `pnpm db:push` or `pnpm db:migrate` is safe on the existing pushed database. The measured gains below were achieved *without* it; the indexes are on top.
+**One action is outstanding:** `drizzle/0001_glossy_scourge.sql` adds two composite indexes and has **not been applied**. It is written to be idempotent, so `pnpm db:push` or `pnpm db:migrate` is safe on the existing pushed database. The measured gains below were achieved _without_ it; the indexes are on top.
 
 **Then the deferred decisions,** each of which is a choice before it is a fix: #29 (four CMS section types with no consumer — adopt or delete), #34 (the `worker` role), #35 (guest carts), #37 (billing addresses), and the phone-keyed `customers` table in #38.
 
