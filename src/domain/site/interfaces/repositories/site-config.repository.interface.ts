@@ -66,7 +66,6 @@ export interface ISiteConfigRepository {
 
   // Content Sections
   getContentSection(sectionType: string): Promise<ContentSectionEntity | null>;
-  getAllContentSections(): Promise<ContentSectionEntity[]>;
   getActiveContentSections(): Promise<ContentSectionEntity[]>;
   updateContentSection(
     sectionType: string,

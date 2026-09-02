@@ -37,6 +37,7 @@ export function UserDialog({ user }: UserDialogProps) {
           // codebase writes. This is the cleanup that line looked like it
           // was meant to be.
           useCartStore.getState().clearCart();
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate full page load: sign-out has to reset the Better Auth client session store
           window.location.href = "/login";
         },
       },

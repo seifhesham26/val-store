@@ -9,27 +9,39 @@ import { db } from "@/db";
 import { userProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-// User roles that have admin access
-const ADMIN_ROLES = ["admin", "super_admin"] as const;
+/**
+ * The role predicates live in `domain/` and are re-exported here.
+ *
+ * They are pure, and this module imports `@/db` — so leaving them here made
+ * them unreachable from any client component. `uploadthing.ts` still asks
+ * `isAdminRole` (an upload is a write); the tRPC middlewares below pair it
+ * with `isAdminAreaRole`.
+ *
+ * The pairing is the whole model. `adminProcedure` gates on the wider list and
+ * `adminWriteProcedure` on the narrower one, so a *new* admin procedure
+ * defaults to the read tier — which means a new mutation that forgets
+ * `adminWriteProcedure` is writable by a worker. That cannot be caught by the
+ * type system, so `src/server/admin-write-gating.test.ts` catches it instead.
+ */
+export {
+  isAdminRole,
+  isAdminAreaRole,
+  isReadOnlyAdminRole,
+} from "@/domain/customers/value-objects/user-role";
 
-export type UserRole = "customer" | "worker" | "admin" | "super_admin";
+import {
+  isAdminRole,
+  isAdminAreaRole,
+  type UserRole,
+} from "@/domain/customers/value-objects/user-role";
+
+export type { UserRole };
 
 export interface AuthUser {
   id: string;
   email: string;
   name: string | null;
   role: UserRole;
-}
-
-/**
- * Whether a role grants admin access.
- *
- * The single source for that question. `uploadthing.ts` used to answer it by
- * hardcoding the two strings and comparing them against a field the `session`
- * table does not have, which meant its gate rejected everyone.
- */
-export function isAdminRole(role: UserRole): boolean {
-  return ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]);
 }
 
 /**
@@ -126,9 +138,27 @@ export function requireRole(user: AuthUser, roles: UserRole[]): void {
 }
 
 /**
- * Require user to be an admin (admin or super_admin)
- * Convenience wrapper for requireRole
+ * Require write access to admin-managed data (admin or super_admin).
+ *
+ * The message names the reason rather than the role, because the person
+ * hitting this is most often a worker who can see the screen they just tried
+ * to submit — "you do not have permission" alone reads like a bug to them.
  */
 export function requireAdmin(user: AuthUser): void {
-  requireRole(user, ["admin", "super_admin"]);
+  if (!isAdminRole(user.role)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your account has read-only access to the admin area",
+    });
+  }
+}
+
+/** Require permission to open the admin area at all (worker and above). */
+export function requireAdminArea(user: AuthUser): void {
+  if (!isAdminAreaRole(user.role)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You do not have permission to access this resource",
+    });
+  }
 }

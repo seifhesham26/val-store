@@ -2,7 +2,7 @@ import { revalidateTag } from "next/cache";
 import { container } from "@/application/container";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
 import { z } from "zod";
-import { router, adminProcedure } from "../../trpc";
+import { router, adminProcedure, adminWriteProcedure } from "../../trpc";
 
 /**
  * Categories Router - Thin Adapter
@@ -66,7 +66,7 @@ export const categoriesRouter = router({
   }),
 
   // Create new category
-  create: adminProcedure
+  create: adminWriteProcedure
     .input(createCategorySchema)
     .mutation(async ({ input }) => {
       const useCase = container.getCreateCategoryUseCase();
@@ -76,7 +76,7 @@ export const categoriesRouter = router({
     }),
 
   // Update an existing category
-  update: adminProcedure
+  update: adminWriteProcedure
     .input(updateCategorySchema)
     .mutation(async ({ input }) => {
       const useCase = container.getUpdateCategoryUseCase();
@@ -86,7 +86,7 @@ export const categoriesRouter = router({
     }),
 
   // Delete category
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(deleteCategorySchema)
     .mutation(async ({ input }) => {
       const useCase = container.getDeleteCategoryUseCase();

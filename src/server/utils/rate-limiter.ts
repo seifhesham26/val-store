@@ -11,6 +11,7 @@
 
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { TRPCError } from "@trpc/server";
 
 /**
  * Whether Upstash Redis is configured.
@@ -85,6 +86,29 @@ export async function checkRateLimit(
     remaining: result.remaining,
     resetInMs: result.reset - Date.now(),
   };
+}
+
+/**
+ * Check a limit and reject the call if it is over budget.
+ *
+ * The check-then-throw pair was written out at every call site, which is how
+ * the codebase ended up with `apiRateLimiter` defined and wired to exactly one
+ * endpoint: adding a limit looked like more work than it was. This is that
+ * pair, once.
+ *
+ * Silent no-op without UPSTASH_* configured, inherited from `checkRateLimit` —
+ * local development is unaffected.
+ */
+export async function enforceRateLimit(
+  limiter: Ratelimit | null,
+  identifier: string,
+  message = "Too many requests. Please try again shortly."
+): Promise<void> {
+  const { allowed } = await checkRateLimit(limiter, identifier);
+
+  if (!allowed) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message });
+  }
 }
 
 /**

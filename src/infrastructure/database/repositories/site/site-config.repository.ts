@@ -110,25 +110,9 @@ export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
     });
   }
 
-  async getAllContentSections(): Promise<ContentSectionEntity[]> {
-    const results = await db
-      .select()
-      .from(contentSections)
-      .orderBy(asc(contentSections.displayOrder));
-
-    return results.map((r) =>
-      ContentSectionEntity.create({
-        id: r.id,
-        sectionType: r.sectionType,
-        content: r.content,
-        displayOrder: r.displayOrder,
-        isActive: r.isActive,
-        version: r.version,
-        updatedAt: r.updatedAt,
-        updatedBy: r.updatedBy,
-      })
-    );
-  }
+  // `getAllContentSections` was deleted with its router procedure
+  // (ISSUES.md #28) — neither had a caller. `getActiveContentSections` below
+  // is the one the storefront actually reads.
 
   async getActiveContentSections(): Promise<ContentSectionEntity[]> {
     const results = await db

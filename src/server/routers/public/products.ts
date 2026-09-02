@@ -13,10 +13,16 @@
  */
 
 import { z } from "zod";
+import { headers } from "next/headers";
 import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import type { ProductEntity } from "@/domain/products/entities/product.entity";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
+import {
+  apiRateLimiter,
+  enforceRateLimit,
+  getClientIp,
+} from "@/server/utils/rate-limiter";
 
 /**
  * Attach the presentation data a product card needs, in two queries total.
@@ -116,12 +122,25 @@ export const publicProductsRouter = router({
   search: publicProcedure
     .input(
       z.object({
-        query: z.string().min(1),
+        // Bounded. Nothing legitimate searches with a 100KB term, and this one
+        // becomes an `ILIKE '%…%'` pattern against two columns.
+        query: z.string().min(1).max(100),
         limit: z.number().min(1).max(50).optional().default(12),
         cursor: z.number().min(1).optional(),
       })
     )
     .query(async ({ input }) => {
+      // The most expensive thing an anonymous caller can ask for: two
+      // unindexed leading-wildcard scans per call, with no auth to slow anyone
+      // down first. Reading the client IP is not an auth lookup, so this does
+      // not mark the request as having touched auth and the response stays
+      // publicly cacheable — which is also why the limiter only ever sees the
+      // requests a shared cache could not answer.
+      await enforceRateLimit(
+        apiRateLimiter,
+        `search:${getClientIp(await headers())}`
+      );
+
       const repo = container.getProductRepository();
       const page = input.cursor ?? 1;
       const { limit, offset } = pageWindow(page, input.limit ?? 12);

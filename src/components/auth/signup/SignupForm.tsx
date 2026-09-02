@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signUp } from "@/lib/auth-client";
+import { safeRedirect } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -36,7 +37,9 @@ interface SignupFormData {
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/";
+  // `?redirect=` is attacker-controllable — see `safe-url.ts`. Same-origin
+  // paths only; anything else lands on the home page.
+  const redirectUrl = safeRedirect(searchParams.get("redirect"));
   const [formData, setFormData] = useState<SignupFormData>({
     email: "",
     password: "",

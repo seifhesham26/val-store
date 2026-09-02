@@ -194,6 +194,7 @@ export function MobileMenu({
                         // for whoever uses the browser next.
                         useCartStore.getState().clearCart();
                         onClose();
+                        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate full page load: sign-out has to reset the Better Auth client session store
                         window.location.href = "/login";
                       },
                     },

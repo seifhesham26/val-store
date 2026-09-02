@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, avg, count, inArray } from "drizzle-orm";
 import {
+  ReviewPage,
   ReviewRepositoryInterface,
   ReviewWithUser,
 } from "@/domain/reviews/interfaces/repositories/review.repository.interface";
@@ -27,13 +28,14 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
 
   async findByProductId(
     productId: string,
-    onlyApproved = true
+    onlyApproved = true,
+    page?: ReviewPage
   ): Promise<ReviewWithUser[]> {
     const conditions = onlyApproved
       ? and(eq(reviews.productId, productId), eq(reviews.isApproved, true))
       : eq(reviews.productId, productId);
 
-    const results = await db
+    const query = db
       .select({
         id: reviews.id,
         productId: reviews.productId,
@@ -54,7 +56,10 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
       .where(conditions)
       .orderBy(desc(reviews.createdAt));
 
-    return results;
+    // Bounded in SQL, so an unbounded result set is never assembled in the
+    // first place. Applied conditionally rather than as a sentinel `LIMIT`,
+    // which would be a lie to the query planner as well as to the reader.
+    return page ? query.limit(page.limit).offset(page.offset ?? 0) : query;
   }
 
   async findByUserId(userId: string): Promise<Review[]> {

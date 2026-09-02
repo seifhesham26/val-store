@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { getCachedHeroSection } from "@/lib/cache";
 import { HeroScrollIndicator } from "./HeroScrollIndicator";
 import { unoptimizedFor } from "@/lib/image-hosts";
+import { safeHref } from "@/lib/safe-url";
 
 interface HeroContent {
   title?: string;
@@ -57,7 +58,12 @@ export async function ServerHeroSection() {
     content.subtitle ??
     "Discover the new collection crafted for those who dare to stand out.";
   const ctaText = content.ctaText ?? "Shop Now";
-  const ctaLink = content.ctaLink ?? "/collections/all";
+  // Not `?? default` on the raw value: this content is read straight out of
+  // the database with `JSON.parse` and spread over the defaults, with no Zod
+  // parse on this path, so a row written before `ctaLink` was validated
+  // arrives here exactly as stored. A rejected link falls back to the
+  // default destination rather than disappearing — the CTA needs a target.
+  const ctaLink = safeHref(content.ctaLink) ?? "/collections/all";
   const backgroundImage = content.backgroundImage;
   const heroImage =
     backgroundImage || "https://picsum.photos/seed/hero-valkyrie/1920/1080";

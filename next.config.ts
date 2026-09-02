@@ -22,6 +22,46 @@ const nextConfig: NextConfig = {
 
   // Security headers
   async headers() {
+    /**
+     * The policy, as one list, used twice.
+     *
+     * It is split rather than shipped whole because the two halves are at very
+     * different stages. Everything in ENFORCED is known not to break this app —
+     * nothing embeds it, nothing sets a `<base>`, nothing loads a plugin, and
+     * every form posts to its own origin — so leaving those unenforced bought
+     * nothing. `script-src`/`style-src` are the genuinely uncertain ones: Next
+     * injects inline bootstrap scripts, so tightening them needs nonce support
+     * wired through the layout, and a policy guessed in one sitting would break
+     * production and be reverted rather than fixed.
+     *
+     * Previously the whole thing was report-only *and* had no reporting
+     * endpoint, which is the one configuration that does nothing at all: it
+     * blocks nothing and records nothing. `/api/csp-report` now collects the
+     * violations, so promoting the rest is a matter of reading the logs rather
+     * than guessing.
+     */
+    const ENFORCED = [
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+    ];
+
+    const REPORTED = [
+      "default-src 'self'",
+      // `'unsafe-inline'`/`'unsafe-eval'` are placeholders — the reason this
+      // half is not enforced. Remove them once nonces are wired through.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self' https://api.stripe.com https://*.uploadthing.com https://*.ingest.uploadthing.com https://*.upstash.io",
+      "frame-src https://js.stripe.com https://hooks.stripe.com",
+      ...ENFORCED,
+      "report-uri /api/csp-report",
+      "report-to csp",
+    ];
+
     return [
       {
         source: "/:path*",
@@ -37,38 +77,19 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
-          /**
-           * Report-only, deliberately.
-           *
-           * There was no CSP at all. A real one cannot be written blind here:
-           * Next injects inline bootstrap scripts, the app talks to Stripe,
-           * UploadThing and Upstash, and images come from several hosts — so a
-           * policy guessed in one sitting would break the site in production
-           * and be reverted rather than fixed.
-           *
-           * Report-only cannot block anything. Deploy it, watch what the
-           * browser console reports over a few days of real traffic, then
-           * promote it to `Content-Security-Policy` once the report is quiet.
-           *
-           * `'unsafe-inline'` on script-src is a placeholder for exactly that
-           * reason: removing it needs Next's nonce support wiring through the
-           * layout, which is its own change.
-           */
+          // The modern reporting channel. `report-uri` above is the legacy one
+          // and is kept because browser support for the two still differs.
+          {
+            key: "Reporting-Endpoints",
+            value: 'csp="/api/csp-report"',
+          },
+          {
+            key: "Content-Security-Policy",
+            value: ENFORCED.join("; "),
+          },
           {
             key: "Content-Security-Policy-Report-Only",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://api.stripe.com https://*.uploadthing.com https://*.ingest.uploadthing.com https://*.upstash.io",
-              "frame-src https://js.stripe.com https://hooks.stripe.com",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "frame-ancestors 'none'",
-            ].join("; "),
+            value: REPORTED.join("; "),
           },
         ],
       },

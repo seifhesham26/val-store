@@ -1,6 +1,6 @@
 import { container } from "@/application/container";
 import { z } from "zod";
-import { router, adminProcedure } from "../../trpc";
+import { router, adminProcedure, adminWriteProcedure } from "../../trpc";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
 
 /**
@@ -92,7 +92,7 @@ export const ordersRouter = router({
    * Record a return. Bounds are enforced against the order itself — you cannot
    * return more than was ordered, nor more than is left to return.
    */
-  refund: adminProcedure
+  refund: adminWriteProcedure
     .input(refundOrderSchema)
     .mutation(async ({ input }) => {
       const useCase = container.getRefundOrderUseCase();
@@ -100,7 +100,7 @@ export const ordersRouter = router({
     }),
 
   // Update order status
-  updateStatus: adminProcedure
+  updateStatus: adminWriteProcedure
     .input(updateOrderStatusSchema)
     .mutation(async ({ input }) => {
       const useCase = container.getUpdateOrderStatusUseCase();

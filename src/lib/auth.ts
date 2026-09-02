@@ -89,12 +89,21 @@ export const auth = betterAuth({
      *
      * Without this, every authenticated call — every cart read, every stock
      * poll — costs a database round trip before the procedure even starts. The
-     * cookie is signed, so it cannot be forged; five minutes bounds how long a
-     * revoked session can keep working, which is the trade being made.
+     * cookie is signed, so it cannot be forged.
+     *
+     * The number is the whole trade, because nothing consults the `session`
+     * table while the cookie is live: for this long after a sign-out, a
+     * revoked session, or a deleted account, requests still succeed. It was
+     * five minutes. It is sixty seconds, for two reasons — it now matches
+     * `ROLE_CACHE_TTL_MS` in `server/utils/auth-helpers.ts`, so revoking
+     * access and demoting an admin take effect on the same timescale instead
+     * of two that have to be reasoned about together; and five minutes of
+     * continued admin access after a revocation is a long time, while the
+     * saving over sixty seconds is one query per user per minute.
      */
     cookieCache: {
       enabled: true,
-      maxAge: 60 * 5,
+      maxAge: 60,
     },
 
     /*

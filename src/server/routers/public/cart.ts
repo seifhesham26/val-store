@@ -9,6 +9,17 @@ import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { z } from "zod";
 
+/**
+ * Ceiling on a single cart line.
+ *
+ * The real limit is stock, enforced by `assertWithinStock` in the cart
+ * repository, and that is what a customer actually runs into. This is the
+ * bound on what the *input* may say at all: without it a request could ask for
+ * 2^31 units and the stock check was the only thing standing between that
+ * number and arithmetic on an order total. Defence in depth, and cheap.
+ */
+const MAX_LINE_QUANTITY = 100;
+
 export const cartRouter = router({
   /**
    * Get user's cart
@@ -25,7 +36,7 @@ export const cartRouter = router({
     .input(
       z.object({
         productId: z.string().uuid(),
-        quantity: z.number().int().min(1).default(1),
+        quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY).default(1),
         variantId: z.string().uuid().nullish(),
       })
     )
@@ -46,7 +57,7 @@ export const cartRouter = router({
     .input(
       z.object({
         cartItemId: z.string().uuid(),
-        quantity: z.number().int().min(1),
+        quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -138,7 +149,7 @@ export const cartRouter = router({
             z.object({
               productId: z.string().uuid(),
               variantId: z.string().uuid().nullable(),
-              quantity: z.number().int().min(1),
+              quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
             })
           )
           .max(100),

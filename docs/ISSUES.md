@@ -7,9 +7,11 @@ Each entry gives the location, what actually happens, why, and a concrete fix.
 > ## Status: 2026-09-02 remediation pass
 >
 > Everything below was worked through on `feat/p3-pass2-remediation`. Read
-> `docs/superpowers/specs/2026-09-02-p3-pass2-design.md` for the decisions taken
-> and `docs/P3-TEST-PLAN.md` for what still needs a human to verify — which is
-> most of the visual work.
+> The design spec and test plan for that pass were deleted on 2026-09-03 —
+> both described a finished branch, and a stale plan is worse than none. The
+> manual checks that still applied moved into `docs/POST-LAUNCH.md` as the
+> pre-launch smoke test. `git log --diff-filter=D -- docs/` recovers the
+> originals if a decision needs re-reading.
 >
 > **Ten defects this catalogue did not record** were found while implementing
 > it. In rough order of consequence:
@@ -59,7 +61,141 @@ Each entry gives the location, what actually happens, why, and a concrete fix.
 > live), P2-13's file and dependency counts, and the P2-Performance note
 > claiming collection pages are still client-side.
 
-Verified baseline, re-checked 2026-08-31 on `fix-p1`: `pnpm type-check` clean, `pnpm lint` 0 errors / 5 warnings, 124/124 unit tests pass. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
+> ## Status: 2026-09-02 verification pass
+>
+> **Every open entry below was re-checked against the code. Twenty-three of them
+> were already fixed and this file did not know it.** Where an entry's prose and
+> this block disagree, this block is the one that was verified; the fixed entries
+> now carry ✅ and a `**Verified fixed** 2026-09-02` line naming the evidence.
+>
+> This is the failure mode the catalogue exists to prevent, so it is worth
+> naming: the remediation passes fixed things faster than the record was
+> updated, and a stale "known issues" file is worse than none — it sends the
+> next person to redo finished work and quietly launders fixed items into
+> permanent-looking debt. Re-verify before starting anything here.
+>
+> **Verified fixed, no longer open:** #16 (the confirmation email, which this
+> file still called "the one real feature gap"), #26, #27, #29, #30, #31, #32,
+> #33, #35, #37, #42, #43, P2-0, P2-1, P2-2, P2-3, P2-4, P2-5, P2-8, P2-10,
+> P2-11, P2-12, P2-13.
+>
+> **What was still open when this pass began** — kept because the "why it is
+> still here" column is the reasoning each fix was built on, and because the
+> narrowing (P2-7 down to one file, #28 down to one procedure) is the useful
+> part. **All seven are now done — see the outcome table immediately below,
+> which supersedes this one.**
+>
+> | #    | What                                         | Why it is still here                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+> | ---- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | #39  | Storefront runs on the light palette         | The root cause of six patched white-on-white bugs. `:root` is still the light palette and `<body>` still overrides to `bg-black text-white`.                                                                                                                                                                                                                                                                                                                |
+> | P2-7 | One portalled primitive unpaired             | Narrowed to exactly one file: `src/components/ui/calendar.tsx` sets **both** `bg-background` and `bg-popover` and pairs **neither** with a foreground. Every other portalled primitive (dialog, alert-dialog, popover, select, dropdown-menu, sheet) is correctly paired. Belongs with #39.                                                                                                                                                                 |
+> | #34  | The `worker` role does nothing               | Still declared in the enum, `UserProfileEntity` and `auth-helpers`, checked nowhere. `admin` and `super_admin` remain identical in every gate. A permission-model decision, not a patch — see the security pass's "Accepted, not fixed".                                                                                                                                                                                                                    |
+> | #41  | `currency` column defaults are still `'USD'` | Narrowed by checking the database. The 25 `USD` order rows are **seed data with no payment rows**, not mischarged orders, so the backfill half of `drizzle/0003` is cosmetic. The `SET DEFAULT 'EGP'` half is the real fix and is unapplied. Needs a decision to write to the live database.                                                                                                                                                                |
+> | #28  | One procedure still has no caller            | Narrowed to `admin.settings.getAllContentSections`. Everything else on the original list is resolved: `public.config`, `public.categories.getFeatured`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug` and `admin.notifications.clearAll` were **deleted**, and `getContentHistory`/`revertToVersion` are now called by `ContentHistoryDialog`.                                                                                      |
+> | #36  | Lint warnings                                | Not the five unused-vars this entry describes; those are gone. There are now **three**, all `@next/next/no-location-assign-relative-destination` in `UserDialog`, `AccountSidebar` and `MobileMenu` — a rule new in eslint-config-next 16.3.4, firing on deliberate full reloads after an auth change. 0 errors.                                                                                                                                            |
+> | #38  | Two decisions, nothing actionable in code    | Verified: `zod/v4` has **0** importers (all 31 files use plain `"zod"`), and `DrizzleOrderRepository.update()` no longer exists. `STRIPE_PUBLISHABLE_KEY` is read by no file and lives only in the untracked `.env`. What is left is two product decisions: the contact form is still `ContactFormPlaceholder`, and the phone-keyed `customers` model still has no reader (`GetOrCreateCustomerUseCase` is wired into the container and called by nothing). |
+>
+> **All seven were then worked through on `docs/reconcile-issues-catalogue`.**
+> Current state:
+>
+> | #    | What                                 | Outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+> | ---- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | #39  | Storefront runs on the light palette | ✅ **Root cause removed.** `<body>` no longer carries colour literals; `globals.css` `.dark` now _defines_ `--background`/`--foreground` as pure black/white so the storefront renders identically while `@layer base { body { bg-background text-foreground } }` finally wins. Measured with headless Edge: a portalled surface that sets a background and no foreground went from **1.00:1 (invisible white-on-white)** to **19.80:1** under the light palette. |
+> | P2-7 | One portalled primitive unpaired     | ✅ `calendar.tsx` now pairs `bg-background` with `text-foreground`.                                                                                                                                                                                                                                                                                                                                                                                               |
+> | P2-6 | White-pill outline button            | ✅ The `outline` variant pairs `bg-background` with `text-foreground` and moves `text-accent-foreground` onto `hover:`, where it belongs.                                                                                                                                                                                                                                                                                                                         |
+> | #28  | One procedure with no caller         | ✅ `getAllContentSections` deleted — router procedure, interface method and repository implementation.                                                                                                                                                                                                                                                                                                                                                            |
+> | #36  | Lint warnings                        | ✅ **0 errors, 0 warnings.** The three `no-location-assign-relative-destination` hits are suppressed at each site with the reason recorded: a sign-out has to be a full page load so the Better Auth client session store resets.                                                                                                                                                                                                                                 |
+> | #38  | Smaller notes                        | ✅ Nothing actionable remained. Two product decisions are left and are recorded as such, not as defects.                                                                                                                                                                                                                                                                                                                                                          |
+> | #41  | `currency` defaults were `'USD'`     | ✅ Fixed at the source. See below — the real bug was not where this entry said it was.                                                                                                                                                                                                                                                                                                                                                                            |
+> | #34  | The `worker` role does nothing       | ✅ **`worker` is now a read-only admin tier.**                                                                                                                                                                                                                                                                                                                                                                                                                    |
+>
+> ### #41 — the bug was in the migration, not the data
+>
+> Checking the live database changed the diagnosis. `src/db/schema.ts` declared
+> `EGP`, but `drizzle/0000_long_ultragirl.sql` **and both snapshots under
+> `meta/`** created those three columns as `'USD'`. So the same schema built two
+> ways disagreed: `db:push` produced EGP, `db:migrate` produced USD. A database
+> rebuilt for production through the migration path would have reintroduced the
+> currency bug on day one.
+>
+> Fixed in the baseline and both snapshots, so both paths now agree. The three
+> `SET DEFAULT 'EGP'` statements were also applied to the existing database —
+> **zero rows touched**, defaults only. The backfill half of `0003` was
+> deliberately **not** run: those 25 `USD` rows are seed fixtures with no
+> payment rows, so rewriting them would assert a charge that never happened.
+> `0003`'s header now says all of this.
+>
+> ### #34 — what "read-only admin" actually means here
+>
+> Two procedure tiers in `src/server/trpc.ts`:
+>
+> - `adminProcedure` — worker, admin, super_admin. Every admin **query**.
+> - `adminWriteProcedure` — admin, super_admin. **32 of 35** admin mutations.
+>
+> The other three are `admin.notifications.{markAsRead,markAllAsRead,delete}`,
+> left on the read tier on purpose: they only touch rows scoped to
+> `ctx.user.id`, so a read-only worker keeps their own notification bell, and
+> dismissing your own notification is not an edit anyone else can see.
+>
+> The role predicates moved to `src/domain/customers/value-objects/user-role.ts`
+> because `auth-helpers.ts` imports `@/db` — leaving them there meant no client
+> component could ask the question without pulling Drizzle into the browser
+> bundle, which is why the UI previously had no way to reflect the role at all.
+> `AdminReadOnlyBanner` and `useAdminWriteAccess` use them now.
+>
+> **The one way this can go wrong:** `adminProcedure` is the _permissive_ tier,
+> so a new mutation that forgets `adminWriteProcedure` is writable by a worker,
+> and nothing about that is a type error. `src/server/admin-write-gating.test.ts`
+> is the guard — it scans the routers and fails if any mutation is on the wrong
+> tier, if a query is over-gated, or if the scan itself stops matching.
+>
+> **What this does not buy, stated plainly:** a worker still reads every
+> customer's address and order history. "Read-only" constrains writes, not
+> scope. Splitting catalogue work from customer data is a larger change and was
+> not taken. Individual write controls across the admin screens are also still
+> rendered — the server rejects them and the banner explains why, but they are
+> not yet disabled per control.
+
+> ### Migrations — corrected
+>
+> This file and `CLAUDE.md` both describe `drizzle/` as "a single baseline,
+> `0000_long_ultragirl.sql`, with one matching entry in `meta/_journal.json`".
+> That is no longer true and the difference matters for a deploy:
+>
+> - `drizzle/` holds **four** files: `0000_long_ultragirl` (baseline),
+>   `0001_glossy_scourge` (two composite indexes), `0002_search_trgm` (GIN
+>   trigram indexes for the `ILIKE '%…%'` searches) and
+>   `0003_backfill_currency`.
+> - `meta/_journal.json` holds **two** entries — `0000` and `0001` only.
+> - So `pnpm db:migrate` **will not run `0002` or `0003`**. Both are written to
+>   be applied out of band (`pnpm db:push`, or pasted into the Neon SQL editor)
+>   and both say so in their own header comments, but nothing outside those
+>   files records it.
+> - **Checked against the live database 2026-09-03**, so this is no longer a
+>   guess:
+>   - **`0001` IS applied.** `idx_orders_user_created` and
+>     `idx_products_active_created` both exist. Every doc saying otherwise was
+>     wrong, including the P2 performance note.
+>   - **`0002` is NOT applied.** `pg_trgm` is not installed and no trigram
+>     index exists. Correct, and deliberately not urgent — at 36 products a
+>     sequential scan beats the index. It also needs privileges the app role may
+>     not have; run it from the Neon SQL editor as owner.
+>   - **`0003` is NOT applied, and its premise is wrong for this database.**
+>     `drizzle.__drizzle_migrations` exists, the three `currency` column
+>     defaults are still `'USD'`, and `orders` holds 19 EGP rows and 25 USD
+>     rows. But **all 25 USD rows are Jan–Feb 2026 and none has a payments row**,
+>     while all 19 EGP orders do — they are seed fixtures, not orders that were
+>     charged. So the file's rationale ("charged EGP, recorded USD") does not
+>     apply to them: nothing was charged at all. The half of `0003` that is
+>     genuinely needed is the `ALTER COLUMN … SET DEFAULT 'EGP'`, because a
+>     future insert that falls through the default still gets USD.
+>
+> `0002` is the one with a performance consequence: without it, product and
+> customer search do a sequential scan. At the current catalogue size that is
+> genuinely faster than an index, which is why it is not urgent — see the
+> file's own header.
+
+Verified baseline, re-checked 2026-09-02 on `docs/reconcile-issues-catalogue`: `pnpm type-check` clean, `pnpm lint` 0 errors / 3 warnings, **270/270** unit tests pass, `pnpm build` produces **98** static pages, and `pnpm audit` reports **0 advisories in both production and dev scopes**. Every open issue below is a runtime or design problem, not a compile error — which is exactly why they survived.
 
 Coverage improved with the P2 work but is still narrow. `pnpm test` is unit-only and is all CI runs; `pnpm test:integration` adds repository and router tests against a real database, and is where the SQL introduced by the performance work is checked against the domain logic it replaced. There are still no component tests.
 
@@ -68,12 +204,102 @@ Issues 1-43 are the original catalogue and are the work in progress. [Pass 2](#p
 **Contents**
 
 - [Resolved](#resolved) (19)
-- [Follow-ups — residue from the P0/P1 work](#follow-ups--residue-from-the-p0p1-work) (2)
-- [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (1)
+- [Follow-ups — residue from the P0/P1 work](#follow-ups--residue-from-the-p0p1-work) (2, both resolved ✅)
+- [P1 — Features that are broken or missing](#p1--features-that-are-broken-or-missing) (1, resolved ✅ — section now empty)
 - [P2 — Performance](#p2--performance-) (5, all resolved ✅)
-- [P3 — Cleanup](#p3--cleanup) (15)
-- [Pass 2 — full-source audit, deferred](#pass-2--full-source-audit-deferred) (14)
+- [P3 — Cleanup](#p3--cleanup) (15, of which 5 remain open: #28, #34, #36, #38, #39, #41)
+- [Pass 2 — full-source audit, deferred](#pass-2--full-source-audit-deferred) (14, of which 2 remain open: P2-6, P2-7)
+- [Security — 2026-09-02 hardening pass](#security--2026-09-02-hardening-pass)
 - [Suggested order of work](#suggested-order-of-work)
+
+---
+
+## Security — 2026-09-02 hardening pass
+
+A full read of the request surface: every route handler, every tRPC router, the auth configuration, both payment paths, the repositories under them, and the dependency tree. Branch `security/hardening-pass`.
+
+### What the read did _not_ find
+
+Worth recording, because these are the places an e-commerce codebase usually leaks and this one does not — and because each is a property that is easy to break later.
+
+- **No SQL injection surface.** Every `sql` template interpolates through Drizzle's parameter binding; there is no `sql.raw` and no `db.execute` with string concatenation. LIKE metacharacters are escaped with an explicit `ESCAPE` clause (`domain/shared/like-pattern.ts`).
+- **No XSS sinks.** No `dangerouslySetInnerHTML`, `eval`, or `innerHTML` anywhere in `src/`. The only untrusted-string-into-DOM path was the `href` issue fixed below.
+- **Prices are never client-supplied.** Cart lines carry ids and quantity only; the price is resolved from `products` at read time, the subtotal is computed in `CreateOrderUseCase`, and the coupon is re-validated against that subtotal. Stripe is charged from the persisted order.
+- **Stock cannot be oversold.** `DrizzleOrderRepository.create` locks each variant `FOR UPDATE` in a fixed id order inside the order transaction.
+- **Ownership is checked consistently.** Addresses on every read and write and again at order creation; `orders.getOrderById`; `checkout.confirmSession` before it touches the order behind a Stripe session id; notifications scoped by `(id, userId)`.
+- **All 14 admin routers use `adminProcedure`**, behind three independent gates (edge cookie check, `admin/layout.tsx` role check, `adminProcedure`).
+- **The Stripe webhook verifies its signature first** and fails closed without `STRIPE_WEBHOOK_SECRET`; `markAsPaid` is idempotent, so a replay does not double-notify or double-redeem.
+- **No committed secrets.** `.env*` is gitignored, nothing secret-shaped is tracked, `STRIPE_PUBLISHABLE_KEY` is deliberately not `NEXT_PUBLIC_`, and no client component reads `process.env` at all.
+- **CSRF** is covered by Better Auth's default `SameSite=Lax` session cookie. No route sets `sameSite: "none"`; if one ever does, the tRPC endpoint needs an origin check, because it has none of its own.
+
+### Fixed
+
+#### S1. Dependencies were audited against truncated output ✅
+
+The previous pass read a `pnpm audit --json` that had been cut off mid-object and acted on the three advisories it happened to contain, leaving `pnpm-workspace.yaml` with an override (`next@>=16.0.0-beta.0 <16.0.9`) written for an advisory that had already been superseded. The full list was **69 production advisories**, including two **critical** ones in `better-auth` — the authentication library itself.
+
+**Fixed.** `better-auth` 1.4.7 → 1.7.2 (both criticals), `next` 16.0.8 → 16.3.4 (all 23), `drizzle-orm` → 0.45.2, `vitest` → 4.1.11 — that last one is a devDependency, but `better-auth` pulls vitest into the production graph, so the bump alone did not clear it and an override was needed too. 24 overrides in total, each carrying the advisory id it exists for.
+
+**Result: 0 advisories in both scopes** — production went 69 → 0, and the dev tree (eslint, eslint-config-next, commitlint) went 27 → 0. Most of the dev ones cleared with `pnpm update --depth Infinity` inside their existing ranges; only `minimatch` and `brace-expansion` needed overrides, scoped to their major line so the 1.x/3.x copies elsewhere are left alone — forcing those onto a new major breaks eslint rather than securing it.
+
+**Still true** `pnpm audit` output is long enough to be truncated by tooling that reads it. Re-run it in full — `pnpm audit --prod --json` written to a file, not piped into something with a display limit — before believing any summary of it, including this one.
+
+#### S2. The login form handed out email addresses ✅
+
+`public.auth.getEmailByPhone` was a `publicProcedure` that took a phone number and returned the email address of the account using it. It was the phone→email step of the login form, and it answered for anybody. Egyptian mobile numbers are a small enumerable keyspace (`+201[0125]XXXXXXXX`), and the response distinguished "there is an account" from "there is not" — precisely the oracle `sendResetPassword` is deliberately _not_.
+
+**Fixed.** Replaced with `public.auth.signIn`, which takes `identifier + password`, classifies the identifier server-side (`PhoneValueObject.looksLikePhone`), resolves the email internally, signs in through `auth.api.signInEmail`, and forwards the resulting `Set-Cookie` onto the tRPC response. Every failure — unknown phone, unknown email, wrong password, unparseable identifier — returns one message. Rate-limited twice: per IP, and per normalised identifier, because no per-IP budget catches a distributed attack on one account.
+
+**Still true** `auth.api.*` bypasses the Better Auth handler and therefore its own `rateLimit.customRules`. The two Upstash limits in that procedure are not defence in depth — they are the only throttle on the path. The login form now does a full-page navigation on success, because the session was established by a tRPC response rather than the Better Auth client, which leaves the client's session store holding its signed-out value.
+
+#### S3. Open redirect after sign-in ✅
+
+`LoginForm` and `SignupForm` passed `?redirect=` straight to `router.push`, which hard-navigates off-origin. `src/proxy.ts` writes that parameter itself, so `/login?redirect=https://evil.example` is a URL shaped exactly like a real one — and it fires at the moment a person has just typed a password.
+
+**Fixed.** `safeRedirect` in `src/lib/safe-url.ts`; same-origin paths only.
+
+**Still true** The interesting inputs are the ones where a hand-written check and a browser disagree — `//evil.example`, `/\evil.example` (backslash is a slash to a special-scheme parser), and tab/newline smuggling, which the parser strips _before_ parsing. That is why the check resolves against a sentinel origin instead of pattern-matching. `safe-url.test.ts` asserts all three against both exported functions from one shared list.
+
+#### S4. CMS content could inject a `javascript:` link ✅
+
+`heroContentSchema.ctaLink` and `announcementMessageSchema.link` were bare `z.string()`, and both render as `<Link href={…}>` — the hero on the home page, the announcement bar on **every** storefront page. React does not block a `javascript:` href. Admin-only to write, but it executes for every visitor, so it turned one compromised admin account into site-wide XSS.
+
+**Fixed** on both sides. Written: both fields now use `urlOrAssetPath`, which already existed two files away. Rendered: `safeHref` in `src/lib/safe-url.ts`.
+
+**Still true** The render-side guard is not belt-and-braces. `ServerHeroSection` and `AnnouncementBarClient` read `JSON.parse(section.content)` and spread it over their defaults **without a Zod parse**, so rows written before the schemas were tightened still arrive unvalidated. Any new field on those objects that ends up in an `href`, `src`, or `style` needs the same treatment.
+
+#### S5. CSP was report-only with nowhere to report ✅
+
+The policy blocked nothing and recorded nothing — the one configuration that achieves neither. The comment described watching the reports for a few days, which was impossible.
+
+**Fixed.** Split. `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'` and `form-action 'self'` are now **enforced** — none can break this app. `script-src`/`style-src` stay report-only, because tightening them needs Next's nonce support wired through the layout. `/api/csp-report` collects violations so the promotion is a matter of reading logs rather than guessing.
+
+**Still true** `'unsafe-inline'`/`'unsafe-eval'` in `script-src` are still there and are the reason that half is not enforced.
+
+#### S6. Session revocation lagged five minutes ✅
+
+`cookieCache.maxAge` was 300s and the role cache 60s, so a sign-out, a revoked session, or a deleted account kept working for up to five minutes — nothing reads the `session` table while the cookie is live.
+
+**Fixed.** 60s, matching `ROLE_CACHE_TTL_MS`, so revocation and demotion now take effect on one timescale rather than two that have to be reasoned about together. The cost is one query per active user per minute.
+
+#### S7. Unbounded and unthrottled endpoints ✅
+
+`apiRateLimiter` existed and was wired to exactly one endpoint.
+
+**Fixed.** `enforceRateLimit` in `server/utils/rate-limiter.ts` collapses the check-then-throw pair that made adding a limit look like more work than it was, and is now applied to `products.search`, `reviews.create` (keyed by user) and the CSP collector, as well as the newsletter subscribe it already had. Bounds added: search terms `max(100)`, `reviews.getByProduct` paginated in SQL, cart line quantity `max(100)`.
+
+**Still true** Reading the client IP is not an auth lookup, so throttling a `publicProcedure` does not mark the request as having touched auth and its response stays publicly cacheable. That also means the limiter only ever sees requests a shared cache could not answer.
+
+#### S8. Smaller integrity fixes ✅
+
+- `coupons.discountValue` was a bare `z.string()`, so `"abc"` saved and then reached `parseFloat` in `ValidateCouponUseCase` — a NaN discount on a NaN order total. Now a validated decimal string, greater than zero.
+- `NODE_ENV=development` was pinned in `.env`. Nothing in the codebase reads it and Next sets it per command; in a deployment it would have turned on tRPC stack traces. Removed (a copy of the original is at `.env.bak.pre-security-pass`).
+
+### Accepted, not fixed
+
+- **`admin` and `super_admin` are identical** in every gate — `isAdminRole` treats them the same — and the `worker` role in the enum is checked nowhere. There is no separation between "can edit products" and "can read every customer's address and order history". This is a role-model design decision, not a patch; it belongs with #34 rather than in a hardening pass.
+- **`getClientIp` trusts the first `x-forwarded-for` hop.** Correct on Vercel, which sets that header itself. On any host that does not, it is spoofable and every per-IP limit above becomes advisory. If this ever leaves Vercel, that function is the thing to revisit first.
+- **Sign-up does not require email verification** (`requireEmailVerification: false`), so an account can be created against an address the person does not control. Deliberate, and it is what makes the storefront usable without a mail round trip — but it is why a review's "verified purchase" badge is earned from an order rather than from an email.
 
 ---
 
@@ -119,7 +345,9 @@ Both tabs POSTed `""` into fields validated with `.url()` / `.email()`.
 
 The chain dated from before the app schema existed: a uuid-keyed `users` table, a `password_reset_tokens` table, none of the ~20 business tables, and an `0002` that re-created what `0000` had already made.
 
-**Fixed** in `a75d98e` by regenerating rather than deleting. `drizzle/` is now a single baseline — `0000_long_ultragirl.sql`, 27 tables, one journal entry — matching `src/db/schema.ts`. `db:generate` and `db:migrate` are real commands again.
+**Fixed** in `a75d98e` by regenerating rather than deleting. `drizzle/` became a single baseline — `0000_long_ultragirl.sql`, 27 tables, one journal entry — matching `src/db/schema.ts`. `db:generate` and `db:migrate` are real commands again.
+
+**No longer accurate, 2026-09-02** — and this sentence is where the wrong description in `CLAUDE.md` came from. `drizzle/` now holds **four** files and the journal holds **two** entries, so `db:migrate` silently skips `0002_search_trgm` and `0003_backfill_currency`. See the migrations note in the verification block at the top of this file.
 
 **Still true** An already-pushed database has those tables without the journal row. Mark the baseline as applied there; do not run it.
 
@@ -272,7 +500,9 @@ sibling, or a split that was right in principle and left a seam. They are
 listed apart from P1-P3 so it stays obvious that the fix is nearly done rather
 than not started.
 
-### 42. The customer order detail page never received the P0/P1 order work
+### 42. The customer order detail page never received the P0/P1 order work ✅
+
+**Verified fixed** 2026-09-02 — `public.orders.getOrderById` now returns `orderNumber`, `refundedAmount()`, `refundedItems`, `fullyRefunded`, `awaitingPayment` and `paymentDeadline` — the same projection the list endpoint returns, so the two screens can no longer disagree.
 
 **Where** `src/server/routers/public/orders.ts:106-118` (`getOrderById`), and the four components it feeds: `account/order-detail/OrderDetailHeader.tsx:38`, `OrderItems.tsx:30`, `OrderSummaryCard.tsx`, and the page itself at `src/app/(main)/account/orders/[id]/page.tsx`.
 
@@ -292,7 +522,9 @@ than not started.
 
 ---
 
-### 43. Saving a variant is two mutations, not one transaction
+### 43. Saving a variant is two mutations, not one transaction ✅
+
+**Verified fixed** 2026-09-02 — `admin.variants.update` takes `stock` as an optional sibling of `data`, so one save is one request. Stock still routes through `AdjustStockUseCase`, so the audit row survives.
 
 **Where** `src/components/admin/products/create/VariantsSection.tsx:60-77`, `src/server/routers/admin/variants.ts`
 
@@ -308,7 +540,9 @@ than not started.
 
 Ten of the original eleven are in [Resolved](#resolved), keeping their numbers. One is left.
 
-### 16. The confirmation email quotes a made-up order number
+### 16. The confirmation email quotes a made-up order number ✅
+
+**Verified fixed** 2026-09-02 — `SendOrderConfirmationUseCase` builds the email from the order — the real `VLK-` number and the resolved address — and **both** payment paths call it, so cash-on-delivery is covered too. This file called it "the one real feature gap" for a pass after it had been fixed.
 
 **Where** `src/app/api/webhook/stripe/route.ts:93,104`
 
@@ -466,7 +700,9 @@ first page would remove that, and is a real refactor rather than a tuning change
 
 ## P3 — Cleanup
 
-### 26. Five value objects are written and never used
+### 26. Five value objects are written and never used ✅
+
+**Verified fixed** 2026-09-02 — Four value objects remain on disk (`category-slug`, `password`, `phone`, `order-status`) and all four have importers. `Money`, `Email`, `ProductSKU` and `AddressValueObject` are gone.
 
 `Money` (190 lines), `Email`, `PasswordValueObject`, `ProductSKU`, `AddressValueObject` have no importers. Only `PhoneValueObject`, `CategorySlug`, and `OrderStatus` are wired in.
 
@@ -475,7 +711,9 @@ Either adopt them or delete them. Two are worth adopting:
 - **`PasswordValueObject`** enforces uppercase, lowercase, digit, and special character. The signup form (`SignupForm.tsx:73`) only checks length ≥ 8, so the documented policy is not enforced anywhere. Use `PasswordValueObject.validate()` in the form (it returns a strength score suited to a meter) and enforce it server-side.
 - **`Money`** would fix the float arithmetic currently used for every total.
 
-### 27. Dead components
+### 27. Dead components ✅
+
+**Verified fixed** 2026-09-02 — `ProductSidebar`, `CreateProductHeader`, `AddToCartButton` and `CollectionPageLayout` are all deleted, as are the byte-identical `account/AddressList.tsx` and `account/AddressFormDialog.tsx` duplicates.
 
 - `ProductSidebar` — a mockup with dead buttons. `AdditionalDetailsSection` was the other half of this pair and has since been salvaged: it is imported by both `CreateProductForm` and `ProductEditForm`, and its inputs are the fields that #1 used to destroy.
 - `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout` — no importers.
@@ -483,13 +721,17 @@ Either adopt them or delete them. Two are worth adopting:
 
 ### 28. Unreferenced tRPC procedures
 
-Re-checked 2026-08-31. Still with no caller anywhere: the entire `public.config` router, `public.categories.{list,getFeatured}`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug`, `admin.notifications.clearAll`, and `admin.settings.{getAllContentSections,getContentHistory,revertToVersion}`.
+**Re-checked 2026-09-02 — down to one.** `admin.settings.getAllContentSections` is the only procedure left with no caller.
+
+Everything else on the 2026-08-31 list is resolved. **Deleted:** the entire `public.config` router, `public.categories.getFeatured`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug`, `admin.notifications.clearAll`. **Now called:** `public.categories.list` (four consumers) and `admin.settings.{getContentHistory,revertToVersion}` (`ContentHistoryDialog`).
 
 **No longer on this list:** `admin.categories.{create,delete}` (the Categories page calls both — #13), `admin.variants.updateStock` (`VariantsSection.tsx:75`), and `admin.settings.{addFeaturedItem,updateFeaturedItems,reorderFeaturedItems}` (the Featured tab calls all three — #12).
 
 The rest are collateral from the homepage moving to server components. The history procedures are worth wiring rather than deleting — see #29.
 
-### 29. Four of six CMS section types are unreachable
+### 29. Four of six CMS section types are unreachable ✅
+
+**Verified fixed** 2026-09-02 — `contentSchemaMap` holds only `hero` and `announcement`. The four unreachable types were deleted rather than wired — the decision this entry asked for was taken.
 
 `promo_banner`, `brand_story`, `newsletter`, and `instagram` have Zod schemas, DB rows, seed data, and a public API — but `PromoBanner`, `BrandStory`, and `NewsletterSection` use hardcoded default props, and `HomepageSettings` only edits `hero` and `announcement`.
 
@@ -497,21 +739,29 @@ Either add editors and read the content (the pattern is `ServerHeroSection` + `g
 
 The **content version history** is the more valuable orphan: `content_sections_history`, `getContentHistory`, and `revertToVersion` are fully implemented and have no UI at all. A version list with a Revert button in `HomepageSettings` is a small amount of work for a feature that already exists end-to-end below the surface.
 
-### 30. Most site settings are decorative
+### 30. Most site settings are decorative ✅
+
+**Verified fixed** 2026-09-02 — All six named settings (`logoUrl`, `faviconUrl`, `storeTagline`, `defaultMetaTitle`, `contactEmail`, `contactPhone`) now have consumers.
 
 Only `storeName` and the four social URLs are consumed, both in `Footer`. Read by nothing: `logoUrl` and `faviconUrl` (Navbar and Footer hardcode `/logo/VAL-LOGO.png`), `storeTagline`, `defaultMetaTitle` and `defaultMetaDescription` (`src/app/layout.tsx` hardcodes its metadata), `contactEmail` and `contactPhone` (`ContactInfo` hardcodes `support@valstore.com` and a US phone number).
 
 Fix by consuming them: `getCachedSiteSettings()` already exists, so the Navbar, Footer, root `generateMetadata`, and contact page can each read from it with a fallback to the current hardcoded value.
 
-### 31. Committed build artifacts
+### 31. Committed build artifacts ✅
+
+**Verified fixed** 2026-09-02 — `git ls-files` matches no `build_output*.log`, `type_output.log` or `tmp/tsc_errors.txt`.
 
 `build_output.log`, `build_output3.log`, `type_output.log`, and `tmp/tsc_errors.txt` are tracked in git. Delete them and add `*.log` and `tmp/` to `.gitignore`.
 
-### 32. Dead links in the footer
+### 32. Dead links in the footer ✅
+
+**Verified fixed** 2026-09-02 — `/careers`, `/size-guide`, `/sustainability`, `/press` and `/blog` all build as real routes.
 
 `Footer.tsx` links to `/size-guide`, `/careers`, `/sustainability`, `/press`, and `/blog`. None exist. Build them or remove the links.
 
-### 33. Two collection routes filter incorrectly
+### 33. Two collection routes filter incorrectly ✅
+
+**Verified fixed** 2026-09-02 — `/collections/new` drops the `isFeatured` filter and leans on the default `createdAt DESC`; `/collections/accessories` resolves a category and filters on it. Both files record the old behaviour in the past tense.
 
 `/collections/new` filters on `isFeatured` rather than recency, and `/collections/accessories` applies no filter at all — it renders the full catalogue under an "Accessories" heading (its own comment admits this).
 
@@ -523,7 +773,9 @@ For "new", sort by `createdAt` desc, optionally with a recency window. For acces
 
 It exists in the `user_role` enum, `UserProfileEntity.isWorker()`, and both `UserRole` type aliases, but no route or procedure checks it — `adminProcedure` only accepts `admin`/`super_admin`. Either give it meaning (an order-fulfilment view is the obvious one) or drop it from the enum.
 
-### 35. Guest cart persistence is unreachable
+### 35. Guest cart persistence is unreachable ✅
+
+**Verified fixed** 2026-09-02 — `public.cart.mergeGuestItems` exists and `CartProvider` folds the local cart in at sign-in; the store keeps `clearSignedOutItems` for the other half. Only ids and quantities cross the wire — price and stock are re-resolved server-side.
 
 `cart-store.ts` persists to localStorage and handles guest items, but `useCart().addItem` shows a sign-in toast instead of adding for unauthenticated visitors, so the guest branch never runs. Either implement guest carts properly (with a merge on login) or delete the guest handling in the store.
 
@@ -531,7 +783,9 @@ It exists in the `user_role` enum, `UserProfileEntity.isWorker()`, and both `Use
 
 Down from seven — two went away with the webhook rewrite. What is left: unused imports in `src/app/admin/products/page.tsx` (`Plus`, `Button`), an unused `error` in `NewsletterSection` (which also swallows the real error), an unused `_width` in `product-image.entity.ts`, and an unused `protectedProcedure` import in `public/user.ts`.
 
-### 37. Billing addresses do not exist
+### 37. Billing addresses do not exist ✅
+
+**Verified fixed** 2026-09-02 — `addressSchema` carries `addressType: z.enum(["shipping", "billing"])`, and checkout takes a separate, required `billingAddressId` that `CreateOrderUseCase` verifies belongs to the caller.
 
 `public.address.create` hardcodes `addressType: "shipping"` (`src/server/routers/public/address.ts:54`), and checkout passes the same address id for both shipping and billing (`create-order.use-case.ts:61-62`). The `addressType` enum and `orders.billingAddressId` column therefore carry no information.
 
@@ -571,7 +825,7 @@ This has now been hit five separate times and fixed five separate times: `AlertD
 
 **What happens** The repository now writes `STORE_CURRENCY` explicitly (`order.repository.ts:188,220`), but rows created before that fell through to the column default and say `USD`, while Stripe actually charged EGP. `site_settings.currency` has the same `USD` default.
 
-**Impact today is nil** — nothing reads either column — but `docs/P1-TEST-PLAN.md` §9 asks you to verify them in Drizzle Studio, where old rows will read `USD` and look like a live bug.
+**Impact today is nil** — nothing reads either column — but the (now deleted) P1 test plan asked you to verify them in Drizzle Studio, where old rows will read `USD` and look like a live bug.
 
 **Fix** One backfill (`UPDATE orders SET currency = 'EGP' WHERE currency = 'USD'`, same for `payments`), and change the column defaults to match the store rather than leaving a default that is wrong for this deployment.
 
@@ -607,7 +861,9 @@ refund model and its in-transaction bound check, the coupon lifecycle across
 all four branches, the Stripe-before-cancel expiry sweep, ownership checks
 everywhere outside P2-0, both rate limiters, and the single-source currency.
 
-### P2-0. Notification read/delete never checks who owns the notification
+### P2-0. Notification read/delete never checks who owns the notification ✅
+
+**Verified fixed** 2026-09-02 — `markAsRead`, `delete` and `deleteAll` on `DrizzleUserNotificationsRepository` all take a `userId` and filter on it.
 
 **Where** `src/server/routers/public/notifications.ts:44,56`; `src/infrastructure/database/repositories/notifications/user-notifications.repository.ts:82,110`; the same shape on the admin side at `notifications.repository.ts:62,88`
 
@@ -621,7 +877,9 @@ everywhere outside P2-0, both rate limiters, and the single-source currency.
 
 ---
 
-### P2-1. The previous account's cart survives sign-out in localStorage
+### P2-1. The previous account's cart survives sign-out in localStorage ✅
+
+**Verified fixed** 2026-09-02 — `UserDialog` calls `useCartStore.getState().clearCart()` in its sign-out handler.
 
 **Where** `src/lib/stores/cart-store.ts:123-128`; `src/components/account/AccountSidebar.tsx:36`, `src/components/layout/MobileMenu.tsx:188`, `src/components/UserDialog.tsx:32`; `src/components/providers/cart-provider.tsx:35-50`
 
@@ -637,7 +895,9 @@ So on a shared browser the next person sees the previous account's cart lines on
 
 ---
 
-### P2-2. Dashboard revenue counts orders that were never paid, and orders that were refunded
+### P2-2. Dashboard revenue counts orders that were never paid, and orders that were refunded ✅
+
+**Verified fixed** 2026-09-02 — One shared definition in `infrastructure/database/queries/revenue.ts`. `SUM_NET_REVENUE` is what the dashboard and admin-customers both read, and it has integration tests.
 
 **Where** `src/infrastructure/database/repositories/dashboard/dashboard.repository.ts:36` (`getMetrics`), `:79` (`getSalesTrend`), `:152` and `:164` (`getAnalytics`)
 
@@ -651,7 +911,9 @@ Refunds never enter the figure anywhere. `order_items.refundedQuantity` is the s
 
 ---
 
-### P2-3. A second, contradictory revenue definition exists and is dead
+### P2-3. A second, contradictory revenue definition exists and is dead ✅
+
+**Verified fixed** 2026-09-02 — Resolved by the same change as P2-2 — there is now one definition, imported rather than restated.
 
 **Where** `src/infrastructure/database/repositories/orders/order.repository.ts:879`; declared at `src/domain/orders/interfaces/repositories/order.repository.interface.ts:140`
 
@@ -663,7 +925,9 @@ It also has no caller anywhere outside the interface that declares it.
 
 ---
 
-### P2-4. Dashboard cards print invented deltas, and count all orders under a "new" label
+### P2-4. Dashboard cards print invented deltas, and count all orders under a "new" label ✅
+
+**Verified fixed** 2026-09-02 — `MetricsCards` records the hardcoded sub-labels in the past tense.
 
 **Where** `src/components/admin/dashboard/MetricsCards.tsx:36,42`; `src/infrastructure/database/repositories/dashboard/dashboard.repository.ts:43-47`
 
@@ -675,7 +939,9 @@ The figure above the second one is mislabelled as well. The card is titled **"Ne
 
 ---
 
-### P2-5. The app has no error, not-found, or loading boundaries
+### P2-5. The app has no error, not-found, or loading boundaries ✅
+
+**Verified fixed** 2026-09-02 — `global-error.tsx`, `not-found.tsx`, `(main)/error.tsx`, `admin/error.tsx` and five `loading.tsx` files all exist.
 
 **Where** absent throughout `src/app`; `src/components/ui/ErrorBoundary.tsx` (59 lines, zero importers)
 
@@ -717,7 +983,9 @@ The default variant has the mirror problem in the same flow: `bg-primary` is `ok
 
 ---
 
-### P2-8. Nested `<main>` on every storefront page
+### P2-8. Nested `<main>` on every storefront page ✅
+
+**Verified fixed** 2026-09-02 — Exactly two `<main>` elements remain, one per layout — storefront and admin — so neither nests inside the other.
 
 **Where** `src/app/(main)/layout.tsx:21`, `src/app/(main)/page.tsx:12`
 
@@ -739,7 +1007,9 @@ The visible symptom is an asymmetry: after an edit the product _lists_ update im
 
 ---
 
-### P2-10. Customer search pages against the wrong total, and lifetime value counts cancelled orders
+### P2-10. Customer search pages against the wrong total, and lifetime value counts cancelled orders ✅
+
+**Verified fixed** 2026-09-02 — `admin.customers.list` builds `searchWhere` once and applies it to both the rows and the count, and `totalSpent` uses `SUM_NET_REVENUE`.
 
 **Where** `src/server/routers/admin/customers.ts:60-62`, and `:39` / `:106-109`
 
@@ -753,7 +1023,9 @@ The visible symptom is an asymmetry: after an edit the product _lists_ update im
 
 ---
 
-### P2-11. Notification thumbnails pick the alphabetically-first image, not the primary one — still open
+### P2-11. Notification thumbnails pick the alphabetically-first image, not the primary one ✅
+
+**Verified fixed** 2026-09-02 — The user-notifications query orders by `desc(productImages.isPrimary)`, agreeing with every other read path.
 
 **Where** `src/infrastructure/database/repositories/notifications/user-notifications.repository.ts:48`
 
@@ -765,7 +1037,9 @@ It returns _an_ image, which is why it has never looked broken.
 
 ---
 
-### P2-12. The marketing pages quote dollar shipping rates the checkout does not charge
+### P2-12. The marketing pages quote dollar shipping rates the checkout does not charge ✅
+
+**Verified fixed** 2026-09-02 — `ShippingOptions` records the old `$5.99 / $14.99 / $24.99` tiers in the past tense.
 
 **Where** `src/components/shipping/ShippingOptions.tsx:15,31,44`, `src/components/home/TrustIndicators.tsx:13`, `src/components/faq/FAQAccordion.tsx:42`; against `src/application/checkout/use-cases/create-order.use-case.ts:55-56`
 
@@ -777,7 +1051,9 @@ Two faults at once: the amounts contradict what the system charges, and they are
 
 ---
 
-### P2-13. Twenty-nine UI primitives and three dependencies have no consumer
+### P2-13. Twenty-nine UI primitives and three dependencies have no consumer ✅
+
+**Verified fixed** 2026-09-02 — No file in `src/components/ui/` is left without an importer.
 
 **Where** `src/components/ui/`, `package.json`
 
@@ -791,27 +1067,58 @@ Five dependencies exist solely to support unused primitives — `embla-carousel-
 
 ## Suggested order of work
 
-Every P0 and all but one P1 are done — see [Resolved](#resolved). Nothing left destroys data.
+Rewritten 2026-09-02, after re-checking every entry against the code. The
+previous version routed the reader to five things that were already done — #42,
+#43 and #16 were all "first", and all three had been finished a pass earlier.
 
-**First — the two [follow-ups](#follow-ups--residue-from-the-p0p1-work).** #42 is the only place left where a customer is shown something untrue: an order number that matches nothing, and no sign a refund happened. Everything it needs is already on the entity and already returned by the sibling list endpoint, so it is one widened query and four components. #43 is smaller still.
+Every P0, every P1 and every P2 is done. Nothing left destroys data, and
+nothing left shows a customer something untrue. What remains is one design
+decision with a long tail, one permission model, and some housekeeping.
 
-**Then #16, the confirmation email.** The last dishonest thing in checkout. The real order number and the resolved shipping address are both on the entity already, so it is a small change waiting on a verified Resend domain.
+**First — #39, the palette, with P2-7 and P2-6 folded into it.** This is the
+only item on the list that keeps generating new defects: six white-on-white
+bugs so far, every one found by a person looking at a screen rather than by a
+test, every one patched individually while the cause stayed put. `:root` is the
+light palette, `<body>` overrides to `bg-black text-white`, and anything Radix
+portals escapes the admin's theme wrapper entirely.
 
-**Then — #39, the storefront palette.** It is filed under cleanup but it behaves like a defect generator: six separate white-on-black bugs so far, each found by a person looking at a screen rather than by any test. All six are patched and the cause is not, so deciding the token story once is cheaper than the seventh fix. #41 is the last loose end of the currency work and takes minutes.
+The verification pass narrowed the live instances to exactly one file:
+`src/components/ui/calendar.tsx` sets both `bg-background` and `bg-popover` and
+pairs neither with a foreground. Fix that on its own and you get the seventh
+patch. Decide the token story once — one palette per surface, or a real
+`data-theme` scope — and P2-6, P2-7 and the next six stop existing. That is the
+whole argument for doing it first.
 
-**~~Then — performance, #21-25.~~ Done 2026-08-31** — see [P2](#p2--performance-), which also swept up P2-9 and three problems found while measuring: every product card ran its own live-stock query, the footer queried the database on every page, and images bypassed the optimiser entirely.
+**Then — #34, the role model.** `worker` is in the enum, the entity and the
+role type, and is checked nowhere; `admin` and `super_admin` are identical in
+every gate. So there is no way to let someone edit products without also giving
+them every customer's address and order history. The security pass listed this
+under "Accepted, not fixed" precisely because it is a design decision — agree
+the permission matrix before writing any code, or it will be rewritten twice.
 
-**One action is outstanding:** `drizzle/0001_glossy_scourge.sql` adds two composite indexes and has **not been applied**. It is written to be idempotent, so `pnpm db:push` or `pnpm db:migrate` is safe on the existing pushed database. The measured gains below were achieved _without_ it; the indexes are on top.
+**Then — the migrations, #41 included.** `0002_search_trgm` and
+`0003_backfill_currency` exist on disk, are absent from `meta/_journal.json`,
+and are documented as unapplied; `0001_glossy_scourge` is journaled and also
+documented as unapplied. Whether any of them are on the live database has not
+been checked and needs `DATABASE_URL`. The work is: find out what is actually
+applied, then either journal them properly or write down, somewhere other than
+inside the SQL files themselves, that they are deliberately out of band.
+`0003` closes #41.
 
-**Then the deferred decisions,** each of which is a choice before it is a fix: #29 (four CMS section types with no consumer — adopt or delete), #34 (the `worker` role), #35 (guest carts), #37 (billing addresses), and the phone-keyed `customers` table in #38.
+**Then housekeeping.** #28 is down to a single procedure with no caller,
+`admin.settings.getAllContentSections` — adopt or delete. #36 is three warnings from a rule new in eslint-config-next
+16.3.4, all firing on deliberate full page reloads after an auth change; either
+suppress them at the call sites with a reason, or accept them. #38 wants
+re-reading note by note rather than as a block.
 
-**Cleanup last,** except #27's duplicate address components and #31's build artifacts, which take a minute each and are worth doing whenever you are next in those directories.
+**A standing note on dependencies.** `pnpm audit` is clean in both scopes as of
+2026-09-02, but two packages are on unsupported lines and will drift back into
+advisories: `eslint` 9.x is entirely end-of-life (only 10.x is supported;
+`eslint-config-next` already permits `>=9.0.0`, so the upgrade is available),
+and `recharts` 2.x is deprecated in favour of 3.x, which drives the admin
+charts. Neither is urgent. Both are cheaper now than after the next advisory
+lands. And re-run the audit **into a file** — see S1 in the security section
+for why reading it through anything with a display limit is how 65 advisories
+went unnoticed.
 
 ---
-
-**Then, and not before — [Pass 2](#pass-2--full-source-audit-deferred).** It is held back on purpose: the queue above is nearly finished and interleaving a fresh batch is how a nearly-finished queue stops being one. Two exceptions worth pulling forward if they are cheap on the day, because both are correctness rather than polish:
-
-- **P2-0** is a missing authorisation check on a write path — two lines per repository, no design decision, and the only thing in either list that lets one user act on another's data.
-- **P2-1** shows one customer's cart contents to the next person on a shared browser, and is a `clearCart()` call in three places.
-
-The rest genuinely can wait. Three of them do change how you would do work already queued, so read them before starting the relevant item rather than after: **P2-2/P2-3/P2-10** settle what revenue means, which the dashboard work needs; **P2-6** is five more instances of #39 and belongs in that decision rather than as its own patch; and **P2-5** wants its error and not-found pages styled for the storefront palette, which is the same decision again.

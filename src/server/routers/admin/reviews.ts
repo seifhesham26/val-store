@@ -4,7 +4,7 @@
  * Moderation: list all, approve, delete reviews.
  */
 
-import { router, adminProcedure } from "@/server/trpc";
+import { router, adminProcedure, adminWriteProcedure } from "@/server/trpc";
 import { z } from "zod";
 import { DrizzleReviewRepository } from "@/infrastructure/database/repositories/reviews/review.repository";
 import { TRPCError } from "@trpc/server";
@@ -30,7 +30,7 @@ export const adminReviewsRouter = router({
   /**
    * Approve a review
    */
-  approve: adminProcedure
+  approve: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const review = await reviewRepo.update(input.id, { isApproved: true });
@@ -43,7 +43,7 @@ export const adminReviewsRouter = router({
   /**
    * Reject/unapprove a review
    */
-  reject: adminProcedure
+  reject: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const review = await reviewRepo.update(input.id, { isApproved: false });
@@ -56,7 +56,7 @@ export const adminReviewsRouter = router({
   /**
    * Delete a review
    */
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       await reviewRepo.delete(input.id);

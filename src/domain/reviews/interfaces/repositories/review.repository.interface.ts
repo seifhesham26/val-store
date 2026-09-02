@@ -9,11 +9,25 @@ export interface ReviewWithUser extends Review {
   userImage: string | null;
 }
 
+/** A bounded window over a review listing. */
+export interface ReviewPage {
+  limit: number;
+  offset?: number;
+}
+
 export interface ReviewRepositoryInterface {
   findById(id: string): Promise<Review | null>;
+  /**
+   * Approved reviews for a product.
+   *
+   * `page` is optional so existing callers keep working, but every caller that
+   * renders a list should pass one — without it this returns every review the
+   * product has ever received.
+   */
   findByProductId(
     productId: string,
-    onlyApproved?: boolean
+    onlyApproved?: boolean,
+    page?: ReviewPage
   ): Promise<ReviewWithUser[]>;
   findByUserId(userId: string): Promise<Review[]>;
   findAll(onlyPending?: boolean): Promise<ReviewWithUser[]>;

@@ -404,7 +404,8 @@ interval, not per-card queries.
 ## Still outstanding
 
 > **Updated 2026-09-02.** Two of the three below were closed in the P3/Pass-2
-> remediation pass; see `docs/superpowers/specs/2026-09-02-p3-pass2-design.md`.
+> remediation pass. Its design spec was deleted on 2026-09-03 once the work
+> shipped; `git log --diff-filter=D -- docs/` recovers it.
 > What is left is genuinely not code.
 
 1. **PERF-06 — Neon autosuspend.** ⏳ **Still open, and still the largest

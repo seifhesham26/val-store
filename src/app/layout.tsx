@@ -58,9 +58,20 @@ export default function RootLayout({
     // wrapper because Radix portals attach under <body> and would escape any
     // wrapper. The admin tree's next-themes provider overrides this element
     // for /admin; StorefrontTheme re-asserts it on the way back out.
+    //
+    // `<body>` carries NO colour literals, and that is the fix for the
+    // white-on-white bug family rather than a tidy-up. `globals.css` already
+    // has `@layer base { body { @apply bg-background text-foreground } }`, but
+    // a utility class on this element outranks a base layer — so `bg-black
+    // text-white` pinned the body under *both* palettes, and every Radix
+    // portal (which attaches under <body>, outside any wrapper) inherited
+    // white text even in the light-themed admin. Letting the base layer win is
+    // what makes a portalled surface correct in both themes by default.
+    // The storefront still renders pure black because `.dark` now defines it
+    // as pure black — see the note on those tokens in globals.css.
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
         <Toaster richColors position="top-right" />

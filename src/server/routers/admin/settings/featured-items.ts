@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { revalidateTag } from "next/cache";
-import { adminProcedure } from "../../../trpc";
+import { adminProcedure, adminWriteProcedure } from "../../../trpc";
 import { container } from "@/application/container";
 
 /**
@@ -37,7 +37,7 @@ export const featuredItemsProcedures = {
       return items.map((i) => i.toObject());
     }),
 
-  updateFeaturedItems: adminProcedure
+  updateFeaturedItems: adminWriteProcedure
     .input(
       z.object({
         section: z.string(),
@@ -54,7 +54,7 @@ export const featuredItemsProcedures = {
       return updated.map((i) => i.toObject());
     }),
 
-  addFeaturedItem: adminProcedure
+  addFeaturedItem: adminWriteProcedure
     .input(featuredItemSchema)
     .mutation(async ({ input }) => {
       const repo = container.getSiteConfigRepository();
@@ -63,7 +63,7 @@ export const featuredItemsProcedures = {
       return added.toObject();
     }),
 
-  removeFeaturedItem: adminProcedure
+  removeFeaturedItem: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const repo = container.getSiteConfigRepository();
@@ -72,7 +72,7 @@ export const featuredItemsProcedures = {
       return { success: true };
     }),
 
-  reorderFeaturedItems: adminProcedure
+  reorderFeaturedItems: adminWriteProcedure
     .input(
       z.object({
         section: z.string(),

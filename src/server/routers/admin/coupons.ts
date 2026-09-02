@@ -4,7 +4,7 @@
  * CRUD operations for coupon management.
  */
 
-import { router, adminProcedure } from "@/server/trpc";
+import { router, adminProcedure, adminWriteProcedure } from "@/server/trpc";
 import { z } from "zod";
 import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupons/coupon.repository";
 import { TRPCError } from "@trpc/server";
@@ -18,7 +18,15 @@ const couponSchema = z.object({
   code: z.string().min(3).max(50),
   description: z.string().nullish(),
   discountType: z.enum(["percentage", "fixed"]),
-  discountValue: z.string(),
+  // A decimal string, because that is how Postgres stores money here and what
+  // the repository writes — but a *parseable* one. This was a bare
+  // `z.string()`, so "abc" saved happily and then reached
+  // `parseFloat(coupon.discountValue)` in `ValidateCouponUseCase`, producing
+  // NaN, a NaN discount, and a NaN order total.
+  discountValue: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, "Must be a number, e.g. 10 or 10.50")
+    .refine((value) => parseFloat(value) > 0, "Must be greater than zero"),
   minPurchaseAmount: z.string().nullish(),
   maxDiscountAmount: z.string().nullish(),
   usageLimit: z.number().int().positive().nullish(),
@@ -52,23 +60,25 @@ export const adminCouponsRouter = router({
   /**
    * Create a new coupon
    */
-  create: adminProcedure.input(couponSchema).mutation(async ({ input }) => {
-    // Check for duplicate code
-    const existing = await couponRepo.findByCode(input.code);
-    if (existing) {
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "A coupon with this code already exists",
-      });
-    }
+  create: adminWriteProcedure
+    .input(couponSchema)
+    .mutation(async ({ input }) => {
+      // Check for duplicate code
+      const existing = await couponRepo.findByCode(input.code);
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A coupon with this code already exists",
+        });
+      }
 
-    return couponRepo.create(input);
-  }),
+      return couponRepo.create(input);
+    }),
 
   /**
    * Update an existing coupon
    */
-  update: adminProcedure
+  update: adminWriteProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -86,7 +96,7 @@ export const adminCouponsRouter = router({
   /**
    * Delete a coupon
    */
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       await couponRepo.delete(input.id);
@@ -96,7 +106,7 @@ export const adminCouponsRouter = router({
   /**
    * Toggle coupon active status
    */
-  toggleActive: adminProcedure
+  toggleActive: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const coupon = await couponRepo.findById(input.id);

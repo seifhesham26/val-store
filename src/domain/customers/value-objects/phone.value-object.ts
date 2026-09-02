@@ -97,6 +97,32 @@ export class PhoneValueObject {
   }
 
   /**
+   * Does this login identifier look like a phone number rather than an email?
+   *
+   * A heuristic, and deliberately only that: it decides which *lookup* to try,
+   * not whether anything is valid. `toE164` still has to parse it and the
+   * credentials still have to check out, so a wrong guess here costs a failed
+   * sign-in, never an authorisation decision.
+   *
+   * It lived in `LoginForm` as a local function, which meant the browser
+   * decided how the server would interpret the string it was about to send.
+   * It is here so the server can classify the identifier itself — see
+   * `signIn` in `src/server/routers/auth.ts`, which no longer trusts the
+   * client to have done any of this.
+   */
+  static looksLikePhone(value: string): boolean {
+    if (value.length === 0 || value.includes("@")) {
+      return false;
+    }
+
+    const digitsOnly = value.replace(/[^0-9]/g, "");
+
+    // Enough digits to be a subscriber number, and mostly digits rather than a
+    // word that happens to contain some.
+    return digitsOnly.length >= 7 && digitsOnly.length / value.length > 0.7;
+  }
+
+  /**
    * Parse and format a phone number to E.164 format
    * Returns null if invalid
    */

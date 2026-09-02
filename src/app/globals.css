@@ -104,8 +104,22 @@
  * storefront to the light palette, which is the bug this arrangement fixed.
  */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
+  /*
+   * Pure black and pure white, deliberately — not shadcn's stock 0.145/0.985.
+   *
+   * These two lines are what let `<body>` stop hardcoding `bg-black
+   * text-white`. That override was the actual root cause of the white-on-white
+   * bug family: it beat the `@layer base` rule below, so **every Radix portal
+   * inherited `text-white`** regardless of which palette `<html>` was carrying.
+   * In the admin (`html.light`) that meant white text on a white popover, and
+   * each occurrence was patched at the call site while the cause stayed put.
+   *
+   * Making the token equal the design means the body can be token-driven and
+   * the storefront still renders the same pure black it always did. Change
+   * these if the brand changes; do not reintroduce a literal colour on <body>.
+   */
+  --background: oklch(0 0 0);
+  --foreground: oklch(1 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, adminProcedure } from "../../trpc";
+import { router, adminProcedure, adminWriteProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
 import { urlOrAssetPath } from "@/domain/shared/value-objects/url-or-asset-path.schema";
@@ -90,7 +90,7 @@ export const productsRouter = router({
   // list and edit pages both key off `id`, not `slug`.
 
   // Create new product
-  create: adminProcedure
+  create: adminWriteProcedure
     .input(createProductSchema.extend(newProductRelationsSchema.shape))
     .mutation(async ({ input }) => {
       const useCase = container.getCreateProductUseCase();
@@ -100,7 +100,7 @@ export const productsRouter = router({
     }),
 
   // Update product
-  update: adminProcedure
+  update: adminWriteProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -120,7 +120,7 @@ export const productsRouter = router({
     }),
 
   // Delete product
-  delete: adminProcedure
+  delete: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const useCase = container.getDeleteProductUseCase();
@@ -130,7 +130,7 @@ export const productsRouter = router({
     }),
 
   // Toggle product status
-  toggleStatus: adminProcedure
+  toggleStatus: adminWriteProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const useCase = container.getToggleProductStatusUseCase();
