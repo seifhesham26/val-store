@@ -1,84 +1,61 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "@/lib/auth-client";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { vanillaTrpc } from "@/lib/trpc";
-import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
+import { safeRedirect } from "@/lib/safe-url";
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/";
+  // `?redirect=` is attacker-controllable — see `safe-url.ts`. Same-origin
+  // paths only; anything else lands on the home page.
+  const redirectUrl = safeRedirect(searchParams.get("redirect"));
   const [identifier, setIdentifier] = useState(""); // Email or phone
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Helper to detect if input looks like a phone number (mostly digits)
-  const isPhoneNumber = (value: string): boolean => {
-    const digitsOnly = value.replace(/[^0-9]/g, "");
-    // If more than 70% of characters are digits and has at least 7 digits
-    return (
-      digitsOnly.length >= 7 &&
-      digitsOnly.length / value.length > 0.7 &&
-      !value.includes("@")
-    );
-  };
-
+  /**
+   * One request, and the server does the deciding.
+   *
+   * This used to be three: classify the identifier here, ask the server to
+   * turn a phone number into the account's email address, then sign in with
+   * that email. The middle step handed out email addresses to anyone who asked
+   * (see `src/server/routers/auth.ts`), so classification, lookup and sign-in
+   * all moved behind one mutation. The browser now sends what the person
+   * typed and learns only whether it worked.
+   */
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
     setIsLoading(true);
 
     try {
-      let email = identifier;
+      await vanillaTrpc.auth.signIn.mutate({ identifier, password });
 
-      // If it looks like a phone number, look up the email
-      if (isPhoneNumber(identifier)) {
-        // Format phone to E.164 and look up email
-        const formattedPhone = PhoneValueObject.toE164(identifier);
-        if (!formattedPhone) {
-          setError("Invalid phone number");
-          setIsLoading(false);
-          return;
-        }
-
-        // Call tRPC to get email by phone
-        const result = await vanillaTrpc.auth.getEmailByPhone.query({
-          phone: identifier,
-        });
-
-        if (!result.email) {
-          setError("No account found with this phone number");
-          setIsLoading(false);
-          return;
-        }
-
-        email = result.email;
-      }
-
-      const { error: signInError } = await signIn.email({
-        email,
-        password,
-      });
-
-      if (signInError) {
-        setError(signInError.message || "Invalid email or password");
-        return;
-      }
-
-      // Success - redirect to intended page
-      router.push(redirectUrl);
-      router.refresh();
-    } catch {
-      setError("An unexpected error occurred");
-    } finally {
+      // A full navigation rather than `router.push`, because the session was
+      // established by a `Set-Cookie` on a tRPC response rather than through
+      // the Better Auth client. That leaves the client's session store — what
+      // every `useSession` in the app reads — holding its signed-out value,
+      // and a soft navigation would carry it across. Reloading re-reads
+      // everything from the cookie that now exists.
+      //
+      // `redirectUrl` has already been through `safeRedirect`, so this is a
+      // same-origin path.
+      window.location.assign(redirectUrl);
+    } catch (err) {
+      // Every server-side failure carries the same message by design — see
+      // GENERIC_FAILURE in the auth router.
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "An unexpected error occurred"
+      );
       setIsLoading(false);
     }
   };

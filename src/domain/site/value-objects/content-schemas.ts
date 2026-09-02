@@ -18,7 +18,13 @@ export const heroContentSchema = z.object({
   backgroundVideo: urlOrAssetPath.optional(),
   overlayOpacity: z.number().min(0).max(100).optional().default(40),
   ctaText: z.string().optional().default("Shop Now"),
-  ctaLink: z.string().optional().default("/collections"),
+  // Validated, not a bare string: this lands in an `href` on the storefront
+  // home page, so an unchecked value here is a `javascript:` URL that runs for
+  // every visitor. `urlOrAssetPath` allows the two shapes a CTA legitimately
+  // takes — a site path, or an absolute http(s) link to a campaign page — and
+  // nothing else. `safeHref` re-checks at render time, because rows written
+  // before this existed are still in the database.
+  ctaLink: urlOrAssetPath.optional().default("/collections"),
   ctaStyle: z
     .enum(["primary", "outline", "ghost"])
     .optional()
@@ -37,7 +43,9 @@ export type HeroContent = z.infer<typeof heroContentSchema>;
 
 export const announcementMessageSchema = z.object({
   text: z.string().min(1, "Message text is required"),
-  link: z.string().optional(),
+  // Same reasoning as `ctaLink` above, and the announcement bar is on *every*
+  // storefront page rather than just the home page.
+  link: urlOrAssetPath.optional(),
   icon: z.string().optional(),
 });
 

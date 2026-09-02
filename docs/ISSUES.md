@@ -73,7 +73,97 @@ Issues 1-43 are the original catalogue and are the work in progress. [Pass 2](#p
 - [P2 — Performance](#p2--performance-) (5, all resolved ✅)
 - [P3 — Cleanup](#p3--cleanup) (15)
 - [Pass 2 — full-source audit, deferred](#pass-2--full-source-audit-deferred) (14)
+- [Security — 2026-09-02 hardening pass](#security--2026-09-02-hardening-pass)
 - [Suggested order of work](#suggested-order-of-work)
+
+---
+
+## Security — 2026-09-02 hardening pass
+
+A full read of the request surface: every route handler, every tRPC router, the auth configuration, both payment paths, the repositories under them, and the dependency tree. Branch `security/hardening-pass`.
+
+### What the read did _not_ find
+
+Worth recording, because these are the places an e-commerce codebase usually leaks and this one does not — and because each is a property that is easy to break later.
+
+- **No SQL injection surface.** Every `sql` template interpolates through Drizzle's parameter binding; there is no `sql.raw` and no `db.execute` with string concatenation. LIKE metacharacters are escaped with an explicit `ESCAPE` clause (`domain/shared/like-pattern.ts`).
+- **No XSS sinks.** No `dangerouslySetInnerHTML`, `eval`, or `innerHTML` anywhere in `src/`. The only untrusted-string-into-DOM path was the `href` issue fixed below.
+- **Prices are never client-supplied.** Cart lines carry ids and quantity only; the price is resolved from `products` at read time, the subtotal is computed in `CreateOrderUseCase`, and the coupon is re-validated against that subtotal. Stripe is charged from the persisted order.
+- **Stock cannot be oversold.** `DrizzleOrderRepository.create` locks each variant `FOR UPDATE` in a fixed id order inside the order transaction.
+- **Ownership is checked consistently.** Addresses on every read and write and again at order creation; `orders.getOrderById`; `checkout.confirmSession` before it touches the order behind a Stripe session id; notifications scoped by `(id, userId)`.
+- **All 14 admin routers use `adminProcedure`**, behind three independent gates (edge cookie check, `admin/layout.tsx` role check, `adminProcedure`).
+- **The Stripe webhook verifies its signature first** and fails closed without `STRIPE_WEBHOOK_SECRET`; `markAsPaid` is idempotent, so a replay does not double-notify or double-redeem.
+- **No committed secrets.** `.env*` is gitignored, nothing secret-shaped is tracked, `STRIPE_PUBLISHABLE_KEY` is deliberately not `NEXT_PUBLIC_`, and no client component reads `process.env` at all.
+- **CSRF** is covered by Better Auth's default `SameSite=Lax` session cookie. No route sets `sameSite: "none"`; if one ever does, the tRPC endpoint needs an origin check, because it has none of its own.
+
+### Fixed
+
+#### S1. Dependencies were audited against truncated output ✅
+
+The previous pass read a `pnpm audit --json` that had been cut off mid-object and acted on the three advisories it happened to contain, leaving `pnpm-workspace.yaml` with an override (`next@>=16.0.0-beta.0 <16.0.9`) written for an advisory that had already been superseded. The full list was **69 production advisories**, including two **critical** ones in `better-auth` — the authentication library itself.
+
+**Fixed.** `better-auth` 1.4.7 → 1.7.2 (both criticals), `next` 16.0.8 → 16.3.4 (all 23), `drizzle-orm` → 0.45.2, `vitest` → 4.1.11 — that last one is a devDependency, but `better-auth` pulls vitest into the production graph, so the bump alone did not clear it and an override was needed too. 24 overrides in total, each carrying the advisory id it exists for.
+
+**Result: 0 advisories in both scopes** — production went 69 → 0, and the dev tree (eslint, eslint-config-next, commitlint) went 27 → 0. Most of the dev ones cleared with `pnpm update --depth Infinity` inside their existing ranges; only `minimatch` and `brace-expansion` needed overrides, scoped to their major line so the 1.x/3.x copies elsewhere are left alone — forcing those onto a new major breaks eslint rather than securing it.
+
+**Still true** `pnpm audit` output is long enough to be truncated by tooling that reads it. Re-run it in full — `pnpm audit --prod --json` written to a file, not piped into something with a display limit — before believing any summary of it, including this one.
+
+#### S2. The login form handed out email addresses ✅
+
+`public.auth.getEmailByPhone` was a `publicProcedure` that took a phone number and returned the email address of the account using it. It was the phone→email step of the login form, and it answered for anybody. Egyptian mobile numbers are a small enumerable keyspace (`+201[0125]XXXXXXXX`), and the response distinguished "there is an account" from "there is not" — precisely the oracle `sendResetPassword` is deliberately _not_.
+
+**Fixed.** Replaced with `public.auth.signIn`, which takes `identifier + password`, classifies the identifier server-side (`PhoneValueObject.looksLikePhone`), resolves the email internally, signs in through `auth.api.signInEmail`, and forwards the resulting `Set-Cookie` onto the tRPC response. Every failure — unknown phone, unknown email, wrong password, unparseable identifier — returns one message. Rate-limited twice: per IP, and per normalised identifier, because no per-IP budget catches a distributed attack on one account.
+
+**Still true** `auth.api.*` bypasses the Better Auth handler and therefore its own `rateLimit.customRules`. The two Upstash limits in that procedure are not defence in depth — they are the only throttle on the path. The login form now does a full-page navigation on success, because the session was established by a tRPC response rather than the Better Auth client, which leaves the client's session store holding its signed-out value.
+
+#### S3. Open redirect after sign-in ✅
+
+`LoginForm` and `SignupForm` passed `?redirect=` straight to `router.push`, which hard-navigates off-origin. `src/proxy.ts` writes that parameter itself, so `/login?redirect=https://evil.example` is a URL shaped exactly like a real one — and it fires at the moment a person has just typed a password.
+
+**Fixed.** `safeRedirect` in `src/lib/safe-url.ts`; same-origin paths only.
+
+**Still true** The interesting inputs are the ones where a hand-written check and a browser disagree — `//evil.example`, `/\evil.example` (backslash is a slash to a special-scheme parser), and tab/newline smuggling, which the parser strips _before_ parsing. That is why the check resolves against a sentinel origin instead of pattern-matching. `safe-url.test.ts` asserts all three against both exported functions from one shared list.
+
+#### S4. CMS content could inject a `javascript:` link ✅
+
+`heroContentSchema.ctaLink` and `announcementMessageSchema.link` were bare `z.string()`, and both render as `<Link href={…}>` — the hero on the home page, the announcement bar on **every** storefront page. React does not block a `javascript:` href. Admin-only to write, but it executes for every visitor, so it turned one compromised admin account into site-wide XSS.
+
+**Fixed** on both sides. Written: both fields now use `urlOrAssetPath`, which already existed two files away. Rendered: `safeHref` in `src/lib/safe-url.ts`.
+
+**Still true** The render-side guard is not belt-and-braces. `ServerHeroSection` and `AnnouncementBarClient` read `JSON.parse(section.content)` and spread it over their defaults **without a Zod parse**, so rows written before the schemas were tightened still arrive unvalidated. Any new field on those objects that ends up in an `href`, `src`, or `style` needs the same treatment.
+
+#### S5. CSP was report-only with nowhere to report ✅
+
+The policy blocked nothing and recorded nothing — the one configuration that achieves neither. The comment described watching the reports for a few days, which was impossible.
+
+**Fixed.** Split. `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'` and `form-action 'self'` are now **enforced** — none can break this app. `script-src`/`style-src` stay report-only, because tightening them needs Next's nonce support wired through the layout. `/api/csp-report` collects violations so the promotion is a matter of reading logs rather than guessing.
+
+**Still true** `'unsafe-inline'`/`'unsafe-eval'` in `script-src` are still there and are the reason that half is not enforced.
+
+#### S6. Session revocation lagged five minutes ✅
+
+`cookieCache.maxAge` was 300s and the role cache 60s, so a sign-out, a revoked session, or a deleted account kept working for up to five minutes — nothing reads the `session` table while the cookie is live.
+
+**Fixed.** 60s, matching `ROLE_CACHE_TTL_MS`, so revocation and demotion now take effect on one timescale rather than two that have to be reasoned about together. The cost is one query per active user per minute.
+
+#### S7. Unbounded and unthrottled endpoints ✅
+
+`apiRateLimiter` existed and was wired to exactly one endpoint.
+
+**Fixed.** `enforceRateLimit` in `server/utils/rate-limiter.ts` collapses the check-then-throw pair that made adding a limit look like more work than it was, and is now applied to `products.search`, `reviews.create` (keyed by user) and the CSP collector, as well as the newsletter subscribe it already had. Bounds added: search terms `max(100)`, `reviews.getByProduct` paginated in SQL, cart line quantity `max(100)`.
+
+**Still true** Reading the client IP is not an auth lookup, so throttling a `publicProcedure` does not mark the request as having touched auth and its response stays publicly cacheable. That also means the limiter only ever sees requests a shared cache could not answer.
+
+#### S8. Smaller integrity fixes ✅
+
+- `coupons.discountValue` was a bare `z.string()`, so `"abc"` saved and then reached `parseFloat` in `ValidateCouponUseCase` — a NaN discount on a NaN order total. Now a validated decimal string, greater than zero.
+- `NODE_ENV=development` was pinned in `.env`. Nothing in the codebase reads it and Next sets it per command; in a deployment it would have turned on tRPC stack traces. Removed (a copy of the original is at `.env.bak.pre-security-pass`).
+
+### Accepted, not fixed
+
+- **`admin` and `super_admin` are identical** in every gate — `isAdminRole` treats them the same — and the `worker` role in the enum is checked nowhere. There is no separation between "can edit products" and "can read every customer's address and order history". This is a role-model design decision, not a patch; it belongs with #34 rather than in a hardening pass.
+- **`getClientIp` trusts the first `x-forwarded-for` hop.** Correct on Vercel, which sets that header itself. On any host that does not, it is spoofable and every per-IP limit above becomes advisory. If this ever leaves Vercel, that function is the thing to revisit first.
+- **Sign-up does not require email verification** (`requireEmailVerification: false`), so an account can be created against an address the person does not control. Deliberate, and it is what makes the storefront usable without a mail round trip — but it is why a review's "verified purchase" badge is earned from an order rather than from an email.
 
 ---
 

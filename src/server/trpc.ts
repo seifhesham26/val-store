@@ -38,6 +38,15 @@ export interface TRPCContext {
    * safe to cache publicly — see `responseMeta` in the route handler.
    */
   touchedAuth: () => boolean;
+  /**
+   * Headers that will be sent with the HTTP response, or null when there is no
+   * HTTP response to attach them to (a server-side `createCaller`).
+   *
+   * Present for exactly one reason: `auth.signIn` establishes a session, and a
+   * session is a `Set-Cookie`. Everything else in this router tree answers with
+   * a body alone.
+   */
+  resHeaders: Headers | null;
 }
 
 /** The work the context used to do eagerly, now deferred until asked. */
@@ -76,8 +85,12 @@ async function resolveUser(): Promise<AuthUser | null> {
  *
  * Synchronous on purpose: building the context now costs nothing, because all
  * of the work it used to do has moved behind `getUser`.
+ *
+ * `resHeaders` is handed straight through from the fetch adapter. It is
+ * optional so the signature stays compatible with a caller that has no HTTP
+ * response to speak of.
  */
-export function createContext(): TRPCContext {
+export function createContext(opts?: { resHeaders?: Headers }): TRPCContext {
   let pending: Promise<AuthUser | null> | null = null;
 
   return {
@@ -86,6 +99,7 @@ export function createContext(): TRPCContext {
       return pending;
     },
     touchedAuth: () => pending !== null,
+    resHeaders: opts?.resHeaders ?? null,
   };
 }
 
@@ -100,6 +114,9 @@ export function createDirectContext(user: AuthUser | null): TRPCContext {
   return {
     getUser: async () => user,
     touchedAuth: () => true,
+    // No HTTP response exists for an in-process caller, and nothing reached
+    // through one signs anybody in.
+    resHeaders: null,
   };
 }
 

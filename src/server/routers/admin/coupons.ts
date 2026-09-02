@@ -18,7 +18,15 @@ const couponSchema = z.object({
   code: z.string().min(3).max(50),
   description: z.string().nullish(),
   discountType: z.enum(["percentage", "fixed"]),
-  discountValue: z.string(),
+  // A decimal string, because that is how Postgres stores money here and what
+  // the repository writes — but a *parseable* one. This was a bare
+  // `z.string()`, so "abc" saved happily and then reached
+  // `parseFloat(coupon.discountValue)` in `ValidateCouponUseCase`, producing
+  // NaN, a NaN discount, and a NaN order total.
+  discountValue: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, "Must be a number, e.g. 10 or 10.50")
+    .refine((value) => parseFloat(value) > 0, "Must be greater than zero"),
   minPurchaseAmount: z.string().nullish(),
   maxDiscountAmount: z.string().nullish(),
   usageLimit: z.number().int().positive().nullish(),

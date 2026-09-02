@@ -6,7 +6,7 @@ import { headers } from "next/headers";
 import { TRPCError } from "@trpc/server";
 import {
   apiRateLimiter,
-  checkRateLimit,
+  enforceRateLimit,
   getClientIp,
 } from "@/server/utils/rate-limiter";
 
@@ -25,16 +25,7 @@ export const newsletterRouter = router({
       // No-ops silently when UPSTASH_* is absent, so local development is
       // unaffected.
       const ip = getClientIp(await headers());
-      const { allowed } = await checkRateLimit(
-        apiRateLimiter,
-        `newsletter:${ip}`
-      );
-      if (!allowed) {
-        throw new TRPCError({
-          code: "TOO_MANY_REQUESTS",
-          message: "Too many requests. Please try again shortly.",
-        });
-      }
+      await enforceRateLimit(apiRateLimiter, `newsletter:${ip}`);
 
       try {
         await db

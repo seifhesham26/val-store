@@ -18,6 +18,49 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+# Each entry is an advisory this project is pinned out of. Direct dependencies
+# are bumped in package.json; these are the transitive ones, which can only be
+# fixed here, plus a floor under the direct bumps so nothing pulls a vulnerable
+# copy back in through another package's dependency range.
+#
+# The list is long because it was last reviewed against a truncated `pnpm audit`
+# and only three advisories were acted on. Re-run `pnpm audit --prod` before
+# trusting it again.
 overrides:
+  # Direct dependencies, floored. Bumped in package.json too; these stop
+  # `uploadthing` and `better-auth` reintroducing an older `next`.
+  next@<16.2.11: ">=16.2.11"
+  better-auth@<1.6.22: ">=1.6.22"
+  drizzle-orm@<0.45.2: ">=0.45.2"
+
+  # Transitive. No package.json entry exists for any of these.
   esbuild@<=0.24.2: ">=0.25.0"
-  next@>=16.0.0-beta.0 <16.0.9: ">=16.0.9"
+  qs@<6.14.2: ">=6.14.2"
+  "@babel/core@<7.29.6": ">=7.29.6"
+  browserslist@<4.28.7: ">=4.28.7"
+  defu@<6.1.5: ">=6.1.5"
+  effect@<3.20.0: ">=3.20.0"
+  flatted@<3.4.2: ">=3.4.2"
+  kysely@<0.28.17: ">=0.28.17"
+  lodash@<4.18.1: ">=4.18.1"
+  nanoid@<3.3.18: ">=3.3.18"
+  picomatch@<4.0.4: ">=4.0.4"
+  postcss@<8.5.23: ">=8.5.23"
+  rollup@<4.59.0: ">=4.59.0"
+  sharp@<0.35.0: ">=0.35.0"
+  uuid@<11.1.1: ">=11.1.1"
+  vite@<7.3.5: ">=7.3.5"
+  ws@<8.21.0: ">=8.21.0"
+  yaml@<2.8.3: ">=2.8.3"
+  # GHSA-5xrq-8626-4rwp, critical. Reached through `better-auth`, which
+  # pulls vitest into the production graph, so bumping the devDependency
+  # alone does not clear it.
+  vitest@<4.1.0: ">=4.1.0"
+
+  # Dev-only, and the last two that `pnpm update` could not reach: their
+  # parent (`@typescript-eslint/typescript-estree`) pins a range that stops
+  # below the fix. Scoped to the major line on purpose — the 1.x and 3.x
+  # copies elsewhere in the tree are already patched and forcing them onto
+  # a new major would break eslint rather than secure it.
+  minimatch@>=9.0.0 <9.0.7: ">=9.0.7"
+  brace-expansion@>=2.0.0 <2.1.4: ">=2.1.4"

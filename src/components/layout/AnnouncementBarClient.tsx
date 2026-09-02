@@ -9,6 +9,7 @@
 import { useState, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
+import { safeHref } from "@/lib/safe-url";
 
 const DISMISS_KEY = "announcement_dismissed";
 const DISMISS_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
@@ -85,6 +86,13 @@ export function AnnouncementBarClient({
   const messageText =
     typeof currentMessage === "string" ? currentMessage : currentMessage?.text;
 
+  // The bar renders on every storefront page, and `linkUrl` originates in
+  // admin-editable CMS content that reaches this component as a plain string —
+  // the server component reads it with `JSON.parse` and does not re-validate.
+  // An unsafe value yields no link at all rather than a default: an
+  // announcement without a link is simply an announcement.
+  const safeLinkUrl = safeHref(linkUrl);
+
   return (
     <div
       className="relative py-2 px-4 text-center text-sm"
@@ -93,9 +101,9 @@ export function AnnouncementBarClient({
       <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
         <span>{messageText}</span>
 
-        {linkUrl && linkText && (
+        {safeLinkUrl && linkText && (
           <Link
-            href={linkUrl}
+            href={safeLinkUrl}
             className="font-semibold underline underline-offset-2 hover:no-underline"
           >
             {linkText}

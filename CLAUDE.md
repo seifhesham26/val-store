@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-09-01): `type-check` clean, `lint` 0 errors / 4 unused-var warnings, 162 unit tests passing, `build` producing 92 static pages, plus an integration suite that needs a database.
+Baseline as of last check (2026-09-02, after the security hardening pass): `type-check` clean, `lint` 0 errors / 3 warnings, 270 unit tests passing, `build` producing 98 static pages, `pnpm audit` clean in both scopes, plus an integration suite that needs a database. The three lint warnings are `@next/next/no-location-assign-relative-destination` in `UserDialog`, `AccountSidebar` and `MobileMenu` — a rule new in eslint-config-next 16.3.4, firing on deliberate full reloads after an auth change. `LoginForm` does the same thing via `window.location.assign`, which the rule does not match.
 
 ## Commands
 
@@ -82,7 +82,7 @@ Better Auth (`src/lib/auth.ts`) with email+password, Google, Facebook. Its table
 
 - A `databaseHooks.user.create.after` hook auto-creates the `user_profiles` row (default role `customer`) and a phone-keyed `customers` row.
 - Client-side typing for the custom fields lives in `src/types/auth.ts` (`ExtendedSignUpEmail`) to avoid `any`.
-- **Login accepts email or phone.** The form heuristically detects a phone, normalizes to E.164 (`PhoneValueObject.toE164`, default country `EG`), then calls `auth.getEmailByPhone` — IP rate-limited via Upstash specifically to block phone enumeration.
+- **Login accepts email or phone, and the server decides which.** The form posts `identifier + password` to one mutation, `public.auth.signIn`. That procedure classifies the identifier (`PhoneValueObject.looksLikePhone`), normalizes a phone to E.164 (`toE164`, default country `EG`), resolves it to an email internally, calls `auth.api.signInEmail`, and forwards the resulting `Set-Cookie` onto the tRPC response — which is the only reason `TRPCContext` carries `resHeaders`. It replaced `auth.getEmailByPhone`, a public procedure that returned the account's email for any phone number handed to it. **Every failure returns one message**; distinguishing "no such account" from "wrong password" is what made the old endpoint an enumeration oracle. Two Upstash limits guard it, per IP and per normalized identifier — and they are the only ones on that path, because `auth.api.*` bypasses the Better Auth handler along with its own `rateLimit.customRules`. The form navigates with `window.location` rather than `router.push` on success: the session came from a tRPC `Set-Cookie`, not the Better Auth client, so the client session store every `useSession` reads is still holding its signed-out value until a real page load.
 - Rate limiting no-ops silently when `UPSTASH_*` env vars are absent (local dev).
 
 Admin access is gated in three places that must stay in sync: `src/proxy.ts` (edge, cookie existence only), `src/app/admin/layout.tsx` (server session + role), and `adminProcedure`.
@@ -164,7 +164,7 @@ Every P0 and all but one P1 are now fixed. What is left:
 
 Two passes are done and **`docs/PERFORMANCE.md` is the current record** — measured numbers, what changed, and what is still outstanding. The short version:
 
-- **The unit of cost is a round trip**, not a slow query. The database is Neon in `eu-central-1`: ~58ms warm, ~560ms to open a cold connection. postgres.js **pipelines** queries down one connection, so four queries issued together cost about *one* round trip — which is why `max: 1` is the fastest pool setting for a single request and why `DATABASE_POOL_MAX` defaults to 1. Raise it to 5 only for a long-lived Node server; see the table in `src/db/index.ts`.
+- **The unit of cost is a round trip**, not a slow query. The database is Neon in `eu-central-1`: ~58ms warm, ~560ms to open a cold connection. postgres.js **pipelines** queries down one connection, so four queries issued together cost about _one_ round trip — which is why `max: 1` is the fastest pool setting for a single request and why `DATABASE_POOL_MAX` defaults to 1. Raise it to 5 only for a long-lived Node server; see the table in `src/db/index.ts`.
 - **Collection pages are server components.** `/collections/*` resolve page 1 through `getCachedFirstProductPage` and seed the client grid with `initialData`, so they prerender with products in the HTML. `/products/[slug]` and `/collections/[slug]` have `generateStaticParams`. When adding a collection page, follow that shape — do not add another client component that fetches on mount.
 - **The cached fetchers call the routers**, not reimplementations of their queries, so a server-rendered page 1 cannot drift from the page 2 the client fetches.
 
