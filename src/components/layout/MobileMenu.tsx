@@ -36,10 +36,22 @@ const shopCategories = [
   { label: "All Products", href: "/collections/all" },
 ];
 
+/**
+ * Every href here has to resolve to something that exists.
+ *
+ * These were "Summer 2025", "Essentials" and "Best Sellers" — three
+ * collections that have never existed in any seed. `/collections/[slug]` calls
+ * `notFound()` on an unknown slug, so all three were hard 404s served to
+ * anyone who opened the mobile menu.
+ *
+ * Replaced with destinations that are real: two live categories and the
+ * collections index. If a curated collection is wanted later it needs a
+ * `categories` row first — a link is not a collection.
+ */
 const collectionsLinks = [
-  { label: "Summer 2025", href: "/collections/summer-2025" },
-  { label: "Essentials", href: "/collections/essentials" },
-  { label: "Best Sellers", href: "/collections/best-sellers" },
+  { label: "New Arrivals", href: "/collections/new" },
+  { label: "Sale", href: "/collections/sale" },
+  { label: "Browse All Collections", href: "/collections" },
 ];
 
 const socialLinks = [

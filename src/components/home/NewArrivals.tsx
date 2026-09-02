@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { trpc } from "@/lib/trpc";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
 
 interface NewArrivalsProps {
   title?: string;
@@ -20,7 +21,11 @@ export function NewArrivals({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const { data: products, isLoading } = trpc.public.products.list.useQuery(
-    { limit: 8 },
+    // The same window `/collections/new` uses, so "View all" cannot show a
+    // different set of products from the row it sits under. This was `{ limit:
+    // 8 }` — the eight newest, which was close enough to be right by accident
+    // but agreed with nothing else that claimed to show new arrivals.
+    { limit: 8, createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS },
     { staleTime: 1000 * 60 * 5 }
   );
 

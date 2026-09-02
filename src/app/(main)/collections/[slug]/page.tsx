@@ -65,15 +65,20 @@ export default async function DynamicCollectionPage({
     notFound();
   }
 
-  // Only the products depend on the category id, so this is a genuine
-  // dependency rather than an avoidable serial await.
+  // Only the products depend on the category, so this is a genuine dependency
+  // rather than an avoidable serial await.
+  //
+  // Filtered on the whole subtree, not on `category.id`. Products are filed
+  // against leaf categories and the navigation links to their parents, so
+  // matching a single id rendered "No products found" on every parent
+  // collection — `/collections/women` among them.
   const initialPage = await getCachedFirstProductPage({
-    categoryId: category.id,
+    categoryIds: category.categoryIds,
   });
 
   return (
     <InfiniteProductGrid
-      categoryId={category.id}
+      categoryIds={category.categoryIds}
       title={category.name}
       description={category.description ?? undefined}
       initialPage={initialPage}

@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import {
+  addresses,
   orders,
   orderItems,
   payments,
@@ -70,6 +71,55 @@ function toOrderAddress(
     postalCode: row.postalCode,
     country: row.country,
     phone: row.phone,
+  };
+}
+
+/**
+ * The address as the order recorded it, falling back to the live row.
+ *
+ * The snapshot is authoritative: it is what the customer actually entered at
+ * checkout, and it survives the address being edited, deleted by the customer,
+ * or cascaded away with their account. The join is the fallback for orders
+ * written before `orders.shipping_address_snapshot` existed.
+ *
+ * Validated rather than cast. The column is `jsonb`, so nothing in the type
+ * system guarantees its shape — a hand-written row or a future schema change
+ * would otherwise surface as `undefined` fields rendered into an address
+ * label.
+ */
+function resolveOrderAddress(
+  snapshot: unknown,
+  joined: DbAddress | null | undefined
+): OrderAddress | null {
+  const fromSnapshot = parseAddressSnapshot(snapshot);
+  return fromSnapshot ?? toOrderAddress(joined);
+}
+
+/** Every field an `OrderAddress` needs, as strings, or null. */
+function parseAddressSnapshot(value: unknown): OrderAddress | null {
+  if (!value || typeof value !== "object") return null;
+
+  const row = value as Record<string, unknown>;
+  const str = (key: string) =>
+    typeof row[key] === "string" ? (row[key] as string) : null;
+
+  const fullName = str("fullName");
+  const addressLine1 = str("addressLine1");
+  const city = str("city");
+
+  // Enough to be an address at all. A partial snapshot is treated as no
+  // snapshot, so the join still gets its chance.
+  if (!fullName || !addressLine1 || !city) return null;
+
+  return {
+    fullName,
+    addressLine1,
+    addressLine2: str("addressLine2"),
+    city,
+    state: str("state") ?? "",
+    postalCode: str("postalCode") ?? "",
+    country: str("country") ?? "",
+    phone: str("phone") ?? "",
   };
 }
 
@@ -147,7 +197,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         billingAddress: true,
         payments: true,
       },
-      orderBy: [desc(orders.createdAt)],
+      orderBy: [desc(orders.createdAt), desc(orders.id)],
       limit: filters?.limit,
       offset: filters?.offset,
     });
@@ -172,6 +222,15 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   async create(order: OrderEntity): Promise<OrderEntity> {
     const now = new Date();
 
+    // Copy the addresses onto the order before anything is written. Read
+    // outside the transaction on purpose: they are the customer's own rows,
+    // already ownership-checked by `CreateOrderUseCase`, and nothing in this
+    // transaction writes them.
+    const [shippingSnapshot, billingSnapshot] = await Promise.all([
+      this.loadAddressSnapshot(order.shippingAddressId),
+      this.loadAddressSnapshot(order.billingAddressId),
+    ]);
+
     const datePart = now.toISOString().slice(0, 10).replaceAll("-", "");
     const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
     const orderNumber = `VLK-${datePart}-${randomPart}`;
@@ -191,6 +250,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         couponId: order.couponId,
         shippingAddressId: order.shippingAddressId,
         billingAddressId: order.billingAddressId,
+        shippingAddressSnapshot: shippingSnapshot,
+        billingAddressSnapshot: billingSnapshot,
         createdAt: now,
         updatedAt: now,
       });
@@ -844,7 +905,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         billingAddress: true,
         payments: true,
       },
-      orderBy: [desc(orders.createdAt)],
+      orderBy: [desc(orders.createdAt), desc(orders.id)],
       limit,
     });
 
@@ -949,6 +1010,35 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
    * Map database result to OrderEntity
    * Maps actual database schema fields to entity expectations
    */
+  /**
+   * The address as it stands right now, to be frozen onto the order.
+   *
+   * Returns null for an id that resolves to nothing rather than throwing: the
+   * snapshot is a record, and failing a checkout over one would be a worse
+   * outcome than an order that falls back to the join for its address.
+   */
+  private async loadAddressSnapshot(
+    addressId: string | null
+  ): Promise<OrderAddress | null> {
+    if (!addressId) return null;
+
+    const row = await db.query.addresses.findFirst({
+      where: eq(addresses.id, addressId),
+      columns: {
+        fullName: true,
+        addressLine1: true,
+        addressLine2: true,
+        city: true,
+        state: true,
+        postalCode: true,
+        country: true,
+        phone: true,
+      },
+    });
+
+    return toOrderAddress(row);
+  }
+
   private mapToEntity(
     dbOrder: {
       id: string;
@@ -983,6 +1073,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       }>;
       shippingAddress?: DbAddress | null;
       billingAddress?: DbAddress | null;
+      shippingAddressSnapshot?: unknown;
+      billingAddressSnapshot?: unknown;
       payments?: Array<{
         paymentMethod: string;
         paymentStatus: OrderPaymentStatus;
@@ -1036,8 +1128,14 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       new Date(dbOrder.updatedAt),
       dbOrder.discountAmount ? parseFloat(dbOrder.discountAmount) : 0,
       dbOrder.couponId ?? null,
-      toOrderAddress(dbOrder.shippingAddress),
-      toOrderAddress(dbOrder.billingAddress),
+      resolveOrderAddress(
+        dbOrder.shippingAddressSnapshot,
+        dbOrder.shippingAddress
+      ),
+      resolveOrderAddress(
+        dbOrder.billingAddressSnapshot,
+        dbOrder.billingAddress
+      ),
       dbOrder.adminNotes ?? null,
       dbOrder.orderNumber ?? null,
       customer

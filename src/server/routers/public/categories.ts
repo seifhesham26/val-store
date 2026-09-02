@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
+import { collectCategoryTree } from "@/domain/categories/category-tree";
 
 export const publicCategoriesRouter = router({
   /**
@@ -52,14 +53,27 @@ export const publicCategoriesRouter = router({
         return null;
       }
 
+      // The category *and everything beneath it*. Resolved here rather than on
+      // the page so the count below and the grid the page renders can never
+      // disagree about which products belong to this collection — they are the
+      // same set, decided once.
+      //
+      // `findAll` is a dozen rows and this whole procedure is cached by
+      // `getCachedCategoryBySlug`, so the traversal costs one extra query on a
+      // cache miss.
+      const categoryIds = collectCategoryTree(
+        await categoryRepo.findAll(),
+        category.id
+      );
+
       // A count, not the products themselves. The only caller — the dynamic
       // collection page — reads `id`, `name` and `description`, then hands the
-      // id to `InfiniteProductGrid`, which queries the products again with
+      // ids to `InfiniteProductGrid`, which queries the products again with
       // pagination. Returning the whole category here meant every collection
       // page loaded its entire product list twice, once of it unpaginated.
       const productCount = await container
         .getProductRepository()
-        .count({ isActive: true, categoryId: category.id });
+        .count({ isActive: true, categoryIds });
 
       return {
         id: category.id,
@@ -68,6 +82,8 @@ export const publicCategoriesRouter = router({
         description: category.description,
         imageUrl: category.imageUrl,
         productCount,
+        /** This category and its descendants — the grid's filter set. */
+        categoryIds,
       };
     }),
 

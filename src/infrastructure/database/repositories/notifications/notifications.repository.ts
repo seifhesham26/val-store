@@ -48,7 +48,10 @@ export class DrizzleNotificationsRepository implements NotificationsRepositoryIn
 
     return db.query.adminNotifications.findMany({
       where: conditions,
-      orderBy: [desc(adminNotifications.createdAt)],
+      orderBy: [
+        desc(adminNotifications.createdAt),
+        desc(adminNotifications.id),
+      ],
       limit: options?.limit ?? 50,
     });
   }

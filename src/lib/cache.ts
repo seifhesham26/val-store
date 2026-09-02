@@ -444,9 +444,13 @@ export const getCachedCategorySlugs = unstable_cache(
  */
 export interface ProductListPageFilters {
   categoryId?: string;
+  /** A category and its descendants — see `collectCategoryTree`. */
+  categoryIds?: string[];
   gender?: string;
   isFeatured?: boolean;
   isOnSale?: boolean;
+  /** Added within the last N days — see `NEW_ARRIVAL_WINDOW_DAYS`. */
+  createdWithinDays?: number;
   limit?: number;
 }
 

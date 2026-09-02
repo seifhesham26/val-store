@@ -1,6 +1,10 @@
 import { CategoryEntity } from "@/domain/categories/entities/category.entity";
 import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repositories/category.repository.interface";
 import { CategorySlug } from "@/domain/categories/value-objects/category-slug.value-object";
+import {
+  isReservedCollectionSlug,
+  reservedCollectionSlugMessage,
+} from "@/domain/categories/reserved-slugs";
 
 /**
  * Create Category Use Case
@@ -34,6 +38,12 @@ export class CreateCategoryUseCase {
     const slug = input.slug
       ? CategorySlug.create(input.slug)
       : CategorySlug.fromName(input.name);
+
+    // A static `/collections/<slug>` route would shadow this category
+    // entirely — it would exist, accept products, and never be reachable.
+    if (isReservedCollectionSlug(slug.getValue())) {
+      throw new Error(reservedCollectionSlugMessage(slug.getValue()));
+    }
 
     // Check if slug already exists
     const existingCategory = await this.categoryRepository.findBySlug(

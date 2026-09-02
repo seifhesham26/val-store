@@ -73,9 +73,16 @@ export const publicProductsRouter = router({
       z
         .object({
           categoryId: z.string().uuid().optional(),
+          // A category *and its descendants*, resolved by the caller. Bounded
+          // because it lands in an `IN (…)`; the catalogue's deepest tree is
+          // two levels, so 50 is far above anything real.
+          categoryIds: z.array(z.string().uuid()).max(50).optional(),
           gender: z.string().optional(),
           isFeatured: z.boolean().optional(),
           isOnSale: z.boolean().optional(),
+          // "Added in the last N days" — the New Arrivals filter. Bounded so
+          // it cannot be used to ask for an unbounded history window.
+          createdWithinDays: z.number().int().min(1).max(365).optional(),
           limit: z.number().min(1).max(50).optional().default(12),
           cursor: z.number().min(1).optional(), // Page number
         })
@@ -91,9 +98,11 @@ export const publicProductsRouter = router({
       const filters = {
         isActive: true,
         categoryId: input?.categoryId,
+        categoryIds: input?.categoryIds,
         isFeatured: input?.isFeatured,
         gender: input?.gender,
         isOnSale: input?.isOnSale,
+        createdWithinDays: input?.createdWithinDays,
       };
 
       const [pageProducts, total] = await Promise.all([

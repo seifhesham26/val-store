@@ -69,7 +69,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
         variants: true,
         images: true,
       },
-      orderBy: [desc(products.createdAt)],
+      orderBy: [desc(products.createdAt), desc(products.id)],
       limit: filters?.limit,
       offset: filters?.offset,
     });
@@ -95,7 +95,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
         images: true,
       },
       limit,
-      orderBy: [desc(products.createdAt)],
+      orderBy: [desc(products.createdAt), desc(products.id)],
     });
 
     return productsList.map((p) => this.mapToEntity(p));
@@ -315,7 +315,12 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
       conditions.push(eq(products.isFeatured, filters.isFeatured));
     }
 
-    if (filters?.categoryId) {
+    // A category and its descendants, when the caller resolved the tree.
+    // Checked before `categoryId` because it is the more specific request; an
+    // empty array falls through rather than matching nothing.
+    if (filters?.categoryIds && filters.categoryIds.length > 0) {
+      conditions.push(inArray(products.categoryId, filters.categoryIds));
+    } else if (filters?.categoryId) {
       conditions.push(eq(products.categoryId, filters.categoryId));
     }
 
@@ -333,7 +338,10 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
 
     if (filters?.gender) {
       conditions.push(
-        eq(products.gender, filters.gender as "men" | "women" | "unisex" | "kids")
+        eq(
+          products.gender,
+          filters.gender as "men" | "women" | "unisex" | "kids"
+        )
       );
     }
 
@@ -342,6 +350,16 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
     if (filters?.isOnSale) {
       conditions.push(
         sql`${products.salePrice} IS NOT NULL AND ${products.salePrice} < ${products.basePrice}`
+      );
+    }
+
+    // Recency, evaluated by the database rather than against a timestamp
+    // computed in JS — otherwise the boundary moves with the app server's
+    // clock and, worse, differs between the cached first page and the pages
+    // the client fetches afterwards.
+    if (filters?.createdWithinDays !== undefined) {
+      conditions.push(
+        sql`${products.createdAt} >= now() - make_interval(days => ${filters.createdWithinDays})`
       );
     }
 

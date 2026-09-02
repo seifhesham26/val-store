@@ -65,7 +65,7 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
   async findByUserId(userId: string): Promise<Review[]> {
     return db.query.reviews.findMany({
       where: eq(reviews.userId, userId),
-      orderBy: [desc(reviews.createdAt)],
+      orderBy: [desc(reviews.createdAt), desc(reviews.id)],
     });
   }
 

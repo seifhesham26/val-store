@@ -44,6 +44,9 @@ export default function AddressesPage() {
       setIsDialogOpen(false);
       setEditingAddress(null);
     },
+    onError: (err) => {
+      toast.error("Couldn't update address", { description: err.message });
+    },
   });
 
   const deleteMutation = trpc.public.address.delete.useMutation({
@@ -51,9 +54,21 @@ export default function AddressesPage() {
       utils.public.address.list.invalidate();
       toast("Address deleted");
     },
+    // Without this the delete failed in total silence — no toast, no error, the
+    // row still on screen. Every address attached to an order raised a foreign
+    // key violation, so for most customers the button had simply never worked.
+    // The constraint is fixed; the missing handler is why nobody could tell.
+    onError: (err) => {
+      toast.error("Couldn't delete address", { description: err.message });
+    },
   });
 
   const setDefaultMutation = trpc.public.address.setDefault.useMutation({
+    onError: (err) => {
+      toast.error("Couldn't update default address", {
+        description: err.message,
+      });
+    },
     onSuccess: () => {
       utils.public.address.list.invalidate();
       toast("Default address updated");

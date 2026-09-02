@@ -9,6 +9,10 @@ import { CategoryRepositoryInterface } from "@/domain/categories/interfaces/repo
 import { CategoryEntity } from "@/domain/categories/entities/category.entity";
 import { CategoryNotFoundException } from "@/domain/categories/exceptions/category-not-found.exception";
 import { CategorySlug } from "@/domain/categories/value-objects/category-slug.value-object";
+import {
+  isReservedCollectionSlug,
+  reservedCollectionSlugMessage,
+} from "@/domain/categories/reserved-slugs";
 
 export interface UpdateCategoryInput {
   id: string;
@@ -64,6 +68,12 @@ export class UpdateCategoryUseCase {
     // Slugs are unique and address a public URL, so a collision has to be caught
     // before the constraint does.
     if (slug !== existing.slug) {
+      // Renaming into a static route's slug hides the category as surely as
+      // creating it there would, and is easier to do by accident.
+      if (isReservedCollectionSlug(slug)) {
+        throw new Error(reservedCollectionSlugMessage(slug));
+      }
+
       const taken = await this.categoryRepository.findBySlug(slug);
       if (taken) {
         throw new Error(`Category with slug "${slug}" already exists`);
