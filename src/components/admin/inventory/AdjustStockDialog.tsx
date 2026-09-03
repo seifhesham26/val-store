@@ -45,14 +45,21 @@ export function AdjustStockDialog({
   const [newQuantity, setNewQuantity] = useState("");
   const [changeType, setChangeType] = useState<ChangeType>("adjustment");
   const [reason, setReason] = useState("");
+  // Which variant the fields below currently hold values for — see the
+  // re-seeding block under `handleSubmit`. `null` means "nothing is open",
+  // which is what makes reopening the same variant re-seed rather than
+  // keeping whatever was typed last time.
+  const [seededFor, setSeededFor] = useState<string | null>(null);
 
   const adjustMutation = trpc.admin.inventory.adjustStock.useMutation({
     onSuccess: () => {
       toast.success("Stock adjusted successfully");
       onSuccess();
+      // Closing is all that is needed: the re-seeding block below owns every
+      // field's value and re-runs on the next open. Clearing them here as
+      // well is what previously disguised the fact that a *cancelled* close
+      // reset nothing.
       onOpenChange(false);
-      setNewQuantity("");
-      setReason("");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -75,9 +82,32 @@ export function AdjustStockDialog({
     });
   };
 
-  // Reset form when variant changes
-  if (variant && newQuantity === "") {
-    setNewQuantity(String(variant.stockQuantity));
+  // Re-seed the form for whichever variant is currently open.
+  //
+  // This used to be `if (variant && newQuantity === "")`, which only fired
+  // when the field happened to be empty — and it is emptied *only* by the
+  // mutation's `onSuccess`. Closing without submitting (Escape, the X, an
+  // overlay click) left the previous variant's number in state, so the next
+  // variant opened showing a quantity that belonged to a different SKU while
+  // "Current Stock" above it correctly showed its own. Submitting that set
+  // the wrong stock level and wrote an audit row that looked entirely
+  // truthful — `AdjustStockUseCase` is an absolute "set stock to N", so it
+  // applies whatever arrives.
+  //
+  // Tracking the id the form was last seeded for — and clearing it whenever
+  // the dialog is closed — re-seeds on every open, including reopening the
+  // same variant after a cancel. `open` is part of the key rather than just
+  // `variant`, because `variant` stays set while the close animation runs.
+  const activeVariantId = open && variant ? variant.variantId : null;
+
+  if (activeVariantId !== seededFor) {
+    setSeededFor(activeVariantId);
+
+    if (variant && activeVariantId) {
+      setNewQuantity(String(variant.stockQuantity));
+      setChangeType("adjustment");
+      setReason("");
+    }
   }
 
   return (

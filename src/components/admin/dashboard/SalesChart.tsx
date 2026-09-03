@@ -27,11 +27,20 @@ type Period = "7d" | "30d" | "90d";
 export function SalesChart() {
   const [period, setPeriod] = useState<Period>("30d");
 
-  const { data: salesData, isLoading } =
-    trpc.admin.dashboard.getSalesTrend.useQuery();
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
 
-  // Transform data for chart
-  const chartData =
+  // The window is the server's to resolve. This used to be an argument-less
+  // query fixed at 30 days that was then narrowed here with `slice(-days)`,
+  // so selecting "90d" re-rendered the identical 30 days and quietly dropped
+  // the other 60. Passing `days` makes the selector actually select, and the
+  // key change refetches when it moves.
+  const { data: salesData, isLoading } =
+    trpc.admin.dashboard.getSalesTrend.useQuery({ days });
+
+  // Already exactly the requested window, and dense: the repository emits one
+  // entry per calendar day including days with no orders, so no client-side
+  // slicing is needed and index arithmetic below is calendar arithmetic.
+  const filteredData =
     salesData?.map((item) => ({
       date: new Date(item.date).toLocaleDateString("en-US", {
         month: "short",
@@ -41,15 +50,13 @@ export function SalesChart() {
       orders: item.orders,
     })) ?? [];
 
-  // Filter data based on selected period
-  const filteredData = (() => {
-    const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
-    return chartData.slice(-days);
-  })();
-
-  // Calculate trend
+  // Calculate trend: the last 7 days against the 7 before them.
+  //
+  // Only sound because the series is gap-filled. While the query returned
+  // just the days that had orders, these two index slices covered different
+  // numbers of real days, and the percentage compared mismatched periods.
   const calculateTrend = () => {
-    if (filteredData.length < 2) return { value: 0, isPositive: true };
+    if (filteredData.length < 14) return { value: 0, isPositive: true };
     const recent = filteredData.slice(-7).reduce((sum, d) => sum + d.sales, 0);
     const previous = filteredData
       .slice(-14, -7)

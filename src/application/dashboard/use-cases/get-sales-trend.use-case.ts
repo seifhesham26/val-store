@@ -14,7 +14,7 @@ export class GetSalesTrendUseCase {
     private readonly dashboardRepository: DashboardRepositoryInterface
   ) {}
 
-  async execute(): Promise<SalesTrendItem[]> {
-    return this.dashboardRepository.getSalesTrend();
+  async execute(days?: number): Promise<SalesTrendItem[]> {
+    return this.dashboardRepository.getSalesTrend(days);
   }
 }

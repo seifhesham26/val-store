@@ -55,9 +55,13 @@ export interface DashboardRepositoryInterface {
   getMetrics(): Promise<DashboardMetrics>;
 
   /**
-   * Get sales trend data for charts (last 30 days)
+   * Get sales trend data for charts, over the last `days` days (default 30).
+   *
+   * Returns one entry per calendar day in the window, including days with no
+   * orders — consumers index into the series to compare periods, so it has
+   * to be dense rather than only containing days that happened to sell.
    */
-  getSalesTrend(): Promise<SalesTrendItem[]>;
+  getSalesTrend(days?: number): Promise<SalesTrendItem[]>;
 
   /**
    * Get recent orders for the dashboard

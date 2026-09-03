@@ -97,17 +97,25 @@ export function HomepageSettings() {
   // `heroSection` while the form kept showing the pre-revert values until a
   // full page reload. That defeated the point of a revert button.
   useEffect(() => {
-    if (heroSection?.content) {
-      setHeroForm({
-        title: heroSection.content.title || "",
-        subtitle: heroSection.content.subtitle || "",
-        backgroundImage: heroSection.content.backgroundImage || "",
-        overlayOpacity: heroSection.content.overlayOpacity || 40,
-        ctaText: heroSection.content.ctaText || "Shop Now",
-        ctaLink: heroSection.content.ctaLink || "/collections",
-        textAlignment: heroSection.content.textAlignment || "center",
-      });
-    }
+    const content = heroSection?.content;
+
+    // `content` is now the validated union of the two section shapes rather
+    // than `any` — the router used to hand back a bare `JSON.parse`, so every
+    // field read below was unchecked. Narrowing on a field only the hero
+    // shape has is what makes them checked; `null` (a row that failed
+    // validation) simply leaves the form on its defaults for the admin to
+    // fill in and re-save.
+    if (!content || !("title" in content)) return;
+
+    setHeroForm({
+      title: content.title || "",
+      subtitle: content.subtitle || "",
+      backgroundImage: content.backgroundImage || "",
+      overlayOpacity: content.overlayOpacity || 40,
+      ctaText: content.ctaText || "Shop Now",
+      ctaLink: content.ctaLink || "/collections",
+      textAlignment: content.textAlignment || "center",
+    });
   }, [heroSection]);
 
   /**
@@ -126,10 +134,22 @@ export function HomepageSettings() {
   >([{ text: "", link: "" }]);
 
   useEffect(() => {
-    const stored = announcementSection?.content?.messages;
+    const content = announcementSection?.content;
+
+    // `stored.map(...)` used to run on whatever `JSON.parse` produced, with
+    // the element type supplied as a bare inline annotation — an assertion,
+    // not a check. A stored row whose `messages` was absent or not an array
+    // (most plausibly an old version surfaced verbatim by `revertToVersion`)
+    // threw `TypeError: stored.map is not a function` inside this effect and
+    // took the settings page down with it. The router validates now, so
+    // narrowing here yields a real array and the element type comes from the
+    // schema rather than from a promise.
+    const stored =
+      content && "messages" in content ? content.messages : undefined;
+
     setAnnouncementMessages(
       stored?.length
-        ? stored.map((m: { text: string; link?: string }) => ({
+        ? stored.map((m) => ({
             text: m.text,
             link: m.link ?? "",
           }))

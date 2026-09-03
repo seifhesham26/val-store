@@ -18,8 +18,15 @@ import { createServicesModule } from "./services";
 import { createCouponModule } from "./coupons";
 import { createInventoryModule } from "./inventory";
 import { createNotificationModule } from "./notifications";
+import { NextTaskScheduler } from "@/infrastructure/services/next-task-scheduler.service";
 
 function createContainer() {
+  // Stateless, so one instance for the process rather than a module of its
+  // own. It is how a use case defers work past the response without knowing
+  // that "the response" is a Next concept — see the interface for why a bare
+  // `void` is not a substitute.
+  const taskScheduler = new NextTaskScheduler();
+
   const products = createProductModule();
   // Inventory and notifications need each other: the notifier reads variant
   // SKUs to say what ran low, and stock adjustments emit notifications. The
@@ -54,6 +61,7 @@ function createContainer() {
     // reading the property eagerly would hit the temporal dead zone. Same
     // deferral the inventory/notifications cycle uses.
     getAddressRepository: () => address.getAddressRepository(),
+    getTaskScheduler: () => taskScheduler,
   });
   const wishlist = createWishlistModule();
   const address = createAddressModule();

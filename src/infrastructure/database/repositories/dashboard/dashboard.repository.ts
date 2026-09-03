@@ -14,6 +14,10 @@ import {
 } from "@/db/schema";
 import { sql, desc, gte, eq, and } from "drizzle-orm";
 import {
+  startOfWindow,
+  toDenseDailySeries,
+} from "@/domain/dashboard/sales-series";
+import {
   SUM_NET_REVENUE,
   COLLECTED_PAYMENT,
 } from "@/infrastructure/database/queries/revenue";
@@ -96,26 +100,43 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
   /**
    * Get sales trend data for charts (last 30 days)
    */
-  async getSalesTrend(): Promise<SalesTrendItem[]> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  async getSalesTrend(days = 30): Promise<SalesTrendItem[]> {
+    // The window is a parameter now. It used to be hardcoded to 30 while
+    // `SalesChart` offered a 7/30/90 selector and narrowed the result
+    // client-side with `slice(-days)` — so "90d" sliced 90 entries from an
+    // array that could never hold more than 30 and rendered exactly what
+    // "30d" did, with nothing on screen to say 60 days were missing.
+    const start = startOfWindow(days);
+
+    // `TO_CHAR` rather than a bare `DATE(...)`: postgres.js decodes a Postgres
+    // `date` into a JS `Date`, so the old `sql<string>` was an assertion the
+    // driver did not honour. A formatted string is what the type claims, and
+    // it is also the key the gap-filling below joins on.
+    const dayExpr = sql`TO_CHAR(DATE(${orders.createdAt}), 'YYYY-MM-DD')`;
 
     const salesData = await db
       .select({
-        date: sql<string>`DATE(${orders.createdAt})`,
+        date: sql<string>`${dayExpr}`,
         total: sql<string>`${SUM_NET_REVENUE}`,
         count: sql<number>`COUNT(*)::int`,
       })
       .from(orders)
-      .where(gte(orders.createdAt, thirtyDaysAgo))
-      .groupBy(sql`DATE(${orders.createdAt})`)
-      .orderBy(sql`DATE(${orders.createdAt})`);
+      .where(gte(orders.createdAt, start))
+      .groupBy(dayExpr)
+      .orderBy(dayExpr);
 
-    return salesData.map((row) => ({
-      date: row.date,
-      revenue: parseFloat(row.total || "0"),
-      orders: row.count,
-    }));
+    // Zero-fill every day the query had no row for. `GROUP BY` emits only
+    // days that sold something, and `SalesChart` compares periods by slicing
+    // the array by index — see `sales-series.ts` for why those two facts are
+    // incompatible until the gaps are filled.
+    return toDenseDailySeries(
+      salesData.map((row) => ({
+        date: row.date,
+        revenue: parseFloat(row.total || "0"),
+        orders: row.count,
+      })),
+      days
+    );
   }
 
   /**

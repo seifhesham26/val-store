@@ -9,6 +9,7 @@ import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-
 import { NotificationService } from "@/application/notifications/notification.service";
 import { SendOrderConfirmationUseCase } from "@/application/orders/use-cases/send-order-confirmation.use-case";
 import { AddressRepositoryInterface } from "@/domain/address/interfaces/repositories/address.repository.interface";
+import { TaskSchedulerInterface } from "@/application/interfaces/task-scheduler.interface";
 
 export interface CreateOrderInput {
   userId: string;
@@ -43,7 +44,8 @@ export class CreateOrderUseCase {
     private readonly validateCouponUseCase: ValidateCouponUseCase,
     private readonly notifications: NotificationService,
     private readonly sendOrderConfirmation: SendOrderConfirmationUseCase,
-    private readonly addressRepository: AddressRepositoryInterface
+    private readonly addressRepository: AddressRepositoryInterface,
+    private readonly scheduler: TaskSchedulerInterface
   ) {}
 
   /**
@@ -188,37 +190,57 @@ export class CreateOrderUseCase {
       // promised one on both payment methods. The use case absorbs its own
       // failures (see its own docblock), so awaiting it bought nothing but a
       // live Resend round trip on the checkout response for an order that had
-      // already committed. Fire-and-forget instead — same shape as the
-      // expired-checkout sweep in the admin orders router (`void
-      // container.getCancelExpiredCheckoutsUseCase().execute()`).
+      // already committed.
+      //
+      // Deferred through the scheduler rather than a bare `void`. The
+      // expired-checkout sweep gets away with `void` because it is
+      // best-effort and re-runs on the next request that touches orders; a
+      // confirmation email is one-shot, with no retry anywhere, so a
+      // serverless instance frozen at response time would simply lose it —
+      // reintroducing exactly the gap this block exists to close.
       if (input.customerEmail) {
-        void this.sendOrderConfirmation.execute({
-          orderId: created.id,
-          email: input.customerEmail,
-        });
+        const email = input.customerEmail;
+
+        this.scheduler.runAfterResponse("order confirmation email", () =>
+          this.sendOrderConfirmation.execute({
+            orderId: created.id,
+            email,
+          })
+        );
       }
     }
 
     // After the order has committed, and never in a way that can fail it: the
     // service absorbs its own errors.
-    await this.notifications.orderPlaced({
-      orderId: created.id,
-      orderNumber: created.orderNumber,
-      userId: input.userId,
-      total: created.totalAmount,
-      itemCount: created.getTotalItems(),
-    });
+    //
+    // Deferred for the same reason as the email above, and with more to gain.
+    // These were awaited on the checkout response while the customer watched a
+    // spinner, and they are not cheap: `orderPlaced` costs three round trips
+    // (find the admin ids, insert their notifications, insert the customer's),
+    // and `stockSold` costs one to read the variants plus two more for every
+    // variant that crossed the low-stock threshold. At ~58ms each against
+    // Neon that is ~230ms minimum added to checkout — for rows only an admin
+    // will ever read.
+    const soldVariants = items
+      .filter((item) => item.variantId)
+      .map((item) => ({
+        variantId: item.variantId as string,
+        quantity: item.quantity,
+      }));
 
-    // Stock was decremented inside the order transaction, so the low-stock
-    // check happens out here where a notifier exists.
-    await this.notifications.stockSold(
-      items
-        .filter((item) => item.variantId)
-        .map((item) => ({
-          variantId: item.variantId as string,
-          quantity: item.quantity,
-        }))
-    );
+    this.scheduler.runAfterResponse("order notifications", async () => {
+      await this.notifications.orderPlaced({
+        orderId: created.id,
+        orderNumber: created.orderNumber,
+        userId: input.userId,
+        total: created.totalAmount,
+        itemCount: created.getTotalItems(),
+      });
+
+      // Stock was decremented inside the order transaction, so the low-stock
+      // check happens out here where a notifier exists.
+      await this.notifications.stockSold(soldVariants);
+    });
 
     return { order: created };
   }
