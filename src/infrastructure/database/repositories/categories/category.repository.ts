@@ -193,7 +193,7 @@ export class DrizzleCategoryRepository implements CategoryRepositoryInterface {
    */
   async count(): Promise<number> {
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(categories);
 
     return result[0]?.count || 0;

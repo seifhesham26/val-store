@@ -150,7 +150,7 @@ export class DrizzleProductImageRepository implements ProductImageRepositoryInte
    */
   async countByProduct(productId: string): Promise<number> {
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(productImages)
       .where(eq(productImages.productId, productId));
 

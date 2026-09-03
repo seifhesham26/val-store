@@ -928,7 +928,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
    */
   async countByStatus(status: string): Promise<number> {
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(orders)
       .where(sql`${orders.status} = ${status}`);
 
@@ -942,7 +942,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     const conditions = this.buildFiltersConditions(filters);
 
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(orders)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
@@ -976,9 +976,44 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     // they derive from lives in a table, so they belong in the WHERE clause —
     // that is what keeps the admin list from having to load every order to
     // filter one page of them.
+    // ---------------------------------------------------------------------
+    // Read this before "tidying" the two filters below.
+    //
+    // Inside a raw `sql` fragment, Drizzle's **relational** query builder
+    // (`db.query.orders.findMany`, which `findAll` uses) rewrites every
+    // embedded column object to the query's root table, whatever table that
+    // column actually belongs to. `${orderItems.orderId}` does not render as
+    // `"order_items"."order_id"` — it renders as `"orders"."order_id"`, a
+    // column that does not exist, and Postgres rejects the query with 42703.
+    //
+    // The core builder (`db.select().from(orders)`, which `count` uses) has no
+    // such behaviour and renders the same fragment correctly. So the two paths
+    // that share this method produced *different SQL from the same input*:
+    // `count` worked and `findAll` threw, meaning the admin orders list 500'd
+    // whenever either filter was applied.
+    //
+    // Only these two filters reach into another table; every other raw
+    // fragment here touches `orders` alone, where the rewrite is a harmless
+    // no-op. That is why this went unnoticed.
+    //
+    // The rule that keeps both renderings correct:
+    //   - outer/correlated references stay column objects — a root-table
+    //     column rewrites to itself, so it is right either way;
+    //   - the subquery's own columns are written as literal `alias.column`
+    //     text, which no rewrite touches.
+    // Table names are safe as `${table}` — only *columns* are rewritten.
+    //
+    // Putting `${orderItems.refundedQuantity}` back would look like a
+    // type-safety improvement and would silently restore the bug.
+    // ---------------------------------------------------------------------
+
     if (filters?.returnedOnly) {
       conditions.push(
-        sql`EXISTS (SELECT 1 FROM ${orderItems} WHERE ${orderItems.orderId} = ${orders.id} AND ${orderItems.refundedQuantity} > 0)`
+        sql`EXISTS (
+          SELECT 1 FROM ${orderItems} oi
+          WHERE oi.order_id = ${orders.id}
+            AND oi.refunded_quantity > 0
+        )`
       );
     }
 
@@ -992,12 +1027,12 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       // applies.
       conditions.push(
         sql`${orders.status} <> 'refunded' AND EXISTS (
-          SELECT 1 FROM ${payments}
-          WHERE ${payments.orderId} = ${orders.id}
-            AND ${payments.paymentStatus} <> 'refunded'
+          SELECT 1 FROM ${payments} p
+          WHERE p.order_id = ${orders.id}
+            AND p.payment_status <> 'refunded'
             AND (
-              ${payments.paymentStatus} = 'completed'
-              OR (${payments.paymentMethod} = 'cash_on_delivery' AND ${orders.deliveredAt} IS NOT NULL)
+              p.payment_status = 'completed'
+              OR (p.payment_method = 'cash_on_delivery' AND ${orders.deliveredAt} IS NOT NULL)
             )
         )`
       );

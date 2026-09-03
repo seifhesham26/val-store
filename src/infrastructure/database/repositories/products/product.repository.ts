@@ -294,7 +294,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
     const conditions = this.buildFiltersConditions(filters);
 
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(products)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
