@@ -30,6 +30,18 @@ import {
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import { InvalidOrderStatusException } from "@/domain/orders/exceptions/invalid-order-status.exception";
 import { STORE_CURRENCY } from "@/lib/currency";
+import {
+  generateOrderNumber,
+  isOrderNumberCollision,
+} from "@/domain/orders/order-number";
+
+/**
+ * How many order numbers to try before giving up.
+ *
+ * Four retries at 32^8 possibilities per day is not a probability worth
+ * computing — if it is ever reached, the cause is not bad luck.
+ */
+const ORDER_NUMBER_ATTEMPTS = 5;
 
 /** Append a timestamped line to the order's admin notes, preserving history. */
 function appendAdminNote(existing: string | null, note: string): string {
@@ -231,144 +243,175 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       this.loadAddressSnapshot(order.billingAddressId),
     ]);
 
-    const datePart = now.toISOString().slice(0, 10).replaceAll("-", "");
-    const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const orderNumber = `VLK-${datePart}-${randomPart}`;
+    // Assigned per attempt — see the retry below.
+    let orderNumber = generateOrderNumber(now);
 
-    await db.transaction(async (tx) => {
-      await tx.insert(orders).values({
-        id: order.id,
-        orderNumber,
-        userId: order.userId,
-        status: order.status,
-        subtotal: order.subtotal.toFixed(2),
-        taxAmount: order.tax.toFixed(2),
-        shippingAmount: order.shippingCost.toFixed(2),
-        discountAmount: order.discount.toFixed(2),
-        totalAmount: order.totalAmount.toFixed(2),
-        currency: STORE_CURRENCY,
-        couponId: order.couponId,
-        shippingAddressId: order.shippingAddressId,
-        billingAddressId: order.billingAddressId,
-        shippingAddressSnapshot: shippingSnapshot,
-        billingAddressSnapshot: billingSnapshot,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      if (order.items.length > 0) {
-        await tx.insert(orderItems).values(
-          order.items.map((item) => ({
-            orderId: order.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            productName: item.productName,
-            variantDetails: item.variantDetails,
-            quantity: item.quantity,
-            unitPrice: item.price.toFixed(2),
-            totalPrice: (item.price * item.quantity).toFixed(2),
-            createdAt: now,
-          }))
-        );
-      }
-
-      await tx.insert(payments).values({
-        orderId: order.id,
-        paymentMethod:
-          order.paymentMethod === "cash_on_delivery"
-            ? "cash_on_delivery"
-            : "stripe",
-        paymentStatus: "pending",
-        amount: order.totalAmount.toFixed(2),
-        currency: STORE_CURRENCY,
-        transactionId: null,
-        paymentGatewayResponse: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Reserve stock in the same transaction as the order.
-      //
-      // Locking each variant row (FOR UPDATE) serialises concurrent checkouts
-      // for the same variant, so two customers cannot both pass the stock check
-      // and oversell the last unit.
-      //
-      // Items are locked in a fixed (variant id) order. Two carts containing the
-      // same two variants would otherwise be able to grab them in opposite
-      // orders and deadlock each other.
-      const stockedItems = order.items
-        .filter((item) => item.variantId !== null)
-        .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
-
-      for (const item of stockedItems) {
-        if (!item.variantId) continue; // Narrowing for TypeScript; filtered above
-
-        const [variant] = await tx
-          .select({
-            id: productVariants.id,
-            stockQuantity: productVariants.stockQuantity,
-          })
-          .from(productVariants)
-          .where(eq(productVariants.id, item.variantId))
-          .for("update")
-          .limit(1);
-
-        if (!variant) {
-          throw new Error(
-            `${item.productName} is no longer available and was removed from sale.`
-          );
-        }
-
-        if (variant.stockQuantity < item.quantity) {
-          throw new Error(
-            `Not enough stock for ${item.productName}${
-              item.variantDetails ? ` (${item.variantDetails})` : ""
-            }. Only ${variant.stockQuantity} left.`
-          );
-        }
-
-        const newQuantity = variant.stockQuantity - item.quantity;
-
-        await tx
-          .update(productVariants)
-          .set({ stockQuantity: newQuantity, updatedAt: now })
-          .where(eq(productVariants.id, item.variantId));
-
-        await tx.insert(inventoryLogs).values({
-          variantId: item.variantId,
-          changeType: "sale",
-          quantityChange: -item.quantity,
-          previousQuantity: variant.stockQuantity,
-          newQuantity,
-          reason: `Order ${orderNumber}`,
-          createdBy: order.userId,
-          createdAt: now,
-        });
-      }
-
-      // Redeem the coupon only when the order is already a real commitment.
-      //
-      // Cash on delivery is: the customer has ordered, and the courier collects
-      // later. A card order is not — it is a session the customer may never
-      // pay for, and counting that as a redemption burned a one-per-customer
-      // code on an attempt that never charged anyone. Card orders redeem in
-      // `markAsPaid` instead.
-      if (order.couponId && order.paymentMethod === "cash_on_delivery") {
-        await tx.insert(couponUsages).values({
-          couponId: order.couponId,
+    const commit = () =>
+      db.transaction(async (tx) => {
+        await tx.insert(orders).values({
+          id: order.id,
+          orderNumber,
           userId: order.userId,
-          orderId: order.id,
+          status: order.status,
+          subtotal: order.subtotal.toFixed(2),
+          taxAmount: order.tax.toFixed(2),
+          shippingAmount: order.shippingCost.toFixed(2),
+          discountAmount: order.discount.toFixed(2),
+          totalAmount: order.totalAmount.toFixed(2),
+          currency: STORE_CURRENCY,
+          couponId: order.couponId,
+          shippingAddressId: order.shippingAddressId,
+          billingAddressId: order.billingAddressId,
+          shippingAddressSnapshot: shippingSnapshot,
+          billingAddressSnapshot: billingSnapshot,
+          createdAt: now,
+          updatedAt: now,
         });
 
-        await tx
-          .update(coupons)
-          .set({
-            usageCount: sql`${coupons.usageCount} + 1`,
-            updatedAt: now,
-          })
-          .where(eq(coupons.id, order.couponId));
+        if (order.items.length > 0) {
+          await tx.insert(orderItems).values(
+            order.items.map((item) => ({
+              orderId: order.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              productName: item.productName,
+              variantDetails: item.variantDetails,
+              quantity: item.quantity,
+              unitPrice: item.price.toFixed(2),
+              totalPrice: (item.price * item.quantity).toFixed(2),
+              createdAt: now,
+            }))
+          );
+        }
+
+        await tx.insert(payments).values({
+          orderId: order.id,
+          paymentMethod:
+            order.paymentMethod === "cash_on_delivery"
+              ? "cash_on_delivery"
+              : "stripe",
+          paymentStatus: "pending",
+          amount: order.totalAmount.toFixed(2),
+          currency: STORE_CURRENCY,
+          transactionId: null,
+          paymentGatewayResponse: null,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        // Reserve stock in the same transaction as the order.
+        //
+        // Locking each variant row (FOR UPDATE) serialises concurrent checkouts
+        // for the same variant, so two customers cannot both pass the stock check
+        // and oversell the last unit.
+        //
+        // Items are locked in a fixed (variant id) order. Two carts containing the
+        // same two variants would otherwise be able to grab them in opposite
+        // orders and deadlock each other.
+        const stockedItems = order.items
+          .filter((item) => item.variantId !== null)
+          .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
+
+        for (const item of stockedItems) {
+          if (!item.variantId) continue; // Narrowing for TypeScript; filtered above
+
+          const [variant] = await tx
+            .select({
+              id: productVariants.id,
+              stockQuantity: productVariants.stockQuantity,
+            })
+            .from(productVariants)
+            .where(eq(productVariants.id, item.variantId))
+            .for("update")
+            .limit(1);
+
+          if (!variant) {
+            throw new Error(
+              `${item.productName} is no longer available and was removed from sale.`
+            );
+          }
+
+          if (variant.stockQuantity < item.quantity) {
+            throw new Error(
+              `Not enough stock for ${item.productName}${
+                item.variantDetails ? ` (${item.variantDetails})` : ""
+              }. Only ${variant.stockQuantity} left.`
+            );
+          }
+
+          const newQuantity = variant.stockQuantity - item.quantity;
+
+          await tx
+            .update(productVariants)
+            .set({ stockQuantity: newQuantity, updatedAt: now })
+            .where(eq(productVariants.id, item.variantId));
+
+          await tx.insert(inventoryLogs).values({
+            variantId: item.variantId,
+            changeType: "sale",
+            quantityChange: -item.quantity,
+            previousQuantity: variant.stockQuantity,
+            newQuantity,
+            reason: `Order ${orderNumber}`,
+            createdBy: order.userId,
+            createdAt: now,
+          });
+        }
+
+        // Redeem the coupon only when the order is already a real commitment.
+        //
+        // Cash on delivery is: the customer has ordered, and the courier collects
+        // later. A card order is not — it is a session the customer may never
+        // pay for, and counting that as a redemption burned a one-per-customer
+        // code on an attempt that never charged anyone. Card orders redeem in
+        // `markAsPaid` instead.
+        if (order.couponId && order.paymentMethod === "cash_on_delivery") {
+          await tx.insert(couponUsages).values({
+            couponId: order.couponId,
+            userId: order.userId,
+            orderId: order.id,
+          });
+
+          await tx
+            .update(coupons)
+            .set({
+              usageCount: sql`${coupons.usageCount} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(coupons.id, order.couponId));
+        }
+      });
+
+    // The order number carries a unique constraint, and the insert that uses
+    // it shares a transaction with the items, the payment row, the stock
+    // decrement and the coupon redemption. So a duplicate number did not fail
+    // the *name* — it failed the whole checkout, and the customer saw a generic
+    // error on an order that would have succeeded if simply tried again.
+    //
+    // Retried with a fresh number instead. Only a name clash is retried; stock
+    // and coupon failures are answers the customer needs to see, not conditions
+    // to attempt four more times. The transaction rolls back completely on
+    // abort, so each attempt starts from clean state and nothing is written
+    // twice.
+    //
+    // Bounded rather than unbounded: at 32^8 per day, needing four fresh
+    // numbers in a row means something is wrong that retrying will not fix, and
+    // an infinite loop against the database would be a far worse failure than
+    // the one being handled.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await commit();
+        break;
+      } catch (error) {
+        if (
+          attempt >= ORDER_NUMBER_ATTEMPTS ||
+          !isOrderNumberCollision(error)
+        ) {
+          throw error;
+        }
+        orderNumber = generateOrderNumber(now);
       }
-    });
+    }
 
     const created = await this.findById(order.id);
     if (!created) {
@@ -912,16 +955,14 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     return ordersList.map((o) => this.mapToEntity(o));
   }
 
-  /**
-   * Update an order - NOT IMPLEMENTED
-   */
-  /**
-   * Delete an order
-   */
-  async delete(orderId: string): Promise<void> {
-    await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
-    await db.delete(orders).where(eq(orders.id, orderId));
-  }
+  // `delete()` was removed. It had no caller and was one autocomplete away
+  // from silently destroying an order: it dropped the row outside a
+  // transaction while bypassing every invariant `updateStatus` protects — no
+  // stock restocked, no coupon released, no status-transition check — and the
+  // explicit `order_items` delete was redundant anyway, since that FK already
+  // cascades. An order should only ever reach a terminal state (`cancelled`,
+  // `refunded`), never vanish: the financial record has to outlive the
+  // customer's interest in it. Removed from the interface too.
 
   /**
    * Count orders by status
