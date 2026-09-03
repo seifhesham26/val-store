@@ -8,7 +8,11 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-09-02, after the security hardening pass): `type-check` clean, `lint` 0 errors / 3 warnings, 270 unit tests passing, `build` producing 98 static pages, `pnpm audit` clean in both scopes, plus an integration suite that needs a database. The three lint warnings are `@next/next/no-location-assign-relative-destination` in `UserDialog`, `AccountSidebar` and `MobileMenu` — a rule new in eslint-config-next 16.3.4, firing on deliberate full reloads after an auth change. `LoginForm` does the same thing via `window.location.assign`, which the rule does not match.
+Baseline as of last check (2026-09-03, after the storefront audit): `type-check` clean, `lint` **0 problems**, **330** unit tests passing, `build` producing 98 static pages, plus `pnpm test:integration`, which needs a database and is **38/41** — the three failures are `products.search` calling `headers()` outside a request scope through the in-process caller, which is a harness limitation rather than a product bug (verified: `search` is only ever reached from client components over HTTP, never via `createAnonymousCaller` and never inside `unstable_cache`).
+
+Two things this file previously claimed that were not true, corrected here because they cost time to re-derive: lint reports **no warnings at all** — the three `@next/next/no-location-assign-relative-destination` warnings described in earlier versions do not fire — and the test count was 270 before the audit added 60.
+
+**Clear `.next` before trusting `pnpm type-check`.** A stale `.next/dev/types/routes.d.ts` or `.next/types/validator.ts` produces errors about routes that no longer exist, which look like real breakage and are not. `rm -rf .next && pnpm type-check`.
 
 ## Commands
 
@@ -80,7 +84,7 @@ Client access is `trpc.<admin|auth|public>.<router>.<procedure>` via `src/lib/tr
 
 Note: most `public.*` routers are actually `protectedProcedure` (cart, checkout, orders, wishlist, address, profile, coupons, notifications) — "public" means "storefront", not "unauthenticated".
 
-**One** procedure has no caller: `admin.settings.getAllContentSections`. Adopt or delete it. This list used to be long; verified 2026-09-02, everything else on it has been resolved one way or the other. Deleted outright: the whole `public.config` router, `public.categories.getFeatured`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug` and `admin.notifications.clearAll` — mostly collateral from the homepage moving to server components. Now have callers: `public.categories.list`, `admin.settings.{getContentHistory,revertToVersion}` (via `ContentHistoryDialog`), `admin.categories.{create,delete}`, `admin.variants.updateStock` and the featured-item mutations.
+**Every procedure now has a caller.** `public.categories.list` was the last one without — it drives the storefront navigation as of 2026-09-03 (`getCachedNavCategories`), so an admin creating a category gets a link and deleting one no longer leaves a 404. `admin.settings.getAllContentSections`, which earlier versions of this file listed as uncalled, had already been deleted. This list used to be long; verified 2026-09-02, everything else on it has been resolved one way or the other. Deleted outright: the whole `public.config` router, `public.categories.getFeatured`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug` and `admin.notifications.clearAll` — mostly collateral from the homepage moving to server components. Now have callers: `public.categories.list`, `admin.settings.{getContentHistory,revertToVersion}` (via `ContentHistoryDialog`), `admin.categories.{create,delete}`, `admin.variants.updateStock` and the featured-item mutations.
 
 ### Auth
 
@@ -185,14 +189,22 @@ One thing is still outstanding and it is outside the code: Neon's autosuspend (a
 
 - ~~The three `currency` column defaults are `'USD'`~~ — **fixed 2026-09-03** in the baseline, both snapshots, and the live database (defaults only, zero rows touched). The 25 `USD` rows still in `orders` are seed fixtures with no payment rows, not mischarged orders, so the backfill half of `drizzle/0003` was deliberately not run — rewriting them would assert a charge that never happened. Nothing reads either column yet.
 - `NEXT_PUBLIC_APP_NAME` is read by the email service but is in neither `.env` nor a tracked `.env.example` — there is no `.env.example` in the repo, since `.gitignore` matches `.env*`. Falls back to "Valkyrie".
-- One procedure still has no caller: `admin.settings.getAllContentSections`. Adopt or delete.
+- ~~One procedure still has no caller.~~ None do, as of 2026-09-03 — see the tRPC section.
 - ~~Footer links to pages that do not exist~~ — `/size-guide`, `/careers`, `/sustainability`, `/press` and `/blog` all build now.
-- ~~`/collections/new` filters on `isFeatured`, `/collections/accessories` applies no filter~~ — both corrected.
+- ~~`/collections/new` filters on `isFeatured`, `/collections/accessories` applies no filter~~ — replaced wholesale 2026-09-03. "New" is now a recency window (`NEW_ARRIVAL_WINDOW_DAYS`) shared by the collection page, the homepage carousel and the `/collections` index, because four surfaces claimed to show new arrivals and no two agreed.
 - ~~Hardcoded dollar shipping copy~~ — `ShippingOptions` no longer quotes the `$5.99 / $14.99 / $24.99` tiers.
 
 ### Traps in the code that is now fixed
 
 These are working. They are listed because each is easy to break again — the full version of each is in the `Resolved` section of `docs/ISSUES.md`.
+
+- **Raw `sql` in a relational query rewrites every column to the root table.** Inside `db.query.<table>.findMany({ where: sql`…` })`, Drizzle rewrites _every embedded column object_ to the query's root table, whatever table it actually belongs to: `${payments.orderId}` renders as `"orders"."order_id"` and Postgres rejects it with 42703. The core builder (`db.select().from(…)`) does not do this. That asymmetry is what made `count()` and `findAll()` emit **different SQL from the same filter builder** — count worked, the admin orders list 500'd on its Refundable and Returned filters. The rule, in `buildFiltersConditions` in the order repository: outer references stay column objects (a root-table column rewrites to itself, so it is right either way); the subquery's own columns are written as literal `alias.column` text. Table names as `${table}` are safe — only columns are rewritten. Putting `${payments.paymentStatus}` back looks like a type-safety improvement and silently restores the bug.
+- **A category resolves to itself plus its descendants.** Every product is filed against a _leaf_ category while the navigation links to parents, so `eq(products.categoryId, id)` matched the zero products filed directly against a parent — `/collections/women` rendered "No products found" on a store with 13 women's products. Use `collectCategoryTree` and `ProductFilters.categoryIds`, never `categoryId`, for a collection page.
+- **A static route under `/collections/` silently shadows a category of the same slug.** Next resolves a static segment before a dynamic one, so `/collections/men` never reached `[slug]`. `RESERVED_COLLECTION_SLUGS` plus `reserved-slugs.test.ts` — which reads the route directory — enforces both directions: an admin cannot name a category over a static route, and a new static route fails the suite unless it is declared.
+- **Orders carry their own copy of the address.** `orders.shipping_address_snapshot` / `billing_address_snapshot` are jsonb, written at checkout and authoritative on read; the joined address is only a fallback for older rows. This is what lets a customer delete a saved address and lets an account be deleted at all — the three FKs involved (`orders.*_address_id`, `inventory_logs.created_by`) are `ON DELETE SET NULL` as of `drizzle/0004`, which is **not journalled** and must be applied by hand.
+- **Order numbers retry on collision.** `order_number` is unique and its insert shares a transaction with the items, payment, stock and coupon writes, so a duplicate used to abort the whole checkout. `create()` retries with a fresh number, and only for a name clash — `isOrderNumberCollision` walks the `cause` chain, because Drizzle wraps the driver error and the Postgres code is _not_ on the object you catch.
+- **`count(*)` returns a string unless you cast it.** `sql<number>` is a compile-time assertion; postgres.js hands back `bigint` as a string. Every count uses `count(*)::int`.
+- **Paginated queries need a tiebreaker.** `ORDER BY created_at DESC` alone is not a total order, and a seeded catalogue writes 35 products with the same timestamp — paging duplicated some products and skipped others. Every paginated `orderBy` appends the primary key.
 
 - **Notifications swallow their own failures** and log `[Notifications] <label> failed:`. An emit that breaks is invisible in the UI, so read the server log before the code. Low stock fires on the **crossing**, not the level. A partial return is not a status change, which is why refunds notify through `orderRefunded()` rather than the status hook.
 - **Featured items fall back** when the curation is empty _or_ when every curated item has since been deactivated. Never render the section heading above an empty grid.
@@ -223,6 +235,8 @@ These are working. They are listed because each is easy to break again — the f
 `docs/POST-LAUNCH.md` is the other half: work deferred past the production cutover, the checks that belong at the cutover, and the limitations that were chosen rather than missed. Nothing in it is a defect. **Read it before adding anything to the issues catalogue** — several entries there look like bugs and are decisions, and the cutover section names the one setting whose absence fails silently (`UPSTASH_*`, without which every rate limiter no-ops with no warning).
 
 `docs/PERFORMANCE.md` is the performance record — measured numbers, what changed, what is still outstanding.
+
+`docs/REFUNDS.md`, `docs/LOYALTY-POINTS.md` and `docs/PHONE-VERIFICATION.md` are **planned work, not defects**. Refunds record a return correctly but move no money — deliberate, pending the payment gateway decision, with the interim exposure stated (the admin button says "Refund", so refunds must be issued by hand in the provider's dashboard until then). Loyalty and phone verification are designed and agreed but entirely unbuilt: no table, no column, no code.
 
 **That is the whole of `docs/` now.** Fifteen files were deleted on 2026-09-03: eight pre-implementation domain roadmaps, `connections.md`, a merged branch’s UI checklist, the P0/P1/P3 test plans, and the plan and spec for a pass that had shipped. All of them described intent or a finished branch rather than current state, which is the specific way documentation becomes actively misleading — this catalogue had already been caught listing 23 fixed items as open. `git log --diff-filter=D -- docs/` recovers any of them.
 

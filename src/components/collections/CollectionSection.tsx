@@ -16,7 +16,15 @@ export function CollectionSection({
   title: string;
   description: string;
   href: string;
-  queryParams: { gender?: string; isFeatured?: boolean; isOnSale?: boolean };
+  queryParams: {
+    /** A category and its descendants, resolved by the server component. */
+    categoryIds?: string[];
+    gender?: string;
+    isFeatured?: boolean;
+    isOnSale?: boolean;
+    /** Added within the last N days — see `NEW_ARRIVAL_WINDOW_DAYS`. */
+    createdWithinDays?: number;
+  };
 }) {
   const { data, isLoading } = trpc.public.products.list.useQuery({
     limit: PREVIEW_LIMIT,

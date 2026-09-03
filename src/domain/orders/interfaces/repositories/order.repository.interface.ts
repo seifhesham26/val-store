@@ -143,10 +143,11 @@ export interface OrderRepositoryInterface {
     options?: { transactionId?: string; gatewayResponse?: unknown }
   ): Promise<{ transitioned: boolean }>;
 
-  /**
-   * Delete an order
-   */
-  delete(orderId: string): Promise<void>;
+  // `delete(orderId)` was removed — no caller, and declaring it here was the
+  // risk: an interface method is a standing invitation. Deleting an order
+  // bypasses every invariant `updateStatus` enforces (stock restock, coupon
+  // release, transition rules) and destroys a financial record. Orders reach a
+  // terminal state instead; they do not disappear.
 
   /**
    * Get order count by status

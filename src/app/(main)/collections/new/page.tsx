@@ -1,23 +1,22 @@
-/**
- * New Arrivals Collection Page
- *
- * Seeded with a server-rendered first page.
- *
- * This used to filter on `isFeatured`, which is curation, not recency — so
- * "New Arrivals" showed whatever an admin had pinned, and a product added
- * yesterday never appeared unless someone featured it.
- *
- * The fix needs no sort parameter: the product repository already orders by
- * `createdAt DESC` by default, so dropping the wrong filter *is* the recency
- * ordering. A `limit` stands in for a recency window — the newest twelve is a
- * more useful definition of "new" for a 36-product catalogue than an arbitrary
- * date cutoff that could return nothing.
- */
-
 import type { Metadata } from "next";
 import { InfiniteProductGrid } from "@/components/products/InfiniteProductGrid";
 import { getCachedFirstProductPage } from "@/lib/cache";
+import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
 
+/**
+ * New Arrivals — products added within `NEW_ARRIVAL_WINDOW_DAYS`.
+ *
+ * This page previously called `getCachedFirstProductPage({})`: no filter at
+ * all. Since `findAll` already orders by `created_at DESC`, its output was
+ * byte-identical to `/collections/all` — the same 36 products in the same
+ * order, under a different heading. "New" is a primary navbar item, so the
+ * single most prominent merchandising link on the storefront was showing the
+ * entire catalogue.
+ *
+ * The window is the filter, and it is shared with the homepage carousel and
+ * the `/collections` index row so all three mean the same thing. See
+ * `NEW_ARRIVAL_WINDOW_DAYS` for why recency rather than a curated category.
+ */
 const TITLE = "New Arrivals";
 const DESCRIPTION = "The latest additions to our premium collection.";
 
@@ -27,10 +26,13 @@ export const metadata: Metadata = {
 };
 
 export default async function CollectionsNewPage() {
-  const initialPage = await getCachedFirstProductPage({});
+  const initialPage = await getCachedFirstProductPage({
+    createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS,
+  });
 
   return (
     <InfiniteProductGrid
+      createdWithinDays={NEW_ARRIVAL_WINDOW_DAYS}
       title={TITLE}
       description={DESCRIPTION}
       initialPage={initialPage}

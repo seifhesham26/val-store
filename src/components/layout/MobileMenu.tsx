@@ -27,19 +27,32 @@ interface MobileMenuProps {
   onClose: () => void;
   navLinks?: NavLink[];
   isLoggedIn?: boolean;
+  /**
+   * Live top-level categories, resolved on the server.
+   *
+   * Hardcoded before, which is how "Men's", "Women's" and "Accessories" could
+   * keep pointing at pages whose contents no longer matched them, and how three
+   * links to categories that never existed survived as 404s.
+   */
+  categories?: NavLink[];
 }
 
-const shopCategories = [
-  { label: "Men's", href: "/collections/men" },
-  { label: "Women's", href: "/collections/women" },
-  { label: "Accessories", href: "/collections/accessories" },
-  { label: "All Products", href: "/collections/all" },
-];
-
+/**
+ * Every href here has to resolve to something that exists.
+ *
+ * These were "Summer 2025", "Essentials" and "Best Sellers" — three
+ * collections that have never existed in any seed. `/collections/[slug]` calls
+ * `notFound()` on an unknown slug, so all three were hard 404s served to
+ * anyone who opened the mobile menu.
+ *
+ * Replaced with destinations that are real: two live categories and the
+ * collections index. If a curated collection is wanted later it needs a
+ * `categories` row first — a link is not a collection.
+ */
 const collectionsLinks = [
-  { label: "Summer 2025", href: "/collections/summer-2025" },
-  { label: "Essentials", href: "/collections/essentials" },
-  { label: "Best Sellers", href: "/collections/best-sellers" },
+  { label: "New Arrivals", href: "/collections/new" },
+  { label: "Sale", href: "/collections/sale" },
+  { label: "Browse All Collections", href: "/collections" },
 ];
 
 const socialLinks = [
@@ -56,7 +69,16 @@ export function MobileMenu({
   isOpen,
   onClose,
   isLoggedIn = false,
+  categories = [],
 }: Omit<MobileMenuProps, "navLinks">) {
+  // Live categories, then the curated views that no `categories` row can
+  // express. Empty categories degrade to the curated links alone rather than
+  // to an empty menu.
+  const shopCategories = [
+    ...categories,
+    { label: "All Products", href: "/collections/all" },
+  ];
+
   // Prevent body scroll when menu is open
   useEffect(() => {
     if (isOpen) {

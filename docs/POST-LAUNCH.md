@@ -445,10 +445,14 @@ badge is earned from an order rather than from an email.
 ### Two product decisions still open
 
 - The contact form is `ContactFormPlaceholder.tsx` and submits nowhere.
-- The phone-keyed `customers` table is written by the signup hook and read by
-  nothing; `GetOrCreateCustomerUseCase` is wired into the container and called
-  by nothing. Decide whether the phone-identity model is wanted before building
-  on it.
+- ~~The phone-keyed `customers` table is written by the signup hook and read by
+  nothing.~~ **Decided 2026-09-03: the phone-identity model is wanted.** A
+  phone is one human, several accounts may share it, and a loyalty balance
+  hangs off it. The design is `docs/LOYALTY-POINTS.md`; the verification it
+  depends on is `docs/PHONE-VERIFICATION.md`. Neither is built. Until Phase 1
+  of that ships, the `customers` table and `GetOrCreateCustomerUseCase` are
+  still written-but-never-read, so do not treat their existence as evidence the
+  model is live.
 
 ### The currency backfill was deliberately not run
 

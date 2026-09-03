@@ -13,6 +13,7 @@
 import { unstable_cache } from "next/cache";
 import { container } from "@/application/container";
 import { createAnonymousCaller } from "@/server/caller";
+import { isReservedCollectionSlug } from "@/domain/categories/reserved-slugs";
 
 // Cache tags for easy invalidation
 const CACHE_TAGS = {
@@ -444,9 +445,13 @@ export const getCachedCategorySlugs = unstable_cache(
  */
 export interface ProductListPageFilters {
   categoryId?: string;
+  /** A category and its descendants — see `collectCategoryTree`. */
+  categoryIds?: string[];
   gender?: string;
   isFeatured?: boolean;
   isOnSale?: boolean;
+  /** Added within the last N days — see `NEW_ARRIVAL_WINDOW_DAYS`. */
+  createdWithinDays?: number;
   limit?: number;
 }
 
@@ -498,6 +503,49 @@ export const getCachedCategoryBySlug = unstable_cache(
   ["category-by-slug"],
   { revalidate: CATALOGUE_REVALIDATE, tags: [CACHE_TAGS.CATEGORIES] }
 );
+
+/**
+ * Top-level categories for the site navigation.
+ *
+ * The nav was three hardcoded link lists — `Navbar`, `MobileMenu`, `Footer` —
+ * which could not drift *into* correctness: an admin creating a category got no
+ * link, and deleting one left a dead link behind. That is not hypothetical;
+ * three of those links pointed at "Summer 2025", "Essentials" and "Best
+ * Sellers", categories that have never existed in any seed, and every one was a
+ * hard 404 served from the mobile menu.
+ *
+ * This is also what finally gives `public.categories.list` a caller. It had
+ * none outside an integration test, while being exactly the procedure this
+ * needed — it already returns `parentId`, `displayOrder` and a product count,
+ * and already filters to active categories.
+ *
+ * Reserved slugs are dropped: `all`, `sale` and `new` are served by static
+ * routes and already appear in the nav as curated links, so a category sharing
+ * one of those slugs would render a duplicate entry pointing somewhere it does
+ * not control. See `RESERVED_COLLECTION_SLUGS`.
+ */
+export const getCachedNavCategories = unstable_cache(
+  async () => {
+    const caller = createAnonymousCaller();
+    const categories = await caller.public.categories.list();
+
+    return categories
+      .filter((category) => category.parentId === null)
+      .filter((category) => !isReservedCollectionSlug(category.slug))
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map((category) => ({
+        label: category.name,
+        href: `/collections/${category.slug}`,
+      }));
+  },
+  ["nav-categories"],
+  { revalidate: CATALOGUE_REVALIDATE, tags: [CACHE_TAGS.CATEGORIES] }
+);
+
+/** One nav entry: what the three link lists consume. */
+export type NavCategory = Awaited<
+  ReturnType<typeof getCachedNavCategories>
+>[number];
 
 // Export cache tags for revalidation
 export { CACHE_TAGS };

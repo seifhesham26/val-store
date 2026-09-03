@@ -3,13 +3,14 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { db } from "@/db";
 import { container } from "@/application/container";
-import { userProfiles, customers } from "@/db/schema";
+import { userProfiles, customers, user } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import {
   checkRateLimit,
   passwordResetRateLimiter,
 } from "@/server/utils/rate-limiter";
 import { PasswordValueObject } from "@/domain/customers/value-objects/password.value-object";
+import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -175,6 +176,55 @@ export const auth = betterAuth({
       const { isValid, errors } = PasswordValueObject.validate(plainPassword);
       if (!isValid) {
         throw new APIError("BAD_REQUEST", { message: errors.join(", ") });
+      }
+    }),
+
+    /**
+     * Normalise the phone number to E.164 before it is stored.
+     *
+     * This ran in the browser only (`SignupForm.tsx`), which meant the stored
+     * format depended on whether the client executed our JavaScript. Sign-in
+     * by phone always normalises the identifier and then matches `user.phone`
+     * **exactly**, so an account created any other way — curl, a modified
+     * build, a future mobile client — stored something like `01012345678`
+     * that `+201012345678` could never match. That account could never sign
+     * in by phone again, silently, with no error anywhere to explain it.
+     *
+     * `after` rather than `before` because Better Auth's `additionalFields`
+     * are validated between the two, and rewriting the body beforehand fights
+     * that. Here the account exists and the column is simply corrected in
+     * place — which also catches the social-login paths, where no form of
+     * ours ever ran.
+     *
+     * An unparseable number is left exactly as given rather than rejected: it
+     * is optional at signup, it is not a credential, and failing an otherwise
+     * valid registration over a malformed contact detail would be a worse
+     * outcome than storing it as typed.
+     */
+    after: createAuthMiddleware(async (ctx) => {
+      const newSession = ctx.context.newSession;
+      const signedUpUser = newSession?.user as
+        | { id?: string; phone?: string | null }
+        | undefined;
+
+      const rawPhone = signedUpUser?.phone;
+      if (!signedUpUser?.id || typeof rawPhone !== "string" || !rawPhone) {
+        return;
+      }
+
+      const normalized = PhoneValueObject.toE164(rawPhone);
+      if (!normalized || normalized === rawPhone) {
+        return;
+      }
+
+      try {
+        await db
+          .update(user)
+          .set({ phone: normalized })
+          .where(eq(user.id, signedUpUser.id));
+      } catch (error) {
+        // Never fail an established session over a contact detail.
+        console.error("[Auth] Failed to normalise phone:", error);
       }
     }),
   },

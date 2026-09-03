@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import {
+  addresses,
   orders,
   orderItems,
   payments,
@@ -29,6 +30,18 @@ import {
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import { InvalidOrderStatusException } from "@/domain/orders/exceptions/invalid-order-status.exception";
 import { STORE_CURRENCY } from "@/lib/currency";
+import {
+  generateOrderNumber,
+  isOrderNumberCollision,
+} from "@/domain/orders/order-number";
+
+/**
+ * How many order numbers to try before giving up.
+ *
+ * Four retries at 32^8 possibilities per day is not a probability worth
+ * computing — if it is ever reached, the cause is not bad luck.
+ */
+const ORDER_NUMBER_ATTEMPTS = 5;
 
 /** Append a timestamped line to the order's admin notes, preserving history. */
 function appendAdminNote(existing: string | null, note: string): string {
@@ -70,6 +83,55 @@ function toOrderAddress(
     postalCode: row.postalCode,
     country: row.country,
     phone: row.phone,
+  };
+}
+
+/**
+ * The address as the order recorded it, falling back to the live row.
+ *
+ * The snapshot is authoritative: it is what the customer actually entered at
+ * checkout, and it survives the address being edited, deleted by the customer,
+ * or cascaded away with their account. The join is the fallback for orders
+ * written before `orders.shipping_address_snapshot` existed.
+ *
+ * Validated rather than cast. The column is `jsonb`, so nothing in the type
+ * system guarantees its shape — a hand-written row or a future schema change
+ * would otherwise surface as `undefined` fields rendered into an address
+ * label.
+ */
+function resolveOrderAddress(
+  snapshot: unknown,
+  joined: DbAddress | null | undefined
+): OrderAddress | null {
+  const fromSnapshot = parseAddressSnapshot(snapshot);
+  return fromSnapshot ?? toOrderAddress(joined);
+}
+
+/** Every field an `OrderAddress` needs, as strings, or null. */
+function parseAddressSnapshot(value: unknown): OrderAddress | null {
+  if (!value || typeof value !== "object") return null;
+
+  const row = value as Record<string, unknown>;
+  const str = (key: string) =>
+    typeof row[key] === "string" ? (row[key] as string) : null;
+
+  const fullName = str("fullName");
+  const addressLine1 = str("addressLine1");
+  const city = str("city");
+
+  // Enough to be an address at all. A partial snapshot is treated as no
+  // snapshot, so the join still gets its chance.
+  if (!fullName || !addressLine1 || !city) return null;
+
+  return {
+    fullName,
+    addressLine1,
+    addressLine2: str("addressLine2"),
+    city,
+    state: str("state") ?? "",
+    postalCode: str("postalCode") ?? "",
+    country: str("country") ?? "",
+    phone: str("phone") ?? "",
   };
 }
 
@@ -147,7 +209,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         billingAddress: true,
         payments: true,
       },
-      orderBy: [desc(orders.createdAt)],
+      orderBy: [desc(orders.createdAt), desc(orders.id)],
       limit: filters?.limit,
       offset: filters?.offset,
     });
@@ -172,142 +234,184 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   async create(order: OrderEntity): Promise<OrderEntity> {
     const now = new Date();
 
-    const datePart = now.toISOString().slice(0, 10).replaceAll("-", "");
-    const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const orderNumber = `VLK-${datePart}-${randomPart}`;
+    // Copy the addresses onto the order before anything is written. Read
+    // outside the transaction on purpose: they are the customer's own rows,
+    // already ownership-checked by `CreateOrderUseCase`, and nothing in this
+    // transaction writes them.
+    const [shippingSnapshot, billingSnapshot] = await Promise.all([
+      this.loadAddressSnapshot(order.shippingAddressId),
+      this.loadAddressSnapshot(order.billingAddressId),
+    ]);
 
-    await db.transaction(async (tx) => {
-      await tx.insert(orders).values({
-        id: order.id,
-        orderNumber,
-        userId: order.userId,
-        status: order.status,
-        subtotal: order.subtotal.toFixed(2),
-        taxAmount: order.tax.toFixed(2),
-        shippingAmount: order.shippingCost.toFixed(2),
-        discountAmount: order.discount.toFixed(2),
-        totalAmount: order.totalAmount.toFixed(2),
-        currency: STORE_CURRENCY,
-        couponId: order.couponId,
-        shippingAddressId: order.shippingAddressId,
-        billingAddressId: order.billingAddressId,
-        createdAt: now,
-        updatedAt: now,
-      });
+    // Assigned per attempt — see the retry below.
+    let orderNumber = generateOrderNumber(now);
 
-      if (order.items.length > 0) {
-        await tx.insert(orderItems).values(
-          order.items.map((item) => ({
-            orderId: order.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            productName: item.productName,
-            variantDetails: item.variantDetails,
-            quantity: item.quantity,
-            unitPrice: item.price.toFixed(2),
-            totalPrice: (item.price * item.quantity).toFixed(2),
-            createdAt: now,
-          }))
-        );
-      }
-
-      await tx.insert(payments).values({
-        orderId: order.id,
-        paymentMethod:
-          order.paymentMethod === "cash_on_delivery"
-            ? "cash_on_delivery"
-            : "stripe",
-        paymentStatus: "pending",
-        amount: order.totalAmount.toFixed(2),
-        currency: STORE_CURRENCY,
-        transactionId: null,
-        paymentGatewayResponse: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Reserve stock in the same transaction as the order.
-      //
-      // Locking each variant row (FOR UPDATE) serialises concurrent checkouts
-      // for the same variant, so two customers cannot both pass the stock check
-      // and oversell the last unit.
-      //
-      // Items are locked in a fixed (variant id) order. Two carts containing the
-      // same two variants would otherwise be able to grab them in opposite
-      // orders and deadlock each other.
-      const stockedItems = order.items
-        .filter((item) => item.variantId !== null)
-        .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
-
-      for (const item of stockedItems) {
-        if (!item.variantId) continue; // Narrowing for TypeScript; filtered above
-
-        const [variant] = await tx
-          .select({
-            id: productVariants.id,
-            stockQuantity: productVariants.stockQuantity,
-          })
-          .from(productVariants)
-          .where(eq(productVariants.id, item.variantId))
-          .for("update")
-          .limit(1);
-
-        if (!variant) {
-          throw new Error(
-            `${item.productName} is no longer available and was removed from sale.`
-          );
-        }
-
-        if (variant.stockQuantity < item.quantity) {
-          throw new Error(
-            `Not enough stock for ${item.productName}${
-              item.variantDetails ? ` (${item.variantDetails})` : ""
-            }. Only ${variant.stockQuantity} left.`
-          );
-        }
-
-        const newQuantity = variant.stockQuantity - item.quantity;
-
-        await tx
-          .update(productVariants)
-          .set({ stockQuantity: newQuantity, updatedAt: now })
-          .where(eq(productVariants.id, item.variantId));
-
-        await tx.insert(inventoryLogs).values({
-          variantId: item.variantId,
-          changeType: "sale",
-          quantityChange: -item.quantity,
-          previousQuantity: variant.stockQuantity,
-          newQuantity,
-          reason: `Order ${orderNumber}`,
-          createdBy: order.userId,
-          createdAt: now,
-        });
-      }
-
-      // Redeem the coupon only when the order is already a real commitment.
-      //
-      // Cash on delivery is: the customer has ordered, and the courier collects
-      // later. A card order is not — it is a session the customer may never
-      // pay for, and counting that as a redemption burned a one-per-customer
-      // code on an attempt that never charged anyone. Card orders redeem in
-      // `markAsPaid` instead.
-      if (order.couponId && order.paymentMethod === "cash_on_delivery") {
-        await tx.insert(couponUsages).values({
-          couponId: order.couponId,
+    const commit = () =>
+      db.transaction(async (tx) => {
+        await tx.insert(orders).values({
+          id: order.id,
+          orderNumber,
           userId: order.userId,
-          orderId: order.id,
+          status: order.status,
+          subtotal: order.subtotal.toFixed(2),
+          taxAmount: order.tax.toFixed(2),
+          shippingAmount: order.shippingCost.toFixed(2),
+          discountAmount: order.discount.toFixed(2),
+          totalAmount: order.totalAmount.toFixed(2),
+          currency: STORE_CURRENCY,
+          couponId: order.couponId,
+          shippingAddressId: order.shippingAddressId,
+          billingAddressId: order.billingAddressId,
+          shippingAddressSnapshot: shippingSnapshot,
+          billingAddressSnapshot: billingSnapshot,
+          createdAt: now,
+          updatedAt: now,
         });
 
-        await tx
-          .update(coupons)
-          .set({
-            usageCount: sql`${coupons.usageCount} + 1`,
-            updatedAt: now,
-          })
-          .where(eq(coupons.id, order.couponId));
+        if (order.items.length > 0) {
+          await tx.insert(orderItems).values(
+            order.items.map((item) => ({
+              orderId: order.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              productName: item.productName,
+              variantDetails: item.variantDetails,
+              quantity: item.quantity,
+              unitPrice: item.price.toFixed(2),
+              totalPrice: (item.price * item.quantity).toFixed(2),
+              createdAt: now,
+            }))
+          );
+        }
+
+        await tx.insert(payments).values({
+          orderId: order.id,
+          paymentMethod:
+            order.paymentMethod === "cash_on_delivery"
+              ? "cash_on_delivery"
+              : "stripe",
+          paymentStatus: "pending",
+          amount: order.totalAmount.toFixed(2),
+          currency: STORE_CURRENCY,
+          transactionId: null,
+          paymentGatewayResponse: null,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        // Reserve stock in the same transaction as the order.
+        //
+        // Locking each variant row (FOR UPDATE) serialises concurrent checkouts
+        // for the same variant, so two customers cannot both pass the stock check
+        // and oversell the last unit.
+        //
+        // Items are locked in a fixed (variant id) order. Two carts containing the
+        // same two variants would otherwise be able to grab them in opposite
+        // orders and deadlock each other.
+        const stockedItems = order.items
+          .filter((item) => item.variantId !== null)
+          .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
+
+        for (const item of stockedItems) {
+          if (!item.variantId) continue; // Narrowing for TypeScript; filtered above
+
+          const [variant] = await tx
+            .select({
+              id: productVariants.id,
+              stockQuantity: productVariants.stockQuantity,
+            })
+            .from(productVariants)
+            .where(eq(productVariants.id, item.variantId))
+            .for("update")
+            .limit(1);
+
+          if (!variant) {
+            throw new Error(
+              `${item.productName} is no longer available and was removed from sale.`
+            );
+          }
+
+          if (variant.stockQuantity < item.quantity) {
+            throw new Error(
+              `Not enough stock for ${item.productName}${
+                item.variantDetails ? ` (${item.variantDetails})` : ""
+              }. Only ${variant.stockQuantity} left.`
+            );
+          }
+
+          const newQuantity = variant.stockQuantity - item.quantity;
+
+          await tx
+            .update(productVariants)
+            .set({ stockQuantity: newQuantity, updatedAt: now })
+            .where(eq(productVariants.id, item.variantId));
+
+          await tx.insert(inventoryLogs).values({
+            variantId: item.variantId,
+            changeType: "sale",
+            quantityChange: -item.quantity,
+            previousQuantity: variant.stockQuantity,
+            newQuantity,
+            reason: `Order ${orderNumber}`,
+            createdBy: order.userId,
+            createdAt: now,
+          });
+        }
+
+        // Redeem the coupon only when the order is already a real commitment.
+        //
+        // Cash on delivery is: the customer has ordered, and the courier collects
+        // later. A card order is not — it is a session the customer may never
+        // pay for, and counting that as a redemption burned a one-per-customer
+        // code on an attempt that never charged anyone. Card orders redeem in
+        // `markAsPaid` instead.
+        if (order.couponId && order.paymentMethod === "cash_on_delivery") {
+          await tx.insert(couponUsages).values({
+            couponId: order.couponId,
+            userId: order.userId,
+            orderId: order.id,
+          });
+
+          await tx
+            .update(coupons)
+            .set({
+              usageCount: sql`${coupons.usageCount} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(coupons.id, order.couponId));
+        }
+      });
+
+    // The order number carries a unique constraint, and the insert that uses
+    // it shares a transaction with the items, the payment row, the stock
+    // decrement and the coupon redemption. So a duplicate number did not fail
+    // the *name* — it failed the whole checkout, and the customer saw a generic
+    // error on an order that would have succeeded if simply tried again.
+    //
+    // Retried with a fresh number instead. Only a name clash is retried; stock
+    // and coupon failures are answers the customer needs to see, not conditions
+    // to attempt four more times. The transaction rolls back completely on
+    // abort, so each attempt starts from clean state and nothing is written
+    // twice.
+    //
+    // Bounded rather than unbounded: at 32^8 per day, needing four fresh
+    // numbers in a row means something is wrong that retrying will not fix, and
+    // an infinite loop against the database would be a far worse failure than
+    // the one being handled.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await commit();
+        break;
+      } catch (error) {
+        if (
+          attempt >= ORDER_NUMBER_ATTEMPTS ||
+          !isOrderNumberCollision(error)
+        ) {
+          throw error;
+        }
+        orderNumber = generateOrderNumber(now);
       }
-    });
+    }
 
     const created = await this.findById(order.id);
     if (!created) {
@@ -844,30 +948,28 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         billingAddress: true,
         payments: true,
       },
-      orderBy: [desc(orders.createdAt)],
+      orderBy: [desc(orders.createdAt), desc(orders.id)],
       limit,
     });
 
     return ordersList.map((o) => this.mapToEntity(o));
   }
 
-  /**
-   * Update an order - NOT IMPLEMENTED
-   */
-  /**
-   * Delete an order
-   */
-  async delete(orderId: string): Promise<void> {
-    await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
-    await db.delete(orders).where(eq(orders.id, orderId));
-  }
+  // `delete()` was removed. It had no caller and was one autocomplete away
+  // from silently destroying an order: it dropped the row outside a
+  // transaction while bypassing every invariant `updateStatus` protects — no
+  // stock restocked, no coupon released, no status-transition check — and the
+  // explicit `order_items` delete was redundant anyway, since that FK already
+  // cascades. An order should only ever reach a terminal state (`cancelled`,
+  // `refunded`), never vanish: the financial record has to outlive the
+  // customer's interest in it. Removed from the interface too.
 
   /**
    * Count orders by status
    */
   async countByStatus(status: string): Promise<number> {
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(orders)
       .where(sql`${orders.status} = ${status}`);
 
@@ -881,7 +983,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     const conditions = this.buildFiltersConditions(filters);
 
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(orders)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
@@ -915,9 +1017,44 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     // they derive from lives in a table, so they belong in the WHERE clause —
     // that is what keeps the admin list from having to load every order to
     // filter one page of them.
+    // ---------------------------------------------------------------------
+    // Read this before "tidying" the two filters below.
+    //
+    // Inside a raw `sql` fragment, Drizzle's **relational** query builder
+    // (`db.query.orders.findMany`, which `findAll` uses) rewrites every
+    // embedded column object to the query's root table, whatever table that
+    // column actually belongs to. `${orderItems.orderId}` does not render as
+    // `"order_items"."order_id"` — it renders as `"orders"."order_id"`, a
+    // column that does not exist, and Postgres rejects the query with 42703.
+    //
+    // The core builder (`db.select().from(orders)`, which `count` uses) has no
+    // such behaviour and renders the same fragment correctly. So the two paths
+    // that share this method produced *different SQL from the same input*:
+    // `count` worked and `findAll` threw, meaning the admin orders list 500'd
+    // whenever either filter was applied.
+    //
+    // Only these two filters reach into another table; every other raw
+    // fragment here touches `orders` alone, where the rewrite is a harmless
+    // no-op. That is why this went unnoticed.
+    //
+    // The rule that keeps both renderings correct:
+    //   - outer/correlated references stay column objects — a root-table
+    //     column rewrites to itself, so it is right either way;
+    //   - the subquery's own columns are written as literal `alias.column`
+    //     text, which no rewrite touches.
+    // Table names are safe as `${table}` — only *columns* are rewritten.
+    //
+    // Putting `${orderItems.refundedQuantity}` back would look like a
+    // type-safety improvement and would silently restore the bug.
+    // ---------------------------------------------------------------------
+
     if (filters?.returnedOnly) {
       conditions.push(
-        sql`EXISTS (SELECT 1 FROM ${orderItems} WHERE ${orderItems.orderId} = ${orders.id} AND ${orderItems.refundedQuantity} > 0)`
+        sql`EXISTS (
+          SELECT 1 FROM ${orderItems} oi
+          WHERE oi.order_id = ${orders.id}
+            AND oi.refunded_quantity > 0
+        )`
       );
     }
 
@@ -931,12 +1068,12 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       // applies.
       conditions.push(
         sql`${orders.status} <> 'refunded' AND EXISTS (
-          SELECT 1 FROM ${payments}
-          WHERE ${payments.orderId} = ${orders.id}
-            AND ${payments.paymentStatus} <> 'refunded'
+          SELECT 1 FROM ${payments} p
+          WHERE p.order_id = ${orders.id}
+            AND p.payment_status <> 'refunded'
             AND (
-              ${payments.paymentStatus} = 'completed'
-              OR (${payments.paymentMethod} = 'cash_on_delivery' AND ${orders.deliveredAt} IS NOT NULL)
+              p.payment_status = 'completed'
+              OR (p.payment_method = 'cash_on_delivery' AND ${orders.deliveredAt} IS NOT NULL)
             )
         )`
       );
@@ -949,6 +1086,35 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
    * Map database result to OrderEntity
    * Maps actual database schema fields to entity expectations
    */
+  /**
+   * The address as it stands right now, to be frozen onto the order.
+   *
+   * Returns null for an id that resolves to nothing rather than throwing: the
+   * snapshot is a record, and failing a checkout over one would be a worse
+   * outcome than an order that falls back to the join for its address.
+   */
+  private async loadAddressSnapshot(
+    addressId: string | null
+  ): Promise<OrderAddress | null> {
+    if (!addressId) return null;
+
+    const row = await db.query.addresses.findFirst({
+      where: eq(addresses.id, addressId),
+      columns: {
+        fullName: true,
+        addressLine1: true,
+        addressLine2: true,
+        city: true,
+        state: true,
+        postalCode: true,
+        country: true,
+        phone: true,
+      },
+    });
+
+    return toOrderAddress(row);
+  }
+
   private mapToEntity(
     dbOrder: {
       id: string;
@@ -983,6 +1149,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       }>;
       shippingAddress?: DbAddress | null;
       billingAddress?: DbAddress | null;
+      shippingAddressSnapshot?: unknown;
+      billingAddressSnapshot?: unknown;
       payments?: Array<{
         paymentMethod: string;
         paymentStatus: OrderPaymentStatus;
@@ -1036,8 +1204,14 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       new Date(dbOrder.updatedAt),
       dbOrder.discountAmount ? parseFloat(dbOrder.discountAmount) : 0,
       dbOrder.couponId ?? null,
-      toOrderAddress(dbOrder.shippingAddress),
-      toOrderAddress(dbOrder.billingAddress),
+      resolveOrderAddress(
+        dbOrder.shippingAddressSnapshot,
+        dbOrder.shippingAddress
+      ),
+      resolveOrderAddress(
+        dbOrder.billingAddressSnapshot,
+        dbOrder.billingAddress
+      ),
       dbOrder.adminNotes ?? null,
       dbOrder.orderNumber ?? null,
       customer

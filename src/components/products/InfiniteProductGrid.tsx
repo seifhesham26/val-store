@@ -21,9 +21,19 @@ import type { ProductListPage } from "@/lib/cache";
 
 interface InfiniteProductGridProps {
   categoryId?: string;
+  /**
+   * A category and its descendants, resolved server-side.
+   *
+   * Collection pages pass this rather than `categoryId`: every product is
+   * filed against a leaf category while the navigation links to parents, so
+   * matching a single id emptied every parent collection.
+   */
+  categoryIds?: string[];
   gender?: string;
   isFeatured?: boolean;
   isOnSale?: boolean;
+  /** Added within the last N days — the New Arrivals filter. */
+  createdWithinDays?: number;
   title?: string;
   description?: string;
   /**
@@ -47,16 +57,26 @@ const NEXT_PAGE_PLACEHOLDERS = 4;
 
 export function InfiniteProductGrid({
   categoryId,
+  categoryIds,
   gender,
   isFeatured,
   isOnSale,
+  createdWithinDays,
   title = "All Products",
   description,
   initialPage,
 }: InfiniteProductGridProps) {
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     trpc.public.products.list.useInfiniteQuery(
-      { limit: ITEMS_PER_PAGE, categoryId, gender, isFeatured, isOnSale },
+      {
+        limit: ITEMS_PER_PAGE,
+        categoryId,
+        categoryIds,
+        gender,
+        isFeatured,
+        isOnSale,
+        createdWithinDays,
+      },
       {
         getNextPageParam: (lastPage) => {
           if (lastPage.page < lastPage.totalPages) {

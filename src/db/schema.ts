@@ -10,6 +10,7 @@ import {
   decimal,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // ============================================
@@ -355,10 +356,43 @@ export const orders = pgTable(
     couponId: uuid("coupon_id").references(() => coupons.id, {
       onDelete: "set null",
     }),
+    /**
+     * The address rows this order was placed against.
+     *
+     * `ON DELETE SET NULL`, not the default `NO ACTION` they used to carry. A
+     * customer could not delete a saved address once any order referenced it —
+     * the delete raised a foreign key violation that the account page did not
+     * even surface, so the button simply did nothing. And because
+     * `addresses.user_id` cascades from `user`, the same constraint made
+     * deleting a customer who had ever ordered impossible, while
+     * `orders.user_id` is `SET NULL` precisely so that orders outlive the
+     * account.
+     *
+     * The ids are now a convenience link, not the record. The record is the
+     * snapshot below.
+     */
     shippingAddressId: uuid("shipping_address_id").references(
-      () => addresses.id
+      () => addresses.id,
+      { onDelete: "set null" }
     ),
-    billingAddressId: uuid("billing_address_id").references(() => addresses.id),
+    billingAddressId: uuid("billing_address_id").references(
+      () => addresses.id,
+      { onDelete: "set null" }
+    ),
+    /**
+     * Where this order was actually sent and billed, copied at checkout.
+     *
+     * An order has to keep its address even when the address row is gone —
+     * deleted by the customer, or cascaded away with their account. It is also
+     * the more correct record regardless: editing a saved address must not
+     * retroactively change where a shipped order says it went.
+     *
+     * Shaped exactly like the `OrderAddress` DTO the entity carries, so the
+     * repository reads it straight through. Null on rows written before this
+     * existed, which fall back to the joined address.
+     */
+    shippingAddressSnapshot: jsonb("shipping_address_snapshot"),
+    billingAddressSnapshot: jsonb("billing_address_snapshot"),
     customerNotes: text("customer_notes"),
     adminNotes: text("admin_notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -622,7 +656,20 @@ export const inventoryLogs = pgTable(
     previousQuantity: integer("previous_quantity").notNull(),
     newQuantity: integer("new_quantity").notNull(),
     reason: text("reason"),
-    createdBy: text("created_by").references(() => user.id),
+    /**
+     * `SET NULL` rather than the default `NO ACTION`.
+     *
+     * The audit row must outlive the account that caused it — an inventory
+     * movement is a fact about stock, not about a user — but the constraint as
+     * written made it outlive the account by *preventing the deletion*, which
+     * is the one outcome nobody wants. Losing the attribution is the intended
+     * trade; losing the row, or being unable to delete a customer at all, is
+     * not. Note this fires for customers too: `createdBy` is set to the buyer
+     * on every `sale` row written during checkout.
+     */
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({

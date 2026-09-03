@@ -33,6 +33,17 @@ export interface ProductFilters {
   isActive?: boolean;
   isFeatured?: boolean;
   categoryId?: string;
+  /**
+   * Match any of several categories — a category and its descendants.
+   *
+   * `categoryId` is an equality, and every product in this catalogue is filed
+   * against a leaf while the navigation links to parents, so a parent matched
+   * nothing. Callers resolve the set with `collectCategoryTree` and pass it
+   * here. Takes precedence over `categoryId` when both are supplied; an empty
+   * array is ignored rather than matching nothing, so a caller cannot
+   * accidentally empty a grid by passing an unresolved tree.
+   */
+  categoryIds?: string[];
   minPrice?: number;
   maxPrice?: number;
   inStock?: boolean;
@@ -46,6 +57,11 @@ export interface ProductFilters {
   gender?: string;
   /** Only products whose sale price actually undercuts the base price. */
   isOnSale?: boolean;
+  /**
+   * Only products added within the last N days — what "New Arrivals" means.
+   * See `NEW_ARRIVAL_WINDOW_DAYS`.
+   */
+  createdWithinDays?: number;
   /**
    * Case-insensitive match against name or description.
    *
