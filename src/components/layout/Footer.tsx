@@ -9,7 +9,11 @@ import {
   ShieldCheck,
   Banknote,
 } from "lucide-react";
-import { getCachedSiteSettings } from "@/lib/cache";
+import {
+  getCachedSiteSettings,
+  getCachedNavCategories,
+  type NavCategory,
+} from "@/lib/cache";
 
 export async function Footer() {
   // Fetch site settings for social links and store name.
@@ -30,15 +34,29 @@ export async function Footer() {
     console.error("[Footer] Failed to fetch site settings:", error);
   }
 
+  // Real categories, so an admin creating one gets a link and deleting one does
+  // not leave a 404 behind. Degrades exactly like the settings above: the
+  // footer is on every page, so a transient database error must not take the
+  // site down — it falls back to the curated links only.
+  let categories: NavCategory[] = [];
+
+  try {
+    categories = await getCachedNavCategories();
+  } catch (error) {
+    console.error("[Footer] Failed to fetch nav categories:", error);
+  }
+
   const currentYear = new Date().getFullYear();
   const storeName = settings?.storeName || "Valkyrie";
 
   const footerLinks = {
+    // Live categories first, then the curated views that are not categories
+    // at all — "everything" and "discounted" cannot be expressed as a
+    // `categories` row, which is why they stay hardcoded and are reserved.
     shop: [
-      { label: "Men's", href: "/collections/men" },
-      { label: "Women's", href: "/collections/women" },
-      { label: "Accessories", href: "/collections/accessories" },
+      ...categories,
       { label: "New Arrivals", href: "/collections/new" },
+      { label: "All Products", href: "/collections/all" },
       { label: "Sale", href: "/collections/sale" },
     ],
     customerCare: [

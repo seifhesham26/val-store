@@ -39,6 +39,40 @@ const nextConfig: NextConfig = {
      * blocks nothing and records nothing. `/api/csp-report` now collects the
      * violations, so promoting the rest is a matter of reading the logs rather
      * than guessing.
+     *
+     * ---------------------------------------------------------------------
+     * Why `script-src` is still not enforced — measured 2026-09-03, so nobody
+     * re-litigates it from first principles.
+     *
+     * Next documents two ways to drop `'unsafe-inline'`, and neither works
+     * here:
+     *
+     * 1. **Nonces.** Next's own guide is explicit that nonces require every
+     *    page to be dynamically rendered — "Static optimization and ISR are
+     *    disabled", "Pages cannot be cached by CDNs". This app prerenders 98
+     *    pages, and `docs/PERFORMANCE.md` records two passes whose whole point
+     *    was getting collection pages prerendered with `generateStaticParams`.
+     *    Nonces would undo all of it and put a server render in front of every
+     *    storefront visitor.
+     *
+     * 2. **Experimental SRI** (`experimental.sri`), which the guide offers as
+     *    the static-friendly alternative. Tried it: it does add
+     *    `integrity="sha256-…"` to external chunks, but the built HTML still
+     *    contains **8 inline `<script>` blocks per page** with no hash and no
+     *    integrity — Next's own bootstrap and flight data. Enforcing
+     *    `script-src 'self'` would block them and break hydration everywhere.
+     *    SRI covers external scripts only, whatever the guide's example
+     *    implies.
+     *
+     * So `'unsafe-inline'` stays until Next can hash its inline bootstrap, and
+     * the honest position is that CSP is not currently protecting this app
+     * against script injection. What *is* worth doing, and needs production
+     * evidence rather than a guess: promote `connect-src`, `img-src`,
+     * `font-src` and `frame-src` from the reported half. They constrain where
+     * an injected script could send data, which is real defence even while
+     * `script-src` is permissive. Read `/api/csp-report` logs for a week
+     * first — a missed host in `connect-src` breaks checkout.
+     * ---------------------------------------------------------------------
      */
     const ENFORCED = [
       "object-src 'none'",

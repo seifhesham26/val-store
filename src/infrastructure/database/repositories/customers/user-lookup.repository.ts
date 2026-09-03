@@ -7,17 +7,26 @@
 
 import { db } from "@/db";
 import { user } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { UserLookupRepositoryInterface } from "@/domain/customers/interfaces/repositories/user-lookup.repository.interface";
 
 export class DrizzleUserLookupRepository implements UserLookupRepositoryInterface {
-  async findEmailByPhone(phone: string): Promise<string | null> {
-    const [foundUser] = await db
-      .select({ email: user.email })
-      .from(user)
-      .where(eq(user.phone, phone))
-      .limit(1);
-
-    return foundUser?.email ?? null;
+  async findAccountsByPhone(
+    phone: string,
+    limit: number
+  ): Promise<{ email: string }[]> {
+    return (
+      db
+        .select({ email: user.email })
+        .from(user)
+        .where(eq(user.phone, phone))
+        // Ordered, where the previous `limit(1)` was not. Without an ORDER BY,
+        // Postgres may return either matching row and may return a different one
+        // next time — so which account a phone number signed into was arbitrary
+        // and unstable. Oldest first is stable and is the account a customer
+        // most likely thinks of as theirs.
+        .orderBy(asc(user.createdAt), asc(user.id))
+        .limit(limit)
+    );
   }
 }

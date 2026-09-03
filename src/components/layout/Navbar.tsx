@@ -38,7 +38,12 @@ const navLinks = [
   { label: "Sale", href: "/collections/sale" },
 ];
 
-export function Navbar() {
+export function Navbar({
+  categories = [],
+}: {
+  /** Live top-level categories, resolved by the server layout. */
+  categories?: { label: string; href: string }[];
+}) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const isClient = useIsClient();
@@ -212,6 +217,7 @@ export function Navbar() {
       </nav>
 
       <MobileMenu
+        categories={categories}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         isLoggedIn={isLoggedIn}

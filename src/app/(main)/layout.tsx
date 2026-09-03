@@ -8,12 +8,28 @@ import { VariantStockProvider } from "@/components/providers/variant-stock-provi
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { CartStockDialog } from "@/components/cart/CartStockDialog";
 import { StorefrontTheme } from "@/components/providers/storefront-theme";
+import { getCachedNavCategories, type NavCategory } from "@/lib/cache";
 
-export default function MainLayout({
+export default async function MainLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Resolved here rather than inside the client Navbar, so the links are in the
+  // first HTML rather than appearing a beat after hydration — and so a
+  // navigation that is on every page costs no client request at all.
+  //
+  // Degrades like the Footer and the homepage sections: the nav must render
+  // even when the database does not answer, falling back to the curated links
+  // the menu keeps anyway.
+  let categories: NavCategory[] = [];
+
+  try {
+    categories = await getCachedNavCategories();
+  } catch (error) {
+    console.error("[MainLayout] Failed to fetch nav categories:", error);
+  }
+
   return (
     <TRPCProvider>
       <CartProvider>
@@ -24,7 +40,7 @@ export default function MainLayout({
           <VariantStockProvider>
             <StorefrontTheme />
             <ServerAnnouncementBar />
-            <Navbar />
+            <Navbar categories={categories} />
             <main className="min-h-screen">{children}</main>
             <Footer />
             <CartDrawer />

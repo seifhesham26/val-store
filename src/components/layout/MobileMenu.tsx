@@ -27,14 +27,15 @@ interface MobileMenuProps {
   onClose: () => void;
   navLinks?: NavLink[];
   isLoggedIn?: boolean;
+  /**
+   * Live top-level categories, resolved on the server.
+   *
+   * Hardcoded before, which is how "Men's", "Women's" and "Accessories" could
+   * keep pointing at pages whose contents no longer matched them, and how three
+   * links to categories that never existed survived as 404s.
+   */
+  categories?: NavLink[];
 }
-
-const shopCategories = [
-  { label: "Men's", href: "/collections/men" },
-  { label: "Women's", href: "/collections/women" },
-  { label: "Accessories", href: "/collections/accessories" },
-  { label: "All Products", href: "/collections/all" },
-];
 
 /**
  * Every href here has to resolve to something that exists.
@@ -68,7 +69,16 @@ export function MobileMenu({
   isOpen,
   onClose,
   isLoggedIn = false,
+  categories = [],
 }: Omit<MobileMenuProps, "navLinks">) {
+  // Live categories, then the curated views that no `categories` row can
+  // express. Empty categories degrade to the curated links alone rather than
+  // to an empty menu.
+  const shopCategories = [
+    ...categories,
+    { label: "All Products", href: "/collections/all" },
+  ];
+
   // Prevent body scroll when menu is open
   useEffect(() => {
     if (isOpen) {

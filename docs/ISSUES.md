@@ -1,8 +1,102 @@
 # Known Issues
 
-A catalogue of defects and gaps found by reading the codebase in full. Unlike the other files in `docs/`, this one describes **current state**, not plans.
+A catalogue of defects and gaps found by reading the codebase in full. Unlike the other files in `docs/`, this one describes **current state**, not plans. Plans live in `docs/POST-LAUNCH.md`, `docs/REFUNDS.md`, `docs/LOYALTY-POINTS.md` and `docs/PHONE-VERIFICATION.md`; nothing in those is a defect.
 
 Each entry gives the location, what actually happens, why, and a concrete fix.
+
+> **Re-measure before you trust an entry here.** This file has twice recorded
+> work as verified that was not: a whole pass once listed 23 fixed items as
+> open, and the 2026-09-03 audit found three entries marked ✅ whose defects
+> were still live — including a primary navbar link that rendered the entire
+> catalogue, and two collection pages showing 1 and 0 products. A ✅ means
+> somebody checked once. It is not evidence.
+
+> ## Status: 2026-09-03 storefront audit
+>
+> A full read of the backend — auth, checkout, payments, orders, cart, coupons,
+> routing, uploads, CSP — against the code and the live database rather than
+> against this file. Everything below was measured, not inferred.
+>
+> ### Three entries this catalogue recorded as fixed, and were not
+>
+> This is the failure mode this file has already been caught in once, so it
+> leads.
+>
+> 1. **#33 `/collections/new` was never fixed.** The entry says it "drops the
+>    `isFeatured` filter and leans on the default `createdAt DESC`". It did —
+>    and since `findAll` already sorts that way, the page became **byte-identical
+>    to `/collections/all`**: the entire catalogue under a "New Arrivals"
+>    heading, on a primary navbar link. Removing a wrong filter is not adding a
+>    right one.
+> 2. **#33's second half was never addressed at all.** The static collection
+>    routes still shadowed real categories. `/collections/men` filtered
+>    `products.gender`, matching **1 of 36** active products; `/collections/women`
+>    matched **0**, on a store with 13 women's products. Both are top-level nav
+>    _and_ footer links.
+> 3. **The uncalled-procedure list (#28) was wrong in both directions.**
+>    `admin.settings.getAllContentSections` — named as the one remaining — had
+>    already been deleted. `public.categories.list`, recorded as having "four
+>    consumers", had **none** outside an integration test.
+>
+> ### Defects this catalogue did not record
+>
+> 1. **Products filed against leaf categories were invisible on parent
+>    collection pages.** `eq(products.categoryId, id)` is an equality, and every
+>    product sits in a leaf while the nav links to parents. Fixed with
+>    `collectCategoryTree` + `ProductFilters.categoryIds`. Measured: women
+>    0 → 13, men 1 → 14, accessories 5 → 9 (it had been missing its Bags child).
+> 2. **`admin.orders.list` returned a 500 on two of its own filters.** Raw `sql`
+>    in a relational query has every embedded column rewritten to the root
+>    table, so `${payments.orderId}` rendered as `"orders"."order_id"` —
+>    Postgres 42703. `count()` uses the core builder and rendered the _same
+>    filter_ correctly, so the list and its count disagreed before either threw.
+> 3. **Paged product listings duplicated and dropped rows.** `ORDER BY
+created_at DESC` is not a total order and a seeded catalogue writes 35
+>    products on one timestamp; the integration suite caught paging yielding 34
+>    distinct products out of 36. Every paginated `orderBy` now appends the
+>    primary key.
+> 4. **A saved address could never be deleted, silently.** `orders.*_address_id`
+>    was `ON DELETE NO ACTION`, and the account page's delete mutation had no
+>    `onError`, so the button simply did nothing. 2 of 2 live addresses were in
+>    that state. The same constraint made **deleting any customer who had ever
+>    ordered impossible**, while `orders.user_id` is `SET NULL` precisely so
+>    orders outlive the account. Fixed by snapshotting the address onto the
+>    order (`drizzle/0004`, not journalled).
+> 5. **The checkout success page thanked everyone.** `confirmSession` returns
+>    `{ paid: false }` as an ordinary result and the mutation had no `onError`;
+>    neither was rendered, so an unpaid session and a failed confirmation both
+>    showed "Thank you for your order!". Its cart-clearing effect was also gated
+>    on `!sessionId`, so merely opening the page wiped the cart of someone who
+>    had not ordered.
+> 6. **An order-number collision aborted the whole checkout.** Unique column,
+>    insert inside the transaction that also writes items, payment, stock and
+>    coupon; no retry. Now crypto-random with a bounded retry — and note the
+>    detector walks the `cause` chain, because Drizzle wraps the driver error
+>    and the Postgres code is _not_ on the object you catch.
+> 7. **`count(*)` returned a string typed as `number`.** `sql<number>` is a
+>    compile-time assertion; postgres.js hands back `bigint` as a string.
+> 8. **Three mobile-menu links were hard 404s** — "Summer 2025", "Essentials",
+>    "Best Sellers", categories that have never existed in any seed.
+> 9. **`pnpm test:integration` was 21/41 green and nobody knew**, because it is
+>    excluded from CI. Now 38/41; the remaining three are a harness limitation
+>    (`products.search` calling `headers()` outside a request scope through the
+>    in-process caller), not a product bug.
+>
+> ### Deliberately not fixed
+>
+> - **CSP `script-src` cannot be enforced here.** Measured both documented
+>   routes: nonces require every page to be dynamically rendered, which would
+>   undo all 98 prerendered pages; experimental SRI adds `integrity` to external
+>   chunks but the built HTML still carries **8 unhashed inline `<script>`
+>   blocks per page**, so `script-src 'self'` would break hydration everywhere.
+>   `'unsafe-inline'` stays. See the block comment in `next.config.ts`.
+> - **Refunds still move no money** — deferred pending the payment gateway
+>   decision. `docs/REFUNDS.md` records it as planned work, with the interim
+>   exposure stated: the admin button says "Refund", the customer is notified,
+>   revenue is deducted, and nothing is charged back.
+> - **Two data-quality problems**, left for a reseed: a junk `woman` category
+>   (now visible in the nav, which is the point), and an empty `new-arrivals`
+>   category.
 
 > ## Status: 2026-09-02 remediation pass
 >
@@ -719,9 +813,13 @@ Either adopt them or delete them. Two are worth adopting:
 - `CreateProductHeader`, `AddToCartButton`, `CollectionPageLayout` — no importers.
 - `src/components/account/AddressList.tsx` and `AddressFormDialog.tsx` are **byte-identical** duplicates of the copies in `account/addresses/`; only the nested pair is imported. Delete the flat pair.
 
-### 28. Unreferenced tRPC procedures
+### 28. Unreferenced tRPC procedures ✅
 
-**Re-checked 2026-09-02 — down to one.** `admin.settings.getAllContentSections` is the only procedure left with no caller.
+**Resolved 2026-09-03 — and the 2026-09-02 count below was wrong in both directions.** `admin.settings.getAllContentSections`, named as the one remaining, had **already been deleted**; its removal is recorded in `content-sections.ts` and `site-config.repository.ts`. Meanwhile `public.categories.list`, recorded below as having "four consumers", had **none** outside an integration test.
+
+It has one now: `getCachedNavCategories` drives the storefront navigation, so an admin creating a category gets a link and deleting one no longer leaves a 404 — which is also what closed the three dead mobile-menu links. That procedure was always the right tool; it already returned `parentId`, `displayOrder` and a product count, and already filtered to active categories.
+
+The 2026-09-02 note, kept for the record:
 
 Everything else on the 2026-08-31 list is resolved. **Deleted:** the entire `public.config` router, `public.categories.getFeatured`, `public.products.{getBySlug,getFeatured}`, `admin.products.getBySlug`, `admin.notifications.clearAll`. **Now called:** `public.categories.list` (four consumers) and `admin.settings.{getContentHistory,revertToVersion}` (`ContentHistoryDialog`).
 
@@ -761,7 +859,13 @@ Fix by consuming them: `getCachedSiteSettings()` already exists, so the Navbar, 
 
 ### 33. Two collection routes filter incorrectly ✅
 
-**Verified fixed** 2026-09-02 — `/collections/new` drops the `isFeatured` filter and leans on the default `createdAt DESC`; `/collections/accessories` resolves a category and filters on it. Both files record the old behaviour in the past tense.
+**Actually fixed 2026-09-03. The 2026-09-02 entry below was wrong, and is kept as a record of how.**
+
+It claimed `/collections/new` was fixed by dropping the `isFeatured` filter "and leaning on the default `createdAt DESC`". `findAll` already sorted that way, so the page became **byte-identical to `/collections/all`** — the whole catalogue under a "New Arrivals" heading, on a primary navbar link. Removing a wrong filter is not adding a right one, and "verified" meant the code matched the description rather than that the page did anything.
+
+Four surfaces claimed to show new arrivals and no two agreed: this page (no filter), the `/collections` index row (`isFeatured`), the homepage carousel (`limit: 8` off the default sort), and an empty `new-arrivals` category. They now share `NEW_ARRIVAL_WINDOW_DAYS` — a recency window, chosen over a curated category because a category has to be maintained and silently shows nothing when it is not.
+
+The second half of this entry — that all six static routes shadow real categories — was recorded in 2026-08-31 and **never acted on at all**. `/collections/men` filtered `products.gender` and matched 1 of 36 active products; `/collections/women` matched 0. `men`, `women` and `accessories` are deleted so `[slug]` serves them; `all`, `sale` and `new` are genuinely not categories and stay, now declared in `RESERVED_COLLECTION_SLUGS` with a test that reads the route directory and fails if either half of the rule is broken.
 
 `/collections/new` filters on `isFeatured` rather than recency, and `/collections/accessories` applies no filter at all — it renders the full catalogue under an "Accessories" heading (its own comment admits this).
 
@@ -779,7 +883,11 @@ It exists in the `user_role` enum, `UserProfileEntity.isWorker()`, and both `Use
 
 `cart-store.ts` persists to localStorage and handles guest items, but `useCart().addItem` shows a sign-in toast instead of adding for unauthenticated visitors, so the guest branch never runs. Either implement guest carts properly (with a merge on login) or delete the guest handling in the store.
 
-### 36. Five lint warnings
+### 36. Five lint warnings ✅
+
+**Verified 2026-09-03: `pnpm lint` reports 0 problems.** Not warnings-suppressed — none fire. Note that both this entry and `CLAUDE.md` later described a _different_ set of three `no-location-assign-relative-destination` warnings; those do not fire either. Re-measure before believing any count in this file.
+
+The 2026-08-31 note, kept for the record:
 
 Down from seven — two went away with the webhook rewrite. What is left: unused imports in `src/app/admin/products/page.tsx` (`Plus`, `Button`), an unused `error` in `NewsletterSection` (which also swallows the real error), an unused `_width` in `product-image.entity.ts`, and an unused `protectedProcedure` import in `public/user.ts`.
 
@@ -1105,11 +1213,34 @@ applied, then either journal them properly or write down, somewhere other than
 inside the SQL files themselves, that they are deliberately out of band.
 `0003` closes #41.
 
-**Then housekeeping.** #28 is down to a single procedure with no caller,
-`admin.settings.getAllContentSections` — adopt or delete. #36 is three warnings from a rule new in eslint-config-next
-16.3.4, all firing on deliberate full page reloads after an auth change; either
-suppress them at the call sites with a reason, or accept them. #38 wants
-re-reading note by note rather than as a block.
+**Checked 2026-09-03 against the live database.** `0001` **is** applied —
+`idx_orders_user_created` and `idx_products_active_created` both exist, so
+every doc that said otherwise was wrong. `0002` is genuinely unapplied (no
+`pg_trgm`) and deliberately not urgent at this catalogue size. **`0004_order_address_snapshots`
+was added and applied by hand** — the snapshot columns and three
+`ON DELETE SET NULL` changes are live, with 19 orders backfilled — and it is
+**not journalled either**, so a rebuilt or freshly deployed database will not
+have it. That is the one item here with a silent failure mode: without it,
+orders write no address snapshot and address deletion starts failing again.
+
+**Then housekeeping.** ~~#28~~ and ~~#36~~ are both closed as of 2026-09-03 —
+every procedure has a caller and `pnpm lint` reports 0 problems. Note that this
+paragraph described #36 as "three warnings from a rule new in
+eslint-config-next 16.3.4"; that rule fires on nothing, and the entry above it
+described five _different_ warnings. Two descriptions, neither matching the
+tool's output, is the argument for re-measuring rather than reading this file.
+#38 still wants re-reading note by note rather than as a block.
+
+**What is actually left**, verified 2026-09-03: CSP `script-src` cannot be
+enforced without giving up prerendering (measured — see the status block at the
+top and the comment in `next.config.ts`); refunds move no money, deferred to
+the payment gateway decision (`docs/REFUNDS.md`); three integration tests fail
+on a harness limitation rather than a product bug; and #34's `worker` role,
+#39's palette and #P2-6/#P2-7's portalled surfaces are all still open. The
+largest unexamined area is not in this file at all: the admin screens, the
+light/dark contrast family, accessibility and the email templates were never
+audited, and the contrast family alone has produced six defects, every one
+found by a person looking at a screen rather than by any test.
 
 **A standing note on dependencies.** `pnpm audit` is clean in both scopes as of
 2026-09-02, but two packages are on unsupported lines and will drift back into

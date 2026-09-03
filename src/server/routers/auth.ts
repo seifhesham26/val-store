@@ -49,6 +49,16 @@ function unauthorized(): TRPCError {
 /** Shown whichever of the two budgets below is exhausted. */
 const RATE_LIMITED = "Too many attempts. Please try again later.";
 
+/**
+ * How many accounts on one phone number a sign-in will try.
+ *
+ * Each candidate costs a full password verification, which is deliberately
+ * expensive, so this is the ceiling on what one request can spend. Two or three
+ * accounts per number is the real case this serves — a family sharing a phone,
+ * or somebody who re-registered. Beyond that, capping is the right answer.
+ */
+const MAX_ACCOUNTS_PER_PHONE = 5;
+
 export const authRouter = router({
   /**
    * Sign in with an email address or a phone number.
@@ -101,40 +111,56 @@ export const authRouter = router({
         RATE_LIMITED
       );
 
-      let email: string;
+      // Every account on this number, not one arbitrary row.
+      //
+      // `user.phone` has no unique constraint and is not meant to — one human
+      // may hold several accounts on one number, which is what the phone-keyed
+      // `customers` table models. The lookup used to take a single row with
+      // `limit(1)` and no ordering, so with two such accounts the one you
+      // signed into was arbitrary, could differ between attempts, and the
+      // other account could never sign in by phone at all.
+      //
+      // The password is what disambiguates: each candidate is tried in turn
+      // and the first whose credentials match wins. Capped because password
+      // hashing is deliberately expensive, and one number carrying more than a
+      // handful of accounts is not a case worth serving at that cost.
+      const candidates: string[] = isPhone
+        ? (
+            await container
+              .getUserLookupRepository()
+              .findAccountsByPhone(normalized, MAX_ACCOUNTS_PER_PHONE)
+          ).map((row) => row.email)
+        : [normalized];
 
-      if (isPhone) {
-        const found = await container
-          .getUserLookupRepository()
-          .findEmailByPhone(normalized);
-
-        // The whole point of the change: an unregistered phone number and a
-        // wrong password are indistinguishable from out here.
-        if (!found) {
-          throw unauthorized();
-        }
-
-        email = found;
-      } else {
-        email = normalized;
+      // An unregistered phone number and a wrong password are indistinguishable
+      // from out here — the whole point of routing the lookup through sign-in.
+      if (candidates.length === 0) {
+        throw unauthorized();
       }
 
       // `auth.api.*` bypasses the Better Auth handler, and with it the
       // `rateLimit.customRules` entry for `/sign-in/email` — which is why the
       // two Upstash limits above are not belt-and-braces but the only throttle
       // on this path.
-      let result: { headers: Headers };
+      let result: { headers: Headers } | null = null;
 
-      try {
-        result = await auth.api.signInEmail({
-          body: { email, password: input.password },
-          headers: reqHeaders,
-          returnHeaders: true,
-        });
-      } catch {
-        // Better Auth throws APIError for bad credentials, an unverified
-        // address, and anything else it refuses. All of it collapses to one
-        // answer here.
+      for (const email of candidates) {
+        try {
+          result = await auth.api.signInEmail({
+            body: { email, password: input.password },
+            headers: reqHeaders,
+            returnHeaders: true,
+          });
+          break;
+        } catch {
+          // Better Auth throws APIError for bad credentials, an unverified
+          // address, and anything else it refuses. All of it collapses to one
+          // answer — but only after every candidate has been tried, since a
+          // failure here may simply mean "not this one of your accounts".
+        }
+      }
+
+      if (!result) {
         throw unauthorized();
       }
 
