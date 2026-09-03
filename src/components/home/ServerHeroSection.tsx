@@ -43,9 +43,11 @@ export async function ServerHeroSection() {
   try {
     const heroSection = await getCachedHeroSection();
 
+    // `getCachedHeroSection` validates `parsedContent` against
+    // `heroContentSchema` before returning it, so no cast is needed here —
+    // a row that failed validation already came back as `null` above.
     if (heroSection?.isActive) {
-      const parsed = heroSection.parsedContent as HeroContent;
-      content = { ...DEFAULT_HERO, ...parsed };
+      content = { ...DEFAULT_HERO, ...heroSection.parsedContent };
     }
   } catch (error) {
     console.error("[ServerHeroSection] Failed to fetch hero config:", error);
@@ -58,11 +60,13 @@ export async function ServerHeroSection() {
     content.subtitle ??
     "Discover the new collection crafted for those who dare to stand out.";
   const ctaText = content.ctaText ?? "Shop Now";
-  // Not `?? default` on the raw value: this content is read straight out of
-  // the database with `JSON.parse` and spread over the defaults, with no Zod
-  // parse on this path, so a row written before `ctaLink` was validated
-  // arrives here exactly as stored. A rejected link falls back to the
-  // default destination rather than disappearing — the CTA needs a target.
+  // `getCachedHeroSection` already validates this against `urlOrAssetPath`
+  // (via `heroContentSchema`), so an invalid link cannot arrive here at
+  // all — the whole section would have come back `null` instead. `safeHref`
+  // stays as a second, cheap check rather than being removed: it costs
+  // nothing to keep, and it is the same guard applied to CMS links that
+  // reach the client without going through this schema (`linkUrl` in
+  // `AnnouncementBarClient`).
   const ctaLink = safeHref(content.ctaLink) ?? "/collections/all";
   const backgroundImage = content.backgroundImage;
   const heroImage =

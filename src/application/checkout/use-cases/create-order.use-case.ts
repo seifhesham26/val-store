@@ -63,14 +63,21 @@ export class CreateOrderUseCase {
     userId: string,
     addressIds: string[]
   ): Promise<void> {
-    for (const addressId of [...new Set(addressIds)]) {
-      const address = await this.addressRepository.findById(addressId);
+    // Bounded at two ids (shipping, billing), so this is never more than one
+    // round trip: postgres.js pipelines queries issued together down a single
+    // connection. Awaiting them one at a time in a loop paid for two round
+    // trips in series instead, on the critical path before anything else in
+    // checkout runs.
+    const addresses = await Promise.all(
+      [...new Set(addressIds)].map((addressId) =>
+        this.addressRepository.findById(addressId)
+      )
+    );
 
-      // One message for missing and for not-yours: distinguishing them would
-      // confirm that an id exists, which is the thing worth not leaking.
-      if (!address || address.userId !== userId) {
-        throw new Error("Selected address is not available");
-      }
+    // One message for missing and for not-yours: distinguishing them would
+    // confirm that an id exists, which is the thing worth not leaking.
+    if (addresses.some((address) => !address || address.userId !== userId)) {
+      throw new Error("Selected address is not available");
     }
   }
 
@@ -179,9 +186,13 @@ export class CreateOrderUseCase {
 
       // COD used to receive no confirmation at all, while the success page
       // promised one on both payment methods. The use case absorbs its own
-      // failures, so this cannot fail an order that is already committed.
+      // failures (see its own docblock), so awaiting it bought nothing but a
+      // live Resend round trip on the checkout response for an order that had
+      // already committed. Fire-and-forget instead — same shape as the
+      // expired-checkout sweep in the admin orders router (`void
+      // container.getCancelExpiredCheckoutsUseCase().execute()`).
       if (input.customerEmail) {
-        await this.sendOrderConfirmation.execute({
+        void this.sendOrderConfirmation.execute({
           orderId: created.id,
           email: input.customerEmail,
         });

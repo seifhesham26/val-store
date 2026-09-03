@@ -1,0 +1,34 @@
+# Blind Security Audit
+
+Scope: `src/server/`, `src/app/api/`, `src/proxy.ts`, `src/lib/auth.ts`,
+`src/app/admin/layout.tsx`, `src/infrastructure/`, `src/application/`.
+Method: read every tRPC router/procedure tier, every API route handler, the
+auth/session/role machinery, and the use cases and repositories behind the
+highest-risk write paths (checkout, cart, coupons, addresses, orders).
+Grepped the whole tree for `dangerouslySetInnerHTML`, `NEXT_PUBLIC_`, and raw
+`sql\`` fragments.
+
+- [FOUND] src/server/utils/rate-limiter.ts:117 — `getClientIp` trusts a client-suppliable `X-Forwarded-For` header as the sole rate-limit key on several endpoints — medium
+  - An unauthenticated caller sets its own `X-Forwarded-For` header on each request. `getClientIp` returns `forwarded.split(",")[0].trim()` — the _leftmost_ entry — with no check for a trusted-proxy allowlist or a platform-issued header (e.g. a signed edge IP). If the terminating proxy appends rather than replaces the header (the common behaviour), the attacker-supplied value survives as element 0 and is used verbatim as the Upstash rate-limit identifier.
+  - This is the **only** throttle on `public.products.search` (`src/server/routers/public/products.ts:148`) — an unauthenticated, unindexed `ILIKE '%…%'` scan over two columns. Rotating the header on every request removes the limiter entirely, turning a bounded-cost endpoint into an unbounded one and giving a way to load the database.
+  - It is also the sole defence on `newsletter.subscribe` (spam-signup throttling) and one of two layers on `auth.signIn` (`signin:ip:${ip}`) — bypassing it there leaves only the per-identifier limiter (5 attempts / 15 min per normalized phone or email), which still stops brute-forcing _one_ account but no longer bounds how many different accounts one attacker can probe per unit time.
+  - Concrete fix direction: only trust `X-Forwarded-For`/`X-Real-IP` when the deployment's edge is known to overwrite rather than append it (verify for the actual host, e.g. Vercel's `x-vercel-forwarded-for` vs the standard header), or key the search limiter additionally off something the client cannot rotate for free.
+
+- [FOUND] src/server/routers/auth.ts:127 — Phone-based sign-in has a timing side channel that distinguishes a registered phone number from an unregistered one — medium
+  - An unauthenticated caller submits a phone-shaped `identifier` (any string matching `PhoneValueObject.looksLikePhone`) with an arbitrary password. The router first resolves `candidates` via `findAccountsByPhone`; if that returns zero rows, it throws `unauthorized()` immediately, **before** any password verification. If it returns one or more rows, the code proceeds into the `for` loop and calls `auth.api.signInEmail`, which performs a real password-hash comparison (bcrypt or equivalent) before failing.
+  - The two paths take measurably different time: a nonexistent phone number rejects in roughly one DB round trip, while a registered phone number rejects only after at least one password hash comparison (materially slower, and slower still for accounts with multiple candidates up to `MAX_ACCOUNTS_PER_PHONE`). An attacker who times responses across many phone numbers can therefore determine which numbers have an account, even though every response carries the identical `GENERIC_FAILURE` message.
+  - This directly undermines the stated design goal of the router (the comments at the top of the file describe this exact enumeration attack as the reason `getEmailByPhone` was removed): Egyptian mobile numbers are a small enumerable keyspace (`+201[0125]XXXXXXXX`), and the per-identifier rate limit (5 requests / 15 min _per number_) does not prevent enumerating many _different_ numbers at one sample each — especially combined with the IP-limiter bypass above, which removes the per-attacker-IP ceiling on total probes.
+  - Fix direction: perform a dummy password-hash comparison (or otherwise pad to constant time) on the zero-candidate path before returning `unauthorized()`, so a nonexistent phone number costs the same wall-clock time as a wrong password on an existing one.
+
+Everything else checked came back clean:
+
+- Every `protectedProcedure` mutation/query that takes a foreign id (addresses, cart items, wishlist, orders, notifications) verifies row ownership against `ctx.user.id` before reading or writing — including the address IDs used at checkout (`src/application/checkout/use-cases/create-order.use-case.ts:62`, added specifically to close that gap).
+- Every admin mutation router uses `adminWriteProcedure`; every admin query router uses `adminProcedure`; the three notification mutations left on the read tier are scoped to `ctx.user.id` only. No mutation found on the read-only tier that touches another user's or another admin's data.
+- `src/proxy.ts` (cookie existence), `src/app/admin/layout.tsx` (session + `isAdminAreaRole`) and the tRPC middleware (`isAdminArea`/`isAdminWriter`) all resolve role through the same `getUserRole`/`isAdminAreaRole` path — no drift found.
+- Checkout price/discount integrity: line prices and stock always come from the server-side cart repository (`DrizzleCartRepository`), never from client input; coupon discounts are recalculated server-side in `CreateOrderUseCase.execute` and passed to Stripe from the persisted order, not from the request (`CreateCheckoutSessionUseCase.execute:80`); a crafted `variantId` that doesn't belong to the given `productId` is rejected in `DrizzleCartRepository.addItem`.
+- Stripe webhook (`src/app/api/webhook/stripe/route.ts`) verifies the signature via `stripe.webhooks.constructEvent` before processing anything, and every write it performs (`markAsPaid`, cancel-on-expiry) reads amounts from the already-persisted order, never from the event payload.
+- UploadThing routes are role-gated (`requireAdminUploader` for product/category images) with bounded file size/count; `userAvatar` is any authenticated user, single file, 1MB cap.
+- No `dangerouslySetInnerHTML` or `innerHTML` usage anywhere in `src/`. CMS `hero`/`announcement` link fields are validated through `urlOrAssetPath`, explicitly to block `javascript:` URLs, and re-validated at render time (`safeHref`).
+- No secret/server-only env var is exposed via `NEXT_PUBLIC_*`; every `NEXT_PUBLIC_*` reference is a public app URL, currency/locale default, or a doc string.
+- Every raw `sql\`…\`` fragment found interpolates values through the tagged-template (parameterised) form; none concatenate untrusted input into SQL text. Free-text search (`admin.customers.list`, `products.search`, `customers.repository`) goes through `containsPattern`/`escapeLikeTerm`, which escapes `%`, `\_`and`\` before building the `ILIKE` pattern.
+- No role-escalation path: no public or admin procedure lets a user set their own or another user's `role`; roles are only ever written by the signup hook (`customer`) or an out-of-process script.

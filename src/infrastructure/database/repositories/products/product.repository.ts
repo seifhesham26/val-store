@@ -1,5 +1,10 @@
 import { db } from "@/db";
-import { products, productImages, productVariants } from "@/db/schema";
+import {
+  products,
+  productImages,
+  productVariants,
+  genderEnum,
+} from "@/db/schema";
 import { eq, and, gte, lte, ne, desc, sql, inArray } from "drizzle-orm";
 import {
   ProductRepositoryInterface,
@@ -337,10 +342,18 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
     }
 
     if (filters?.gender) {
+      // `ProductFilters.gender` is typed as a plain `string` (it predates the
+      // enum column), but the only caller — `public.products.list` — now
+      // validates it with `z.enum(genderEnum.enumValues)` before it ever
+      // reaches a repository, so an arbitrary string can no longer arrive
+      // here. This assertion is therefore a type-level narrowing to the
+      // enum column, not a safety net for unchecked input; it is derived
+      // from the same `genderEnum` the router validates against rather than
+      // a separately hand-typed union that could drift from it.
       conditions.push(
         eq(
           products.gender,
-          filters.gender as "men" | "women" | "unisex" | "kids"
+          filters.gender as (typeof genderEnum.enumValues)[number]
         )
       );
     }

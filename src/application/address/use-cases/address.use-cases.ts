@@ -17,12 +17,13 @@ export class CreateAddressUseCase {
   constructor(private readonly addressRepository: AddressRepositoryInterface) {}
 
   async execute(address: NewAddress): Promise<Address> {
-    // If this is the first address, make it default
+    // If this is the first address, make it default. Derived into a new
+    // object rather than written through the parameter — the caller's
+    // argument is not ours to mutate.
     const existing = await this.addressRepository.findByUserId(address.userId);
-    if (existing.length === 0) {
-      address.isDefault = true;
-    }
-    return this.addressRepository.create(address);
+    const toCreate: NewAddress =
+      existing.length === 0 ? { ...address, isDefault: true } : address;
+    return this.addressRepository.create(toCreate);
   }
 }
 
@@ -39,6 +40,30 @@ export class UpdateAddressUseCase {
     if (!existing || existing.userId !== userId) {
       throw new Error("Address not found or access denied");
     }
+
+    // Flipping the last shipping address to billing reaches the same empty
+    // state `DeleteAddressUseCase` refuses to create by deleting it — a
+    // customer with no shipping address, who then cannot check out. Mirror
+    // that guard here: count only shipping addresses, excluding this one.
+    if (
+      existing.addressType === "shipping" &&
+      data.addressType &&
+      data.addressType !== "shipping"
+    ) {
+      const owned = await this.addressRepository.findByUserId(userId);
+      const remainingShipping = owned.filter(
+        (address) =>
+          address.addressType === "shipping" && address.id !== existing.id
+      );
+
+      if (remainingShipping.length === 0) {
+        throw new Error(
+          "This is your only shipping address, and an order needs one. " +
+            "Add another address first, then change this one."
+        );
+      }
+    }
+
     return this.addressRepository.update(id, data);
   }
 }

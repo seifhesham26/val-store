@@ -18,6 +18,7 @@ import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import type { ProductEntity } from "@/domain/products/entities/product.entity";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
+import { genderFilterSchema } from "./gender-filter.schema";
 import {
   apiRateLimiter,
   enforceRateLimit,
@@ -77,7 +78,7 @@ export const publicProductsRouter = router({
           // because it lands in an `IN (…)`; the catalogue's deepest tree is
           // two levels, so 50 is far above anything real.
           categoryIds: z.array(z.string().uuid()).max(50).optional(),
-          gender: z.string().optional(),
+          gender: genderFilterSchema,
           isFeatured: z.boolean().optional(),
           isOnSale: z.boolean().optional(),
           // "Added in the last N days" — the New Arrivals filter. Bounded so

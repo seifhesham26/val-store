@@ -115,6 +115,18 @@ export const checkoutRouter = router({
 
       // Whichever of this and the webhook gets there first notifies; the other
       // sees `transitioned: false` and stays quiet.
+      // Same anomaly the webhook logs — whichever of the two gets here
+      // first is the one that records it.
+      if (paid.couponLimitExceeded) {
+        console.error(
+          JSON.stringify({
+            error: "Coupon redeemed past its limit",
+            orderId,
+            orderNumber: paid.orderNumber,
+          })
+        );
+      }
+
       if (paid.transitioned) {
         await container.getNotificationService().orderStatusChanged({
           orderId,

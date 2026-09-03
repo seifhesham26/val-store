@@ -64,10 +64,8 @@ export class DrizzleWishlistRepository implements WishlistRepositoryInterface {
           wishlist.userId,
           wishlist.productId,
           products.name,
-          parseFloat(products.basePrice as unknown as string),
-          products.salePrice
-            ? parseFloat(products.salePrice as unknown as string)
-            : null,
+          parseFloat(products.basePrice),
+          products.salePrice ? parseFloat(products.salePrice) : null,
           product_images?.imageUrl ?? null,
           product_images?.altText ?? products.name,
           products.slug,

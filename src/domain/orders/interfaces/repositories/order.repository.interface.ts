@@ -40,8 +40,10 @@ export interface OrderFilters {
   userId?: string;
   startDate?: Date;
   endDate?: Date;
-  minAmount?: number;
-  maxAmount?: number;
+  /** Inclusive lower bound on `orders.total_amount`. */
+  minTotal?: number;
+  /** Inclusive upper bound on `orders.total_amount`. */
+  maxTotal?: number;
   /** Max rows to return. */
   limit?: number;
   /** Rows to skip. Pair with `limit` for pagination. */
@@ -141,7 +143,19 @@ export interface OrderRepositoryInterface {
   markAsPaid(
     orderId: string,
     options?: { transactionId?: string; gatewayResponse?: unknown }
-  ): Promise<{ transitioned: boolean }>;
+  ): Promise<{
+    transitioned: boolean;
+    /**
+     * The coupon on this order was redeemed past its usage or per-customer
+     * limit. Only the card path can report this: it recognises payment after
+     * the customer has already been charged, so refusing the redemption is not
+     * available — the discount stands, the redemption is counted anyway so the
+     * limit self-corrects, and the order carries an admin note saying so.
+     * Cash on delivery redeems at creation, where losing the race aborts the
+     * order outright, so it never reports this.
+     */
+    couponLimitExceeded: boolean;
+  }>;
 
   // `delete(orderId)` was removed — no caller, and declaring it here was the
   // risk: an interface method is a standing invitation. Deleting an order

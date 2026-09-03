@@ -18,6 +18,12 @@ import {
   ReviewWithUser,
 } from "@/domain/reviews/interfaces/repositories/review.repository.interface";
 
+// The admin review list has no built-in ceiling — unlike `findByProductId`,
+// which is always called with a `page`. Reviews are the one table here that
+// grows without bound, so a caller that forgets to page still gets a bounded
+// result rather than every row ever written.
+const DEFAULT_ADMIN_REVIEW_LIMIT = 200;
+
 export class DrizzleReviewRepository implements ReviewRepositoryInterface {
   async findById(id: string): Promise<Review | null> {
     const result = await db.query.reviews.findFirst({
@@ -69,8 +75,16 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
     });
   }
 
-  async findAll(onlyPending = false): Promise<ReviewWithUser[]> {
+  // `page` is an extra optional parameter beyond the interface's
+  // `findAll(onlyPending?)` — existing callers that pass only `onlyPending`
+  // keep working, and get `DEFAULT_ADMIN_REVIEW_LIMIT` rather than an
+  // unbounded result set.
+  async findAll(
+    onlyPending = false,
+    page?: ReviewPage
+  ): Promise<ReviewWithUser[]> {
     const conditions = onlyPending ? eq(reviews.isApproved, false) : undefined;
+    const limit = page?.limit ?? DEFAULT_ADMIN_REVIEW_LIMIT;
 
     const results = await db
       .select({
@@ -91,7 +105,9 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
       .from(reviews)
       .leftJoin(user, eq(reviews.userId, user.id))
       .where(conditions)
-      .orderBy(desc(reviews.createdAt));
+      .orderBy(desc(reviews.createdAt))
+      .limit(limit)
+      .offset(page?.offset ?? 0);
 
     return results;
   }

@@ -262,19 +262,21 @@ export const auth = betterAuth({
           if (phone) {
             const normalizedPhone = phone.replace(/[\s-]/g, "");
 
-            // Check if customer exists
-            const [existing] = await db
-              .select()
-              .from(customers)
-              .where(eq(customers.phone, normalizedPhone))
-              .limit(1);
-
-            if (!existing) {
-              await db.insert(customers).values({
+            // Not a read-then-write: two signups sharing a phone number can
+            // both pass a `select` existence check before either has
+            // inserted, and the second's plain `insert` would then throw on
+            // the unique constraint — after its `user` row had already
+            // committed, so the account would exist while signup reported
+            // failure. `onConflictDoNothing` makes the second write a no-op
+            // instead, the same tool `newsletter.subscribe` already uses for
+            // the same race.
+            await db
+              .insert(customers)
+              .values({
                 phone: normalizedPhone,
                 preferredName: user.name || null,
-              });
-            }
+              })
+              .onConflictDoNothing();
           }
 
           // Last, so a notification failure cannot stop a signup from

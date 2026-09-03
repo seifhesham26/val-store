@@ -73,6 +73,8 @@ export class ListOrdersUseCase {
       status: input.status,
       startDate: input.startDate,
       endDate: input.endDate,
+      minTotal: input.minTotal,
+      maxTotal: input.maxTotal,
       refundableOnly: input.refundableOnly,
       returnedOnly: input.returnedOnly,
     };

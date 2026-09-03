@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import type { Gender } from "@/types/product";
 import { ProductCard } from "@/components/products/ProductCard";
 
 const PREVIEW_LIMIT = 4;
@@ -19,7 +20,7 @@ export function CollectionSection({
   queryParams: {
     /** A category and its descendants, resolved by the server component. */
     categoryIds?: string[];
-    gender?: string;
+    gender?: Gender;
     isFeatured?: boolean;
     isOnSale?: boolean;
     /** Added within the last N days — see `NEW_ARRIVAL_WINDOW_DAYS`. */

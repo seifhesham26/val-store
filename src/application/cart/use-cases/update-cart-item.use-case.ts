@@ -44,10 +44,18 @@ export class UpdateCartItemUseCase {
       throw new Error("Unauthorized: Cart item does not belong to user");
     }
 
-    // Check stock constraint
-    if (quantity > existingItem.maxStock && existingItem.maxStock > 0) {
+    // Check stock constraint. `maxStock` is a real, always-populated figure
+    // — the chosen variant's stock, or the summed stock of a variant-less
+    // product's rows (`DrizzleCartRepository.mapToEntity`), never "unknown."
+    // So `maxStock === 0` genuinely means nothing is available, not that the
+    // ceiling doesn't apply — the previous `&& existingItem.maxStock > 0`
+    // disabled the check in exactly that case, letting an out-of-stock line
+    // accept any quantity.
+    if (quantity > existingItem.maxStock) {
       throw new Error(
-        `Cannot set quantity to ${quantity}. Maximum available stock is ${existingItem.maxStock}`
+        existingItem.maxStock === 0
+          ? "This item is out of stock"
+          : `Cannot set quantity to ${quantity}. Maximum available stock is ${existingItem.maxStock}`
       );
     }
 
