@@ -30,6 +30,7 @@ import {
 } from "../utils/rate-limiter";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { hashPassword, verifyPassword } from "better-auth/crypto";
 
 /**
  * The only failure message this router produces.
@@ -58,6 +59,23 @@ const RATE_LIMITED = "Too many attempts. Please try again later.";
  * or somebody who re-registered. Beyond that, capping is the right answer.
  */
 const MAX_ACCOUNTS_PER_PHONE = 5;
+
+/**
+ * A hash of a password nobody typed, computed once and reused.
+ *
+ * Exists only so the "no candidate account" branch below can pay the same
+ * `verifyPassword` cost a real candidate pays, without a real hash to check
+ * against. Lazy rather than a top-level `await` so importing this module
+ * never blocks on it; memoized so it is paid once per server instance, not
+ * once per request.
+ */
+let dummyHash: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  dummyHash ??= hashPassword(
+    "not-a-real-password-used-only-to-equalize-timing"
+  );
+  return dummyHash;
+}
 
 export const authRouter = router({
   /**
@@ -132,9 +150,22 @@ export const authRouter = router({
           ).map((row) => row.email)
         : [normalized];
 
-      // An unregistered phone number and a wrong password are indistinguishable
-      // from out here — the whole point of routing the lookup through sign-in.
+      // The response body is identical either way — the whole point of
+      // routing the lookup through sign-in — but the body was never the
+      // leak. A registered candidate always pays a real `verifyPassword`
+      // call below; skipping straight to `unauthorized()` here made an
+      // unregistered number answer measurably faster than a registered one,
+      // which is a timing oracle even though nothing in the response says
+      // so. Paying an equivalent hash-verification cost against a fixed,
+      // non-account hash closes that gap without changing what is returned.
       if (candidates.length === 0) {
+        await verifyPassword({
+          hash: await getDummyHash(),
+          password: input.password,
+        }).catch(() => {
+          // The point is spending the time, not the outcome — a failure
+          // here must still fall through to the same `unauthorized()`.
+        });
         throw unauthorized();
       }
 

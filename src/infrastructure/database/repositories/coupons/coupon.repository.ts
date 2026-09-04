@@ -9,6 +9,13 @@ import { coupons, couponUsages, orders, Coupon, NewCoupon } from "@/db/schema";
 import { eq, sql, and, count, gte } from "drizzle-orm";
 import { CouponRepositoryInterface } from "@/domain/coupons/interfaces/repositories/coupon.repository.interface";
 
+/**
+ * Ceiling on the admin coupon table, which has no pagination. Exported so the
+ * router can report it next to the true total — reviews and inventory were
+ * given a ceiling in an earlier pass and coupons were the one table missed.
+ */
+export const DEFAULT_ADMIN_COUPON_LIMIT = 200;
+
 export class DrizzleCouponRepository implements CouponRepositoryInterface {
   async findById(id: string): Promise<Coupon | null> {
     const result = await db.query.coupons.findFirst({
@@ -24,10 +31,26 @@ export class DrizzleCouponRepository implements CouponRepositoryInterface {
     return result ?? null;
   }
 
-  async findAll(): Promise<Coupon[]> {
+  async findAll(limit = DEFAULT_ADMIN_COUPON_LIMIT): Promise<Coupon[]> {
     return db.query.coupons.findMany({
-      orderBy: (coupons, { desc }) => [desc(coupons.createdAt)],
+      // `id` as the tiebreaker: `created_at` alone is not a total order, and
+      // a seed writes several coupons on the same timestamp.
+      orderBy: (coupons, { desc }) => [
+        desc(coupons.createdAt),
+        desc(coupons.id),
+      ],
+      limit,
     });
+  }
+
+  async countAll(): Promise<number> {
+    // `COUNT(*)::int` — postgres.js decodes a bigint as a string, so the cast
+    // is what makes the `number` true rather than merely asserted.
+    const [row] = await db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(coupons);
+
+    return row?.total ?? 0;
   }
 
   async create(coupon: NewCoupon): Promise<Coupon> {

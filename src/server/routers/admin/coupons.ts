@@ -6,7 +6,10 @@
 
 import { router, adminProcedure, adminWriteProcedure } from "@/server/trpc";
 import { z } from "zod";
-import { DrizzleCouponRepository } from "@/infrastructure/database/repositories/coupons/coupon.repository";
+import {
+  DrizzleCouponRepository,
+  DEFAULT_ADMIN_COUPON_LIMIT,
+} from "@/infrastructure/database/repositories/coupons/coupon.repository";
 import { TRPCError } from "@trpc/server";
 
 const couponRepo = new DrizzleCouponRepository();
@@ -41,7 +44,14 @@ export const adminCouponsRouter = router({
    * List all coupons
    */
   list: adminProcedure.query(async () => {
-    return couponRepo.findAll();
+    // Rows and total together: the table does not paginate, so a cap with no
+    // signal simply stops showing coupons. Independent queries, pipelined.
+    const [items, total] = await Promise.all([
+      couponRepo.findAll(),
+      couponRepo.countAll(),
+    ]);
+
+    return { items, total, limit: DEFAULT_ADMIN_COUPON_LIMIT };
   }),
 
   /**

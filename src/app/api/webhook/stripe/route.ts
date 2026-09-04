@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { container } from "@/application/container";
 import { db } from "@/db";
-import { cartItems, payments } from "@/db/schema";
+import { payments } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
@@ -69,6 +69,19 @@ export async function POST(request: NextRequest) {
           // the customer's "payment received" notification is emitted here too
           // — but only on a real transition, so a redelivered webhook does not
           // notify the same customer twice.
+          // A discount was honoured past its limit. The order carries an admin
+          // note about it; this line is what makes it greppable in the request
+          // log next to the payment it belongs to.
+          if (paid.couponLimitExceeded) {
+            console.error(
+              JSON.stringify({
+                error: "Coupon redeemed past its limit",
+                orderId: metadata.orderId,
+                orderNumber: paid.orderNumber,
+              })
+            );
+          }
+
           if (paid.transitioned) {
             await container.getNotificationService().orderStatusChanged({
               orderId: metadata.orderId,
@@ -109,9 +122,7 @@ export async function POST(request: NextRequest) {
       // Clear cart if we have user info
       if (metadata?.userId) {
         try {
-          await db
-            .delete(cartItems)
-            .where(eq(cartItems.userId, metadata.userId));
+          await container.getCartRepository().clearCart(metadata.userId);
         } catch (error) {
           console.error(
             JSON.stringify({

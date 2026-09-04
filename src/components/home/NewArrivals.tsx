@@ -6,17 +6,30 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { trpc } from "@/lib/trpc";
+import type { ProductListPage } from "@/lib/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+
+export const NEW_ARRIVALS_LIMIT = 8;
 
 interface NewArrivalsProps {
   title?: string;
   subtitle?: string;
+  /**
+   * Page 1, resolved by `ServerNewArrivals`.
+   *
+   * This row is a client component for its scroll arrows, not for its data —
+   * without a seed it shows an empty skeleton until the bundle has downloaded,
+   * hydrated and completed a round trip, on a page whose every other section
+   * renders its products into the HTML.
+   */
+  initialPage?: ProductListPage;
 }
 
 export function NewArrivals({
   title = "New Arrivals",
   subtitle = "Fresh drops just for you",
+  initialPage,
 }: NewArrivalsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -25,8 +38,8 @@ export function NewArrivals({
     // different set of products from the row it sits under. This was `{ limit:
     // 8 }` — the eight newest, which was close enough to be right by accident
     // but agreed with nothing else that claimed to show new arrivals.
-    { limit: 8, createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS },
-    { staleTime: 1000 * 60 * 5 }
+    { limit: NEW_ARRIVALS_LIMIT, createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS },
+    { staleTime: 1000 * 60 * 5, initialData: initialPage }
   );
 
   const items = products?.products ?? [];

@@ -31,6 +31,14 @@ export interface ReviewRepositoryInterface {
   ): Promise<ReviewWithUser[]>;
   findByUserId(userId: string): Promise<Review[]>;
   findAll(onlyPending?: boolean): Promise<ReviewWithUser[]>;
+  /**
+   * How many reviews match, ignoring any page window.
+   *
+   * Pairs with `findAll` so the admin moderation table can say it is showing
+   * the first N of M rather than truncating in silence. Reviews are the one
+   * admin table that grows without any bound an admin controls.
+   */
+  countAll(onlyPending?: boolean): Promise<number>;
   create(review: NewReview): Promise<Review>;
   update(id: string, review: Partial<NewReview>): Promise<Review | null>;
   delete(id: string): Promise<void>;

@@ -9,7 +9,16 @@ import { Coupon, NewCoupon } from "@/db/schema";
 export interface CouponRepositoryInterface {
   findById(id: string): Promise<Coupon | null>;
   findByCode(code: string): Promise<Coupon | null>;
-  findAll(): Promise<Coupon[]>;
+  /**
+   * Coupons, newest first, bounded by `limit`.
+   *
+   * The admin table renders every row with no pagination, so an unbounded
+   * read grows with the coupon list forever. Pair with `countAll` to tell the
+   * admin when the cap has hidden something.
+   */
+  findAll(limit?: number): Promise<Coupon[]>;
+  /** How many coupons exist, ignoring `findAll`'s ceiling. */
+  countAll(): Promise<number>;
   create(coupon: NewCoupon): Promise<Coupon>;
   update(id: string, coupon: Partial<NewCoupon>): Promise<Coupon | null>;
   delete(id: string): Promise<void>;

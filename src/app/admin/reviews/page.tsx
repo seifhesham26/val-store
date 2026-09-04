@@ -13,12 +13,19 @@ import { ReviewsHeader } from "@/components/admin/reviews/ReviewsHeader";
 import { ReviewTable } from "@/components/admin/reviews/ReviewTable";
 
 export default function AdminReviewsPage() {
-  const { data: allReviews = [], isLoading } = trpc.admin.reviews.list.useQuery(
-    {}
-  );
-  const { data: pendingReviews = [] } = trpc.admin.reviews.list.useQuery({
+  const { data: allPage, isLoading } = trpc.admin.reviews.list.useQuery({});
+  const { data: pendingPage } = trpc.admin.reviews.list.useQuery({
     onlyPending: true,
   });
+
+  const allReviews = allPage?.items ?? [];
+  const pendingReviews = pendingPage?.items ?? [];
+
+  // The tab labels and the header badge count what *exists*, not what the
+  // capped query returned — a "Pending (200)" that is really 340 is the same
+  // silent truncation the table now calls out, one line higher up.
+  const allTotal = allPage?.total ?? allReviews.length;
+  const pendingTotal = pendingPage?.total ?? pendingReviews.length;
 
   const utils = trpc.useUtils();
 
@@ -63,20 +70,17 @@ export default function AdminReviewsPage() {
 
   return (
     <div className="p-6">
-      <ReviewsHeader pendingCount={pendingReviews.length} />
+      <ReviewsHeader pendingCount={pendingTotal} />
 
       <Tabs defaultValue="pending">
         <TabsList className="mb-4">
-          <TabsTrigger value="pending">
-            Pending ({pendingReviews.length})
-          </TabsTrigger>
-          <TabsTrigger value="all">
-            All Reviews ({allReviews.length})
-          </TabsTrigger>
+          <TabsTrigger value="pending">Pending ({pendingTotal})</TabsTrigger>
+          <TabsTrigger value="all">All Reviews ({allTotal})</TabsTrigger>
         </TabsList>
         <TabsContent value="pending">
           <ReviewTable
             reviews={pendingReviews}
+            total={pendingTotal}
             showApproved={false}
             onApprove={handleApprove}
             onReject={handleReject}
@@ -86,6 +90,7 @@ export default function AdminReviewsPage() {
         <TabsContent value="all">
           <ReviewTable
             reviews={allReviews}
+            total={allTotal}
             showApproved={true}
             onApprove={handleApprove}
             onReject={handleReject}

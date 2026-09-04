@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, ShoppingBag } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,38 +12,87 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { CouponField } from "@/components/cart/CouponField";
+import { trpc, vanillaTrpc } from "@/lib/trpc";
 import { useCartStore } from "@/lib/stores/cart-store";
 import { formatCurrency } from "@/lib/currency";
 import { unoptimizedFor } from "@/lib/image-hosts";
 
-export function CheckoutOrderSummary({
-  couponCode,
-  setCouponCode,
-  appliedCoupon,
-  onApplyCoupon,
-  onRemoveCoupon,
-  isValidating,
-  couponError,
-}: {
-  couponCode: string;
-  setCouponCode: (code: string) => void;
-  appliedCoupon: {
-    code: string;
-    discountAmount: number;
-    discountType: string;
-    discountValue: string;
-  } | null;
-  onApplyCoupon: () => void;
-  onRemoveCoupon: () => void;
-  isValidating: boolean;
-  couponError: string | null;
-}) {
+/**
+ * Price the coupon the *cart* is holding.
+ *
+ * The cart records a code and computes no money — that is what keeps the two
+ * from disagreeing — so checkout is where the discount becomes a number. This
+ * is the only place in the storefront that turns the held code into one, and
+ * it is display state: `CreateOrderUseCase` re-derives the discount server-side
+ * from the same code, so a stale figure here can never become the charge.
+ *
+ * `coupons.validate` is a mutation rather than a query, so it is driven from an
+ * effect keyed on the code and the subtotal — the two inputs that can change
+ * what the code is worth.
+ */
+function useHeldCouponDiscount(subtotal: number) {
+  const { data: cart } = trpc.public.cart.get.useQuery(undefined, {
+    staleTime: 1000 * 60,
+    refetchOnWindowFocus: false,
+  });
+
+  const code = cart?.appliedCoupon?.code ?? null;
+
+  // The key is the pair the price depends on, and it is stored *with* the
+  // amount. A figure priced for a different code or a different subtotal is
+  // then discarded during render rather than lingering on the total, and the
+  // "nothing applied" case needs no setState in the effect body at all.
+  const pricedFor = code && subtotal > 0 ? `${code}|${subtotal}` : null;
+  const [priced, setPriced] = useState<{ key: string; amount: number } | null>(
+    null
+  );
+
+  // `vanillaTrpc` rather than the mutation hook: this runs from an effect, and
+  // a module-scope client is a stable reference, so it cannot become a
+  // dependency that refires the request it just made.
+  useEffect(() => {
+    if (!pricedFor || !code) return;
+
+    // A slower earlier response must not overwrite a newer one — the subtotal
+    // changes while the cart store hydrates, so two can be in flight.
+    let cancelled = false;
+
+    vanillaTrpc.public.coupons.validate
+      .mutate({ code, subtotal })
+      .then((result) => {
+        if (cancelled) return;
+        setPriced({
+          key: pricedFor,
+          amount:
+            result.valid && "discountAmount" in result
+              ? (result.discountAmount ?? 0)
+              : 0,
+        });
+      })
+      .catch(() => {
+        // Showing no discount is the safe failure: the total then matches what
+        // an order with no working coupon would actually cost.
+        if (!cancelled) setPriced({ key: pricedFor, amount: 0 });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pricedFor, code, subtotal]);
+
+  const discount = priced && priced.key === pricedFor ? priced.amount : 0;
+
+  return { code, discount };
+}
+
+export function CheckoutOrderSummary() {
   const items = useCartStore((state) => state.items);
   const subtotal = useCartStore((state) => state.getSubtotal());
   const itemCount = useCartStore((state) => state.getItemCount());
-  const discount = appliedCoupon?.discountAmount ?? 0;
-  const total = subtotal - discount;
+
+  const { code, discount } = useHeldCouponDiscount(subtotal);
+  const total = Math.max(0, subtotal - discount);
 
   if (items.length === 0) {
     return (
@@ -102,64 +152,11 @@ export function CheckoutOrderSummary({
           </div>
         ))}
 
-        {/* Coupon Input */}
+        {/* Coupon. The same field the cart uses, writing to the same place —
+            a second bespoke input here is what let the two disagree. */}
         <div className="border-t border-white/10 pt-4 mt-2">
-          <Label className="text-sm font-medium text-white mb-2 block">
-            Coupon Code
-          </Label>
-          {/* The `dark:` half of this chip's colour pairs never applied — the
-              storefront sets no `.dark` class, so it rendered in light green on
-              the dark summary card. Fixed colours now, and the fixed-amount
-              discount goes through formatCurrency like every other price. */}
-          {appliedCoupon ? (
-            <div className="mt-2 flex items-center justify-between rounded-md border border-green-500/20 bg-green-500/10 p-2">
-              <div className="flex items-center gap-2">
-                <span className="font-mono font-semibold text-green-400">
-                  {appliedCoupon.code}
-                </span>
-                <span className="text-sm text-green-500">
-                  (
-                  {appliedCoupon.discountType === "percentage"
-                    ? `${appliedCoupon.discountValue}% off`
-                    : `-${formatCurrency(Number(appliedCoupon.discountValue))}`}
-                  )
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onRemoveCoupon}
-                className="text-red-500 hover:text-red-700"
-              >
-                Remove
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="Enter code"
-                className="flex-1 px-3 py-2 border border-white/10 bg-[#1a1a1a] text-white rounded-md text-sm uppercase placeholder:text-gray-500 focus:outline-hidden focus:border-val-accent focus:ring-1 focus:ring-val-accent"
-              />
-              <Button
-                variant="outline"
-                onClick={onApplyCoupon}
-                disabled={!couponCode.trim() || isValidating}
-                className="border-white/20"
-              >
-                {isValidating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Apply"
-                )}
-              </Button>
-            </div>
-          )}
-          {couponError && (
-            <p className="text-sm text-red-500 mt-1">{couponError}</p>
-          )}
+          <p className="text-sm font-medium text-white mb-2">Coupon Code</p>
+          <CouponField />
         </div>
 
         <div className="border-t border-white/10 pt-4 space-y-3 mt-4">
@@ -167,8 +164,8 @@ export function CheckoutOrderSummary({
             <span className="text-gray-400">Subtotal</span>
             <span className="text-white">{formatCurrency(subtotal)}</span>
           </div>
-          {appliedCoupon && (
-            <div className="flex justify-between text-sm text-green-600">
+          {code && discount > 0 && (
+            <div className="flex justify-between text-sm text-green-400">
               <span>Discount</span>
               <span>-{formatCurrency(discount)}</span>
             </div>
@@ -178,7 +175,7 @@ export function CheckoutOrderSummary({
             <span className="text-green-500 font-medium">Free</span>
           </div>
           <div className="flex justify-between font-bold text-xl pt-4 border-t border-white/10 mt-4">
-            <span>Total</span>
+            <span className="text-white">Total</span>
             <span className="text-white">{formatCurrency(total)}</span>
           </div>
         </div>

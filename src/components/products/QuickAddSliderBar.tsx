@@ -9,7 +9,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/components/providers/cart-provider";
 import { toast } from "sonner";
 
@@ -62,6 +62,13 @@ export function QuickAddSliderBar({
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [stockIssue, setStockIssue] = useState<StockIssue | null>(null);
+  const justAddedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (justAddedTimerRef.current) clearTimeout(justAddedTimerRef.current);
+    };
+  }, []);
 
   // Shares the same cached stock query as the product page — one fetch per set
   // of variants, refreshed in the background, not one request per add.
@@ -111,7 +118,11 @@ export function QuickAddSliderBar({
       setJustAdded(true);
       toast.success(`${productName} added to cart`);
       openCart();
-      setTimeout(() => setJustAdded(false), 2000);
+      if (justAddedTimerRef.current) clearTimeout(justAddedTimerRef.current);
+      justAddedTimerRef.current = setTimeout(() => {
+        setJustAdded(false);
+        justAddedTimerRef.current = null;
+      }, 2000);
     } catch (error) {
       stock.refresh();
       const message = error instanceof Error ? error.message : "";

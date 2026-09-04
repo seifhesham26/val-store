@@ -15,7 +15,20 @@ import {
   GUEST_CART_ITEM_ID_PREFIX,
   type CartItem,
 } from "@/lib/stores/cart-store";
+import {
+  createCartSyncRegistry,
+  reconcileServerCart,
+} from "@/lib/cart-sync-registry";
 import { toast } from "sonner";
+
+// Module scope, not inside `useCart()` — every component that calls the
+// hook (CartDrawer, CartPopulated, ProductDetail, QuickAddSliderBar, ...)
+// must share one debounce timer and one "is this line mid-write" flag per
+// cart item id, the same way every caller already shares one
+// `useCartStore()`. A registry scoped to the hook instead produced a
+// separate timer per mounted component per line, so two surfaces editing
+// the same line within a second could each win.
+const cartSyncRegistry = createCartSyncRegistry();
 
 interface CartProviderProps {
   children: React.ReactNode;
@@ -38,7 +51,17 @@ export function CartProvider({ children }: CartProviderProps) {
     }
   );
 
-  // Sync server cart to local store
+  // Sync server cart to local store.
+  //
+  // This effect fires on *any* `cart.get` refetch, not just one triggered by
+  // editing the line it's about to overwrite — every cart mutation's
+  // `onSuccess` calls `invalidateCart()`. Without `reconcileServerCart`, an
+  // unrelated mutation (adding an item from the drawer, say) could refetch
+  // while a different line's debounced quantity edit is still pending and
+  // stamp that line back to its pre-edit value, which then flips back again
+  // a moment later when the debounced write actually lands. Reading the
+  // local snapshot via `getState()` rather than depending on `store.items`
+  // keeps this effect from re-running on every local edit.
   useEffect(() => {
     if (isAuthenticated && serverCart) {
       const items: CartItem[] = serverCart.items.map((item) => ({
@@ -52,7 +75,8 @@ export function CartProvider({ children }: CartProviderProps) {
         quantity: item.quantity,
         maxStock: item.maxStock,
       }));
-      setItems(items);
+      const localItems = useCartStore.getState().items;
+      setItems(reconcileServerCart(items, localItems, cartSyncRegistry));
     }
   }, [isAuthenticated, serverCart, setItems]);
 
@@ -165,9 +189,6 @@ export function useCart() {
   const utils = trpc.useUtils();
 
   const store = useCartStore();
-  const updateTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
-    {}
-  );
 
   // Server mutations.
   //
@@ -257,28 +278,43 @@ export function useCart() {
       );
 
       if (isAuthenticated && !isUnmergedGuestLine) {
-        // Clear previous timer for this cart item
-        if (updateTimersRef.current[cartItemId]) {
-          clearTimeout(updateTimersRef.current[cartItemId]);
-        }
-
-        // 2. Schedule the actual server mutation
-        updateTimersRef.current[cartItemId] = setTimeout(async () => {
+        // 2. Schedule the actual server mutation. `scheduleUpdate` shares
+        // its timer across every `useCart()` instance and marks this id
+        // "pending" for the sync effect (see the shared registry above),
+        // and replaces any write already scheduled for this same id.
+        cartSyncRegistry.scheduleUpdate(cartItemId, async () => {
           store.setSyncing(true);
           try {
             await updateMutation.mutateAsync({ cartItemId, quantity });
+          } catch {
+            // The optimistic write from step 1 never happened as far as the
+            // server is concerned — surface that rather than leaving the
+            // customer looking at a quantity nobody agrees with, and pull
+            // the real value back in. `isPending` clears the moment this
+            // catch block finishes, so the reconciled sync effect is free
+            // to apply whatever `cart.get` returns from the invalidation
+            // below.
+            toast.error(
+              "Couldn't save that quantity change. Restoring your cart."
+            );
+            invalidateCart();
           } finally {
             store.setSyncing(false);
           }
-        }, 1000); // 1000ms debounce
+        });
       }
     },
-    [isAuthenticated, updateMutation, store]
+    [isAuthenticated, updateMutation, store, invalidateCart]
   );
 
   // Remove item
   const removeItem = useCallback(
     async (cartItemId: string) => {
+      // A debounced quantity write may still be armed for this id — let it
+      // fire after the row is gone and `UpdateCartItemUseCase` rejects with
+      // "Cart item not found" for no one to see.
+      cartSyncRegistry.cancel(cartItemId);
+
       // See updateQuantity: a `guest-` id may not have a server row yet even
       // once `isAuthenticated` is true, if the merge hasn't landed.
       if (
@@ -302,6 +338,9 @@ export function useCart() {
 
   // Clear cart
   const clearCart = useCallback(async () => {
+    // Same reasoning as removeItem, for every line at once.
+    cartSyncRegistry.cancelAll();
+
     if (isAuthenticated) {
       store.setSyncing(true);
       try {

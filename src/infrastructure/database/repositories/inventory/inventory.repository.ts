@@ -11,12 +11,19 @@ import {
   InventoryLog,
   NewInventoryLog,
 } from "@/db/schema";
-import { eq, desc, lte, inArray } from "drizzle-orm";
+import { eq, desc, lte, inArray, sql } from "drizzle-orm";
 import {
   InventoryRepositoryInterface,
   InventoryLogWithDetails,
   VariantWithStock,
 } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
+
+/**
+ * Ceiling on the admin inventory table, which has no pagination or
+ * virtualisation. Exported so the router can report it alongside the true
+ * total — a cap the screen cannot see is a cap that hides stock.
+ */
+export const DEFAULT_ADMIN_VARIANT_LIMIT = 500;
 
 export class DrizzleInventoryRepository implements InventoryRepositoryInterface {
   async createLog(log: NewInventoryLog): Promise<InventoryLog> {
@@ -53,7 +60,10 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       .leftJoin(products, eq(productVariants.productId, products.id))
       .leftJoin(user, eq(inventoryLogs.createdBy, user.id))
       .where(eq(inventoryLogs.variantId, variantId))
-      .orderBy(desc(inventoryLogs.createdAt))
+      // Every row an order's checkout writes for a multi-item order shares
+      // one `createdAt` (see `getAllLogs`), so `id` breaks ties for a
+      // deterministic "latest N" even though this call takes no offset.
+      .orderBy(desc(inventoryLogs.createdAt), desc(inventoryLogs.id))
       .limit(limit);
 
     return results;
@@ -88,7 +98,7 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       .leftJoin(products, eq(productVariants.productId, products.id))
       .leftJoin(user, eq(inventoryLogs.createdBy, user.id))
       .where(eq(productVariants.productId, productId))
-      .orderBy(desc(inventoryLogs.createdAt))
+      .orderBy(desc(inventoryLogs.createdAt), desc(inventoryLogs.id))
       .limit(limit);
 
     return results;
@@ -122,7 +132,13 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       )
       .leftJoin(products, eq(productVariants.productId, products.id))
       .leftJoin(user, eq(inventoryLogs.createdBy, user.id))
-      .orderBy(desc(inventoryLogs.createdAt))
+      // `createdAt` alone is not a total order: the order transaction
+      // writes one log row per item, all sharing the same timestamp, so a
+      // multi-item order produces a block of tied rows. Without the `id`
+      // tiebreaker, `offset`-based paging over that block can show the same
+      // row twice on two pages while silently skipping another — matching
+      // the fix already applied to orders (`order.repository.ts`).
+      .orderBy(desc(inventoryLogs.createdAt), desc(inventoryLogs.id))
       .limit(limit)
       .offset(offset);
 
@@ -154,7 +170,14 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
     }));
   }
 
-  async getAllVariantsWithStock(): Promise<VariantWithStock[]> {
+  async getAllVariantsWithStock(
+    limit = DEFAULT_ADMIN_VARIANT_LIMIT
+  ): Promise<VariantWithStock[]> {
+    // The admin inventory table renders this with no pagination or
+    // virtualisation, so an unbounded `findAll`-style query grows with the
+    // catalogue forever. 500 comfortably covers the current ~36-product
+    // catalogue's variant count with headroom; a caller that genuinely needs
+    // more can still pass a larger limit explicitly.
     const results = await db
       .select({
         variantId: productVariants.id,
@@ -168,7 +191,8 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       })
       .from(productVariants)
       .leftJoin(products, eq(productVariants.productId, products.id))
-      .orderBy(products.name, productVariants.sku);
+      .orderBy(products.name, productVariants.sku)
+      .limit(limit);
 
     return results.map((r) => ({
       ...r,
@@ -178,6 +202,22 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
     }));
   }
 
+  async countAllVariants(): Promise<number> {
+    // `count(*)::int` rather than `sql<number>count(*)`: postgres.js decodes a
+    // Postgres bigint as a string, so the unadorned form is a compile-time
+    // assertion the runtime does not honour. See CLAUDE.md.
+    const [row] = await db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(productVariants);
+
+    return row?.total ?? 0;
+  }
+
+  // Unlocked primitive — see the interface doc. `AdjustStockUseCase` used to
+  // pair this with `getVariantStock` as a read-then-write with nothing
+  // between them, which is exactly the lost-update race `adjustStockWithLog`
+  // below now closes. Nothing calls this method any more; kept as a
+  // low-level building block, not a safe default.
   async updateVariantStock(variantId: string, newStock: number): Promise<void> {
     await db
       .update(productVariants)
@@ -195,6 +235,56 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       columns: { stockQuantity: true },
     });
     return result?.stockQuantity ?? null;
+  }
+
+  async adjustStockWithLog(
+    variantId: string,
+    newQuantity: number,
+    log: Pick<NewInventoryLog, "changeType" | "reason" | "createdBy">
+  ): Promise<{ previousQuantity: number; newQuantity: number } | null> {
+    return db.transaction(async (tx) => {
+      // Lock the row before reading it. The read's result is what makes
+      // `previousQuantity` (and the logged row) truthful — without the lock,
+      // this is the same unguarded read-then-write `AdjustStockUseCase` used
+      // to do, just moved one layer down. Locking also serialises this
+      // absolute set against the checkout's own `FOR UPDATE` stock
+      // reservation (`order.repository.ts`) instead of racing it.
+      const [variant] = await tx
+        .select({ stockQuantity: productVariants.stockQuantity })
+        .from(productVariants)
+        .where(eq(productVariants.id, variantId))
+        .for("update")
+        .limit(1);
+
+      if (!variant) return null;
+
+      const previousQuantity = variant.stockQuantity;
+
+      await tx
+        .update(productVariants)
+        .set({
+          stockQuantity: newQuantity,
+          isAvailable: newQuantity > 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(productVariants.id, variantId));
+
+      // Same transaction as the stock write, so a failure between "set the
+      // number" and "log the movement" cannot happen — the whole point of
+      // an audit trail is that it cannot silently fall out of step with the
+      // thing it is auditing.
+      await tx.insert(inventoryLogs).values({
+        variantId,
+        changeType: log.changeType,
+        quantityChange: newQuantity - previousQuantity,
+        previousQuantity,
+        newQuantity,
+        reason: log.reason,
+        createdBy: log.createdBy,
+      });
+
+      return { previousQuantity, newQuantity };
+    });
   }
 
   async getVariantsStock(

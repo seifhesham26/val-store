@@ -12,6 +12,24 @@ export function ProfileForm({ user }: { user: UserProfile | undefined }) {
   const utils = trpc.useUtils();
   const [name, setName] = useState(user?.name || "");
   const [isLoading, setIsLoading] = useState(false);
+  // The parent renders this form while `profile.me` is still loading, so
+  // `user` is `undefined` on the first render and never remounts once the
+  // query resolves. A `useState` initializer runs exactly once, so seeding
+  // from the prop alone pinned `name` to "" forever: the field stayed empty
+  // beside a correctly-filled Email (read straight from the prop), and
+  // because the Save button is disabled on `name === user?.name`, an
+  // untouched form offered an enabled Save that the server then rejected
+  // with `z.string().min(2)`.
+  //
+  // Seeding by user id rather than on every prop change is deliberate — a
+  // refetch (this form's own invalidation included) must not overwrite a
+  // name the customer is part-way through typing.
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+
+  if (user && user.id !== seededFor) {
+    setSeededFor(user.id);
+    setName(user.name || "");
+  }
 
   const updateName = trpc.public.profile.updateName.useMutation({
     onSuccess: () => {

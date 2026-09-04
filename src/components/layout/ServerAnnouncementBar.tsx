@@ -29,8 +29,11 @@ export async function ServerAnnouncementBar() {
       return null;
     }
 
-    // Parse content
-    const content = announcement.parsedContent as AnnouncementContent;
+    // `getCachedAnnouncementSection` validates `parsedContent` against
+    // `announcementContentSchema` before returning it, so no cast is needed
+    // here — a row that failed validation already came back as `null` above,
+    // which the `announcement?.isActive` check would have caught.
+    const content: AnnouncementContent = announcement.parsedContent;
 
     if (!content) {
       return null;

@@ -56,6 +56,18 @@ export class UpdateCategoryUseCase {
       throw new Error("Category cannot be its own parent");
     }
 
+    // Direct self-parenting isn't the only way to create a cycle: with
+    // A -> B -> C, setting A's parent to C is invalid too, and each edit
+    // looks fine in isolation. Walk the new parent's ancestor chain and
+    // reject if this category would appear in its own lineage.
+    if (
+      input.data.parentId !== undefined &&
+      input.data.parentId !== null &&
+      input.data.parentId !== existing.parentId
+    ) {
+      await this.assertNoCycle(input.id, input.data.parentId);
+    }
+
     // Slugs go through the value object in both directions. The old inline
     // `replace(/\s+/g, "-")` left punctuation intact, so "Men's Tees" produced
     // "men's-tees" here and "mens-tees" at creation — two spellings of one name.
@@ -114,5 +126,39 @@ export class UpdateCategoryUseCase {
       isActive: saved.isActive,
       updatedAt: saved.updatedAt,
     };
+  }
+
+  /**
+   * Reject a `parentId` that would make `categoryId` its own ancestor.
+   *
+   * `categories.parentId` has no FK constraint, so a walk here can meet data
+   * that is already cyclic (a previous edit that slipped past this guard, or
+   * a row written by hand). The `visited` set bounds the traversal at one
+   * pass over the tree either way — the same technique `collectCategoryTree`
+   * uses for descendants.
+   */
+  private async assertNoCycle(
+    categoryId: string,
+    newParentId: string
+  ): Promise<void> {
+    const all = await this.categoryRepository.findAll();
+    const parentById = new Map(all.map((c) => [c.id, c.parentId]));
+
+    const visited = new Set<string>();
+    let currentId: string | null = newParentId;
+
+    while (currentId) {
+      if (currentId === categoryId) {
+        throw new Error(
+          "That would make this category a descendant of itself. Choose a " +
+            "parent outside its current subtree."
+        );
+      }
+
+      if (visited.has(currentId)) break;
+      visited.add(currentId);
+
+      currentId = parentById.get(currentId) ?? null;
+    }
   }
 }

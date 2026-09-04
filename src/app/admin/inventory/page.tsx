@@ -23,8 +23,9 @@ export default function AdminInventoryPage() {
   const [adjustingVariant, setAdjustingVariant] =
     useState<InventoryVariant | null>(null);
 
-  const { data: allVariants = [], isLoading } =
+  const { data: variantPage, isLoading } =
     trpc.admin.inventory.listVariants.useQuery();
+  const allVariants = variantPage?.items ?? [];
   const { data: lowStock = [] } = trpc.admin.inventory.getLowStock.useQuery({
     threshold: 10,
   });
@@ -72,7 +73,11 @@ export default function AdminInventoryPage() {
         </TabsList>
 
         <TabsContent value="all">
-          <AllStockTab variants={allVariants} onAdjust={setAdjustingVariant} />
+          <AllStockTab
+            variants={allVariants}
+            total={variantPage?.total ?? allVariants.length}
+            onAdjust={setAdjustingVariant}
+          />
         </TabsContent>
 
         <TabsContent value="low">

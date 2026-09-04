@@ -3,33 +3,48 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import type { Gender } from "@/types/product";
+import type { ProductListPage } from "@/lib/cache";
 import { ProductCard } from "@/components/products/ProductCard";
 
-const PREVIEW_LIMIT = 4;
+export const PREVIEW_LIMIT = 4;
 
 export function CollectionSection({
   title,
   description,
   href,
   queryParams,
+  initialPage,
 }: {
   title: string;
   description: string;
   href: string;
+  /**
+   * Page 1, resolved by the server component that renders this row.
+   *
+   * Without it this row is an empty skeleton until the bundle downloads,
+   * hydrates and completes a round trip — while every other surface on the
+   * storefront (`ServerFeaturedProducts`, `/collections/[slug]`) renders its
+   * products into the HTML. Optional so the component still stands alone.
+   */
+  initialPage?: ProductListPage;
   queryParams: {
     /** A category and its descendants, resolved by the server component. */
     categoryIds?: string[];
-    gender?: string;
+    gender?: Gender;
     isFeatured?: boolean;
     isOnSale?: boolean;
     /** Added within the last N days — see `NEW_ARRIVAL_WINDOW_DAYS`. */
     createdWithinDays?: number;
   };
 }) {
-  const { data, isLoading } = trpc.public.products.list.useQuery({
-    limit: PREVIEW_LIMIT,
-    ...queryParams,
-  });
+  const { data, isLoading } = trpc.public.products.list.useQuery(
+    {
+      limit: PREVIEW_LIMIT,
+      ...queryParams,
+    },
+    { initialData: initialPage }
+  );
 
   const products = data?.products ?? [];
 

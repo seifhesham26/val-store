@@ -453,13 +453,38 @@ export const orderItems = pgTable(
 // SHOPPING CART TABLE
 // ============================================
 
+// No explicit index on `user_id`: the `.unique()` on the column already
+// creates a unique btree, and every lookup in the cart repository is
+// keyed on it. A second index would be the same tree maintained twice on
+// every write.
+export const carts = pgTable("carts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Unique for now, which preserves exactly the current "one cart per
+  // user" behaviour. Dropping this constraint is what would later allow
+  // saved or multiple carts; nothing else needs to change for that.
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // SET NULL, deliberately not cascade: deleting a coupon must not delete
+  // the carts that referenced it.
+  couponId: uuid("coupon_id").references(() => coupons.id, {
+    onDelete: "set null",
+  }),
+  // These three move together. Either all are set or all are null.
+  couponAppliedAt: timestamp("coupon_applied_at"),
+  couponCheckedAt: timestamp("coupon_checked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const cartItems = pgTable(
   "cart_items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
+    cartId: uuid("cart_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => carts.id, { onDelete: "cascade" }),
     productId: uuid("product_id")
       .notNull()
       .references(() => products.id, { onDelete: "cascade" }),
@@ -471,7 +496,7 @@ export const cartItems = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    userIdIdx: index("idx_cart_user_id").on(table.userId),
+    cartIdIdx: index("idx_cart_items_cart_id").on(table.cartId),
     productIdIdx: index("idx_cart_product_id").on(table.productId),
   })
 );
@@ -905,6 +930,9 @@ export type NewOrder = typeof orders.$inferInsert;
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type NewOrderItem = typeof orderItems.$inferInsert;
+
+export type Cart = typeof carts.$inferSelect;
+export type NewCart = typeof carts.$inferInsert;
 
 export type CartItem = typeof cartItems.$inferSelect;
 export type NewCartItem = typeof cartItems.$inferInsert;

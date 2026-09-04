@@ -166,22 +166,40 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
   }
 
   /**
-   * Update stock quantity to an absolute value
+   * Update stock quantity to an absolute value.
+   *
+   * This is a genuine "set stock to N" (the caller, `UpdateVariantStockUseCase`'s
+   * "set" mode, means an absolute target, not a delta) so it cannot become
+   * `adjustStock`'s atomic `GREATEST(0, stock + delta)` single statement below
+   * — there is no delta to add. Instead the row is locked `FOR UPDATE` inside
+   * a transaction before the write, which serialises this call against any
+   * other transaction taking the same lock (the checkout's stock reservation
+   * in `order.repository.ts`, `InventoryRepository.adjustStockWithLog`)
+   * rather than letting it land between an unlocked read and write and erase
+   * a concurrent decrement — the same hazard `AdjustStockUseCase` had.
    */
   async updateStock(
     variantId: string,
     quantity: number
   ): Promise<ProductVariantEntity> {
-    const [updated] = await db
-      .update(productVariants)
-      .set({
-        stockQuantity: quantity,
-        updatedAt: new Date(),
-      })
-      .where(eq(productVariants.id, variantId))
-      .returning();
+    return db.transaction(async (tx) => {
+      await tx
+        .select({ id: productVariants.id })
+        .from(productVariants)
+        .where(eq(productVariants.id, variantId))
+        .for("update");
 
-    return this.mapToEntity(updated);
+      const [updated] = await tx
+        .update(productVariants)
+        .set({
+          stockQuantity: quantity,
+          updatedAt: new Date(),
+        })
+        .where(eq(productVariants.id, variantId))
+        .returning();
+
+      return this.mapToEntity(updated);
+    });
   }
 
   /**

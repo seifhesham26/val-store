@@ -23,8 +23,14 @@
 
 import { CollectionsHeader } from "@/components/collections/CollectionsHeader";
 import { BrowseAllBanner } from "@/components/collections/BrowseAllBanner";
-import { CollectionSection } from "@/components/collections/CollectionSection";
-import { getCachedCategoryBySlug } from "@/lib/cache";
+import {
+  CollectionSection,
+  PREVIEW_LIMIT,
+} from "@/components/collections/CollectionSection";
+import {
+  getCachedCategoryBySlug,
+  getCachedFirstProductPage,
+} from "@/lib/cache";
 import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
 
 interface CollectionRow {
@@ -89,14 +95,36 @@ export default async function CollectionsPage() {
     },
   ];
 
+  // Seed every row's page 1 here rather than letting four client components
+  // each fetch on mount. These are cached reads with no dependency on one
+  // another, so `Promise.all` pipelines them; the alternative was four empty
+  // skeleton grids until hydration finished.
+  //
+  // A row whose fetch fails renders its skeleton and recovers on the client,
+  // which is exactly what it did before — a seed is an optimisation, and one
+  // failing row must not take the page down.
+  const seeded = await Promise.all(
+    collections.map(async (collection) => ({
+      collection,
+      initialPage: await getCachedFirstProductPage({
+        limit: PREVIEW_LIMIT,
+        ...collection.queryParams,
+      }).catch(() => undefined),
+    }))
+  );
+
   return (
     <div className="min-h-screen">
       <CollectionsHeader />
       <BrowseAllBanner />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-12 md:space-y-16">
-        {collections.map((collection) => (
-          <CollectionSection key={collection.href} {...collection} />
+        {seeded.map(({ collection, initialPage }) => (
+          <CollectionSection
+            key={collection.href}
+            {...collection}
+            initialPage={initialPage}
+          />
         ))}
       </div>
     </div>

@@ -77,7 +77,23 @@ export class CancelExpiredCheckoutsUseCase {
           }
 
           if (paid) {
-            await this.orderRepository.markAsPaid(orderId);
+            const recovered = await this.orderRepository.markAsPaid(orderId);
+
+            // The third caller of `markAsPaid`, and the one nobody is
+            // watching. The admin note is written inside the repository
+            // transaction either way, but without this line an overrun
+            // recovered by the sweep leaves no trace in the request log —
+            // unlike the webhook and the success page, which both record it.
+            if (recovered.couponLimitExceeded) {
+              console.error(
+                JSON.stringify({
+                  error: "Coupon redeemed past its limit",
+                  orderId,
+                  source: "expiry-sweep",
+                })
+              );
+            }
+
             result.recovered += 1;
             continue;
           }

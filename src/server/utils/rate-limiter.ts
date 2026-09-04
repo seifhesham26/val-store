@@ -113,19 +113,10 @@ export async function enforceRateLimit(
 
 /**
  * Helper to get client IP from request headers.
+ *
+ * The resolution rule — platform-issued headers first, then `X-Forwarded-For`
+ * counted from the **right** by `TRUSTED_PROXY_HOPS` — lives in
+ * `./client-ip`, which is pure and unit-tested. See that file for why the
+ * leftmost entry is the one an attacker writes.
  */
-export function getClientIp(headers: Headers): string {
-  // Check common proxy headers
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-
-  const realIp = headers.get("x-real-ip");
-  if (realIp) {
-    return realIp;
-  }
-
-  // Fallback
-  return "unknown";
-}
+export { resolveClientIp as getClientIp } from "./client-ip";

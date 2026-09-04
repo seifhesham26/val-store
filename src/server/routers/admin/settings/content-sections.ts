@@ -18,6 +18,48 @@ import {
 
 export const sectionTypeSchema = z.enum(["hero", "announcement"]);
 
+type SectionType = z.infer<typeof sectionTypeSchema>;
+
+const contentSchemaBySectionType = {
+  hero: heroContentSchema,
+  announcement: announcementContentSchema,
+} as const;
+
+/**
+ * Read `content_sections.content` back as a validated shape, or `null`.
+ *
+ * Every read here used to be a bare `JSON.parse`, whose result is `any` —
+ * the write path validated against these schemas and the read path trusted
+ * whatever was in the column. `src/lib/cms-content-parser.ts` was introduced
+ * to close exactly that hole, but it was only ever wired into the storefront
+ * reads in `src/lib/cache.ts`; the five admin reads below kept parsing blind.
+ *
+ * That matters most for `revertToVersion` and `getContentHistory`, which
+ * surface historical rows verbatim: a version written before a schema change
+ * (or by hand, or by a migration) reaches the editor with a shape nothing
+ * checked, and `HomepageSettings` calling `.map()` on a `messages` field that
+ * is missing or is not an array throws inside a `useEffect` and takes the
+ * settings page down.
+ *
+ * Degrading to `null` rather than throwing is deliberate, and differs from
+ * the storefront's reason for the same choice. The storefront falls back to
+ * hardcoded defaults so a customer still sees a page. The admin needs the
+ * opposite: the editor must still *load* for the one person who can repair
+ * the row. `null` leaves the form on its empty defaults, which the admin can
+ * fill in and save — a valid row overwrites the invalid one.
+ */
+function parseSectionContent(sectionType: SectionType, raw: string) {
+  try {
+    return contentSchemaBySectionType[sectionType].parse(JSON.parse(raw));
+  } catch (error) {
+    console.error(
+      `[cms-content] Invalid ${sectionType} content read by admin:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    return null;
+  }
+}
+
 export const updateContentSectionSchema = z.object({
   sectionType: sectionTypeSchema,
   content: z.union([heroContentSchema, announcementContentSchema]),
@@ -40,7 +82,7 @@ export const contentSectionsProcedures = {
       }
       return {
         ...section.toObject(),
-        content: JSON.parse(section.content),
+        content: parseSectionContent(input.sectionType, section.content),
       };
     }),
 
@@ -69,7 +111,7 @@ export const contentSectionsProcedures = {
 
       return {
         ...updated.toObject(),
-        content: JSON.parse(updated.content),
+        content: parseSectionContent(input.sectionType, updated.content),
       };
     }),
 
@@ -91,7 +133,7 @@ export const contentSectionsProcedures = {
       );
       return {
         ...updated.toObject(),
-        content: JSON.parse(updated.content),
+        content: parseSectionContent(input.sectionType, updated.content),
       };
     }),
 
@@ -102,7 +144,7 @@ export const contentSectionsProcedures = {
       const history = await repo.getContentHistory(input.sectionType);
       return history.map((h) => ({
         ...h.toObject(),
-        content: JSON.parse(h.content),
+        content: parseSectionContent(input.sectionType, h.content),
       }));
     }),
 
@@ -129,7 +171,7 @@ export const contentSectionsProcedures = {
 
       return {
         ...reverted.toObject(),
-        content: JSON.parse(reverted.content),
+        content: parseSectionContent(input.sectionType, reverted.content),
       };
     }),
 };

@@ -10,10 +10,16 @@
  * - After 60 seconds: Fetches fresh data, updates cache
  */
 
+import type { Gender } from "@/types/product";
 import { unstable_cache } from "next/cache";
 import { container } from "@/application/container";
 import { createAnonymousCaller } from "@/server/caller";
 import { isReservedCollectionSlug } from "@/domain/categories/reserved-slugs";
+import { parseSectionContent } from "@/lib/cms-content-parser";
+import {
+  parseHeroContent,
+  parseAnnouncementContent,
+} from "@/domain/site/value-objects/content-schemas";
 
 // Cache tags for easy invalidation
 const CACHE_TAGS = {
@@ -54,10 +60,22 @@ export const getCachedHeroSection = unstable_cache(
     const section = await repo.getContentSection("hero");
     if (!section) return null;
 
+    // Validated against `heroContentSchema` — the same schema the write path
+    // enforces — rather than a bare `JSON.parse` and a force-cast. A row
+    // that fails validation degrades to `null`, exactly like a missing
+    // section, so `ServerHeroSection`'s existing try/catch falls back to its
+    // hardcoded defaults instead of rendering `undefined` fields.
+    const parsedContent = parseSectionContent(
+      "hero",
+      section.content,
+      parseHeroContent
+    );
+    if (!parsedContent) return null;
+
     return {
       isActive: section.isActive,
       content: section.content,
-      parsedContent: JSON.parse(section.content),
+      parsedContent,
     };
   },
   [CACHE_TAGS.HERO],
@@ -85,10 +103,21 @@ export const getCachedAnnouncementSection = unstable_cache(
     const section = await repo.getContentSection("announcement");
     if (!section) return null;
 
+    // Same reasoning as `getCachedHeroSection`: validated against
+    // `announcementContentSchema` rather than force-cast, and a failure
+    // degrades to `null` so `ServerAnnouncementBar`'s try/catch falls back
+    // to rendering nothing instead of a bar built from `undefined` fields.
+    const parsedContent = parseSectionContent(
+      "announcement",
+      section.content,
+      parseAnnouncementContent
+    );
+    if (!parsedContent) return null;
+
     return {
       isActive: section.isActive,
       content: section.content,
-      parsedContent: JSON.parse(section.content),
+      parsedContent,
     };
   },
   [CACHE_TAGS.ANNOUNCEMENT],
@@ -447,7 +476,7 @@ export interface ProductListPageFilters {
   categoryId?: string;
   /** A category and its descendants — see `collectCategoryTree`. */
   categoryIds?: string[];
-  gender?: string;
+  gender?: Gender;
   isFeatured?: boolean;
   isOnSale?: boolean;
   /** Added within the last N days — see `NEW_ARRIVAL_WINDOW_DAYS`. */

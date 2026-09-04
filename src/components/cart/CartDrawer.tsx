@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CartItem } from "./CartItem";
+import { CouponField } from "./CouponField";
 import { useCart } from "@/components/providers/cart-provider";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import { formatCurrency } from "@/lib/currency";
@@ -102,6 +103,10 @@ export function CartDrawer() {
             {/* Footer with Summary */}
             <SheetFooter className="border-t border-white/10 px-4 py-4">
               <div className="w-full space-y-4">
+                {/* Coupon, above the subtotal. Renders nothing for a guest,
+                    who has no server cart to hold a code. */}
+                <CouponField />
+
                 {/* Subtotal */}
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-400">Subtotal</span>

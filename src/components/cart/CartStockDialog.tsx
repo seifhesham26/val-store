@@ -88,18 +88,35 @@ export function CartStockDialog() {
   const handleFixAll = async () => {
     setIsFixingAll(true);
     try {
-      for (const line of problems) {
-        if (line.available > 0) {
-          await updateQuantity.mutateAsync({
-            cartItemId: line.cartItemId,
-            quantity: line.available,
-          });
-        } else {
-          await removeItem.mutateAsync({ cartItemId: line.cartItemId });
-        }
-      }
+      // Each line is a different cart row, so there is nothing to serialise —
+      // and `allSettled` rather than `all` because a "fix all" that stops at
+      // the first failure leaves the customer with a half-corrected cart and
+      // no way to tell which half. Every line is attempted; the toast then
+      // says whether any of them did not take.
+      const outcomes = await Promise.allSettled(
+        problems.map((line) =>
+          line.available > 0
+            ? updateQuantity.mutateAsync({
+                cartItemId: line.cartItemId,
+                quantity: line.available,
+              })
+            : removeItem.mutateAsync({ cartItemId: line.cartItemId })
+        )
+      );
+
       await sync();
-      toast.success("Cart updated to match what is in stock");
+
+      const failed = outcomes.filter((o) => o.status === "rejected").length;
+
+      if (failed === 0) {
+        toast.success("Cart updated to match what is in stock");
+      } else {
+        toast.error(
+          failed === problems.length
+            ? "Could not update your cart"
+            : `Updated your cart, but ${failed} item(s) could not be changed`
+        );
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not update your cart"

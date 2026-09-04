@@ -366,19 +366,55 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         // code on an attempt that never charged anyone. Card orders redeem in
         // `markAsPaid` instead.
         if (order.couponId && order.paymentMethod === "cash_on_delivery") {
-          await tx.insert(couponUsages).values({
-            couponId: order.couponId,
-            userId: order.userId,
-            orderId: order.id,
-          });
-
-          await tx
+          // Guarded increment, not a plain one. `ValidateCouponUseCase` checks
+          // usageLimit/perUserLimit with an unlocked SELECT in a separate,
+          // earlier transaction — nothing stops several concurrent checkouts
+          // from all passing that check and all reaching here. The row lock
+          // this UPDATE takes implicitly is what arbitrates them: both limits
+          // are re-checked against the row as it stands right now, not the
+          // stale read from validation, so only as many racing checkouts as
+          // the limit actually allows can win it. Same guarded-update shape
+          // `refund()` above uses for `order_items.refunded_quantity`.
+          //
+          // Taken after the stock loop above, not before — every transaction
+          // that locks both a variant row and this coupon row must do so in
+          // the same order, or two transactions each holding one lock while
+          // waiting on the other's deadlock.
+          const [redeemed] = await tx
             .update(coupons)
             .set({
               usageCount: sql`${coupons.usageCount} + 1`,
               updatedAt: now,
             })
-            .where(eq(coupons.id, order.couponId));
+            .where(
+              and(
+                eq(coupons.id, order.couponId),
+                sql`(${coupons.usageLimit} IS NULL OR ${coupons.usageCount} < ${coupons.usageLimit})`,
+                sql`(
+                  ${coupons.perUserLimit} IS NULL OR (
+                    SELECT COUNT(*)::int FROM coupon_usages
+                    WHERE coupon_id = ${order.couponId} AND user_id = ${order.userId}
+                  ) < ${coupons.perUserLimit}
+                )`
+              )
+            )
+            .returning({ id: coupons.id });
+
+          // No charge has happened yet for cash on delivery, so losing this
+          // race is the same shape as the stock checks above: abort the whole
+          // order and let the customer see why. Nothing has committed that a
+          // retry (without the code) can't recover from.
+          if (!redeemed) {
+            throw new Error(
+              "This coupon has just reached its usage limit and can no longer be applied."
+            );
+          }
+
+          await tx.insert(couponUsages).values({
+            couponId: order.couponId,
+            userId: order.userId,
+            orderId: order.id,
+          });
         }
       });
 
@@ -565,9 +601,16 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       for (const item of restockable) {
         if (!item.variantId) continue;
 
-        const restockQuantity = restockByItem
-          ? Math.min(restockByItem.get(item.id) ?? 0, item.quantity)
-          : item.quantity;
+        // A partial return already restocked whatever came back before this
+        // order was cancelled — `existing.refundableQuantity()` is exactly
+        // `item.quantity - item.refundedQuantity`, floored at zero. Falling
+        // back to the full ordered quantity here (or capping an explicit
+        // restock request against it instead of what's actually left) would
+        // put those units back on the shelf a second time.
+        const restockQuantity = this.resolveRestockQuantity(
+          existing.refundableQuantity(item.id),
+          restockByItem ? (restockByItem.get(item.id) ?? 0) : undefined
+        );
 
         if (restockQuantity <= 0) continue;
 
@@ -852,9 +895,18 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     transitioned: boolean;
     orderNumber: string | null;
     userId: string | null;
+    /**
+     * The coupon on this order was redeemed past its usage or per-customer
+     * limit. The payment is still recognised and the discount still stands —
+     * see the redemption block below for why refusing is not an option once
+     * the customer has been charged. Surfaced so a caller can log it as the
+     * anomaly it is rather than letting it pass as an ordinary payment.
+     */
+    couponLimitExceeded: boolean;
   }> {
     return db.transaction(async (tx) => {
       const now = new Date();
+      let couponLimitExceeded = false;
 
       // Only advance an order still awaiting payment. Without this a late
       // webhook could resurrect an order an admin had already cancelled — and
@@ -874,12 +926,18 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           orderNumber: orders.orderNumber,
           userId: orders.userId,
           couponId: orders.couponId,
+          adminNotes: orders.adminNotes,
         });
 
       // Nothing matched: the order had already moved on. Callers use this to
       // avoid notifying twice when a webhook is redelivered.
       if (!updated) {
-        return { transitioned: false, orderNumber: null, userId: null };
+        return {
+          transitioned: false,
+          orderNumber: null,
+          userId: null,
+          couponLimitExceeded: false,
+        };
       }
 
       await tx
@@ -909,19 +967,102 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           .limit(1);
 
         if (!alreadyRecorded) {
-          await tx.insert(couponUsages).values({
-            couponId: updated.couponId,
-            userId: updated.userId,
-            orderId,
-          });
-
-          await tx
+          // Same guarded increment `create()` uses for the cash-on-delivery
+          // redemption, closing the same race for the card path. This runs
+          // from the Stripe webhook (or the success page racing it), after
+          // the customer has already been charged — unlike the COD path,
+          // there is no "abort and let them retry" option here. Throwing
+          // would roll back this whole transaction, including the order's
+          // move to `paid`, and Stripe would have taken the customer's money
+          // for an order stuck `pending` forever: a worse outcome than the
+          // coupon's usage count reading one over its limit. So a lost race
+          // here is logged, not thrown — the payment is still recognised, the
+          // coupon simply is not recorded as used for it. This coupon has no
+          // variant lock to stay ordered against: markAsPaid never locks a
+          // variant row, so there is nothing for this lock to deadlock with.
+          const [redeemed] = await tx
             .update(coupons)
             .set({
               usageCount: sql`${coupons.usageCount} + 1`,
               updatedAt: now,
             })
-            .where(eq(coupons.id, updated.couponId));
+            .where(
+              and(
+                eq(coupons.id, updated.couponId),
+                sql`(${coupons.usageLimit} IS NULL OR ${coupons.usageCount} < ${coupons.usageLimit})`,
+                sql`(
+                  ${coupons.perUserLimit} IS NULL OR (
+                    SELECT COUNT(*)::int FROM coupon_usages
+                    WHERE coupon_id = ${updated.couponId} AND user_id = ${updated.userId}
+                  ) < ${coupons.perUserLimit}
+                )`
+              )
+            )
+            .returning({ id: coupons.id });
+
+          if (!redeemed) {
+            // The guard lost, but the customer has already been charged the
+            // discounted total — the redemption is a fact whether or not the
+            // limit allowed it. Two things follow from that.
+            //
+            // First, increment anyway. Declining to count a redemption that
+            // really happened leaves `usage_count` *under*-reporting, so the
+            // next validation still sees room and lets the overrun grow. An
+            // unguarded increment makes the counter tell the truth, which also
+            // makes the limit self-correcting: at 101/100 every subsequent
+            // checkout is refused by the ordinary pre-check.
+            await tx
+              .update(coupons)
+              .set({
+                usageCount: sql`${coupons.usageCount} + 1`,
+                updatedAt: now,
+              })
+              .where(eq(coupons.id, updated.couponId));
+
+            // Second, leave a record a person will actually find. This used to
+            // be a `console.error` and nothing else, which meant the only trace
+            // of a discount given beyond its limit lived in a log nobody reads
+            // until they already suspect something. The note is attached to the
+            // order the discrepancy is on, and renders on the order detail page
+            // alongside the refund notes.
+            //
+            // Deliberately not an admin notification: `notification_type` has
+            // no value for this, and adding one without applying the enum
+            // migration would throw at insert.
+            couponLimitExceeded = true;
+
+            await tx
+              .update(orders)
+              .set({
+                adminNotes: appendAdminNote(
+                  updated.adminNotes,
+                  `Coupon redeemed past its limit. The code was already at its ` +
+                    `usage or per-customer cap when this payment was ` +
+                    `recognised, but the customer had already been charged the ` +
+                    `discounted total, so the discount stands and the ` +
+                    `redemption has been counted. Review the coupon if this ` +
+                    `repeats.`
+                ),
+                updatedAt: now,
+              })
+              .where(eq(orders.id, orderId));
+
+            console.error(
+              `[Orders] Coupon ${updated.couponId} was redeemed past its limit by order ${orderId} — payment recognised, redemption counted, order annotated.`
+            );
+          }
+
+          // Recorded on both paths, because both are a real redemption.
+          // `idx_coupon_usages_unique` covers (coupon, user, order), so a
+          // redelivered webhook cannot double-write this row.
+          await tx
+            .insert(couponUsages)
+            .values({
+              couponId: updated.couponId,
+              userId: updated.userId,
+              orderId,
+            })
+            .onConflictDoNothing();
         }
       }
 
@@ -929,6 +1070,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         transitioned: true,
         orderNumber: updated.orderNumber,
         userId: updated.userId,
+        couponLimitExceeded,
       };
     });
   }
@@ -991,6 +1133,25 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
   }
 
   /**
+   * How many units of a line to actually put back on the shelf when an
+   * order closes.
+   *
+   * `remaining` is what a return hasn't already restocked. `requested` is the
+   * caller's ask: `undefined` for "restock everything left" (the default when
+   * an admin cancels without an explicit line list), or a specific quantity
+   * from an explicit restock instruction. Either way the result is capped at
+   * `remaining` — an explicit request is a ceiling on what an admin wants
+   * back on sale, not a ceiling `validateRestock` already enforces, since
+   * that only checks against the full ordered quantity.
+   */
+  private resolveRestockQuantity(
+    remaining: number,
+    requested: number | undefined
+  ): number {
+    return requested === undefined ? remaining : Math.min(requested, remaining);
+  }
+
+  /**
    * Build filter conditions
    */
   private buildFiltersConditions(filters?: OrderFilters) {
@@ -1010,6 +1171,20 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
     if (filters?.endDate) {
       conditions.push(lte(orders.createdAt, filters.endDate));
+    }
+
+    // `orders.total_amount` is a decimal column, which Drizzle maps to a
+    // string — the bound value has to be one too, or the comparison never
+    // matches. Same `.toString()` the product repository's price range
+    // filter already uses. Postgres still compares numerically once it casts
+    // the parameter to the column's type; only the JS-side representation is
+    // a string.
+    if (filters?.minTotal !== undefined) {
+      conditions.push(gte(orders.totalAmount, filters.minTotal.toString()));
+    }
+
+    if (filters?.maxTotal !== undefined) {
+      conditions.push(lte(orders.totalAmount, filters.maxTotal.toString()));
     }
 
     // `returnedOnly` and `refundableOnly` mirror `OrderEntity.getRefundedItems()`

@@ -162,4 +162,30 @@ export const cartRouter = router({
         items: input.items,
       });
     }),
+
+  /**
+   * Apply a coupon to the cart.
+   *
+   * Returns `{ applied: false, error }` rather than throwing: a code that is
+   * expired or over its limit is an ordinary answer to a reasonable question,
+   * not an exceptional condition, and the field needs the message inline.
+   */
+  applyCoupon: protectedProcedure
+    .input(
+      z.object({
+        // Bounded because it becomes a database lookup key. Coupon codes in
+        // this store are short; 64 is generous.
+        code: z.string().trim().min(1).max(64),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const useCase = container.getApplyCouponUseCase();
+      return useCase.execute({ userId: ctx.user.id, code: input.code });
+    }),
+
+  /** Remove the applied coupon. Succeeds whether or not one was applied. */
+  removeCoupon: protectedProcedure.mutation(async ({ ctx }) => {
+    await container.getRemoveCouponUseCase().execute(ctx.user.id);
+    return { success: true } as const;
+  }),
 });
