@@ -9,8 +9,8 @@ reached yet. Each one says **when** it starts mattering, so this file can be
 read cold and triaged rather than treated as a backlog to grind through.
 
 Written 2026-09-03, after the security hardening pass and the catalogue
-reconciliation. The defect catalogue is `docs/ISSUES.md`; this is the part that
-is not defects.
+reconciliation; extended 2026-09-04 with the cart entity and coupon hold. The
+defect catalogue is `docs/ISSUES.md`; this is the part that is not defects.
 
 ---
 
@@ -68,6 +68,35 @@ Check both paths, and check that a wrong password and an unknown account give
 the _same_ message. That identical message is anti-enumeration, not an
 oversight.
 
+### 5. Apply `drizzle/0005_cart_entity.sql`
+
+**This one is destructive and `pnpm db:migrate` will not do it for you.**
+
+`carts` was built with `db:push` and existed in no migration file until this
+one. `meta/_journal.json` still lists only `0000` and `0001`, so `0005` is
+unjournalled exactly like `0002`, `0003` and `0004` — the migrate command skips
+it silently.
+
+Apply it by pasting the file into the Neon SQL editor or psql. **Prefer that
+over `db:push`.** Push infers the schema change but cannot infer the backfill,
+so it would drop `cart_items.user_id` with the `carts` rows unbuilt and empty
+every customer's cart. The file does it in the order that survives: create
+`carts`, add a nullable `cart_id`, backfill both, make it `NOT NULL`, and only
+then drop `user_id`.
+
+It is wrapped in one transaction and every step is guarded, so it is safe to
+re-run and safe against a database `db:push` has already migrated. Step 5 of
+the file fails loudly rather than deleting rows if any item cannot be traced to
+an owner — that is deliberate.
+
+Both halves were verified against the real database on 2026-09-04 without
+persisting anything: the file was executed with its `COMMIT` swapped for
+`ROLLBACK`, and the backfill statements — which that run skips, because the dev
+database no longer has `cart_items.user_id` for the guard to match — were run
+separately against a scratch schema holding the old shape. Four items across
+three users produced three carts, zero orphans, and zero items on the wrong
+owner's cart.
+
 ---
 
 ## Pre-launch smoke test
@@ -83,7 +112,7 @@ Run the gates first. If any is red, stop; nothing below is worth checking.
 ```bash
 pnpm type-check   # clean
 pnpm lint         # 0 errors, 0 warnings
-pnpm test         # 277 passing
+pnpm test         # 483 passing, 38 files
 pnpm build        # 98 static pages
 ```
 
@@ -193,6 +222,34 @@ Nothing here is provable until a domain is verified in Resend.
 | Complete a Stripe order                               | Same                                                           |
 | Request a password reset for a **registered** address | Email arrives                                                  |
 | Request one for an **unregistered** address           | Same on-screen response, no email                              |
+
+### 10. The coupon survives a reload
+
+**The single most important check in this list**, because it is the whole
+premise of the coupon hold and nothing in the suite covers it — there is no DOM
+testing library in this repo, so `CouponField` and its wiring to the router
+have no automated test at all. Everything beneath the UI is well covered; the
+last inch is not.
+
+Signed in, with something in the cart:
+
+1. Apply a valid code. A badge with the code appears. **There must be no
+   discount amount and no countdown** — the cart shows the code, checkout
+   prices it, and the 15-minute re-check window is internal.
+2. **Reload the page. The badge is still there.** This is the feature.
+3. Sign out, sign back in. Still there.
+4. Open the cart drawer and the `/cart` page. Both show it, and a code applied
+   in one appears in the other.
+5. Apply a nonsense code. The error renders _inline under the input_, not as a
+   toast — the customer is looking at the field.
+6. Remove the coupon. The badge goes.
+7. Empty the cart with **Clear Cart**. The coupon goes with it.
+8. Re-apply a code, then remove items one at a time until the cart is empty.
+   The coupon **stays** — see the limitation below; this asymmetry is
+   deliberate and is the difference between an explicit clear and an implicit
+   one.
+9. Go to `/checkout`. The same field is there, showing the same code, and the
+   summary prices the discount.
 
 ---
 
@@ -357,6 +414,25 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_customers_preferred_name_trgm;
 
 Leave the extension installed; it costs nothing on its own.
 
+### `public.cart.applyCoupon` has no rate limit
+
+An authenticated customer can enumerate coupon codes: the procedure answers
+"Invalid coupon code" for a code that does not exist and a specific message for
+one that does, so the two are distinguishable, and nothing throttles the
+attempts.
+
+This is consistent with the rest of the cart router, which has no limiter
+anywhere, and it is gated behind sign-in — an attacker needs an account. It is
+called out because this codebase takes enumeration seriously everywhere else:
+`public.auth.signIn` returns one message for every failure and carries two
+Upstash limits, and password reset answers identically for registered and
+unregistered addresses.
+
+**When it starts mattering:** when coupon codes become guessable or valuable —
+a public campaign with short codes, or codes worth more than the cost of a
+throwaway account. Reuse the existing rate-limiter pattern, keyed per user
+rather than per IP.
+
 ### Promote the CSP `script-src` directive
 
 **When:** after a few days of real traffic, once `/api/csp-report` has been
@@ -463,3 +539,48 @@ assert a charge that never happened. Only the `SET DEFAULT` half was applied.
 
 If the database is rebuilt from scratch, skip the file entirely; the corrected
 baseline already does the right thing.
+
+### Checkout shows a coupon badge with no discount and no reason
+
+If the cart drops below the coupon's minimum, the badge stays (correctly — the
+coupon is alive, the cart is merely ineligible), but `CheckoutOrderSummary`
+prices it at zero and renders no discount row, with nothing saying why. The
+customer sees an applied code, a full-price total, and no explanation until
+Place Order fails.
+
+`useHeldCouponDiscount` already has the validator's message in hand. Surfacing
+it under the summary — "`FLASH` needs a EGP 500 minimum" — turns a dead end
+into something actionable. Left undone because it is presentation, not
+correctness: the charge is right either way.
+
+### Clearing the cart drops the coupon; emptying it by hand does not
+
+`clearCart` nulls the coupon columns, so the **Clear Cart** button deletes a
+held code. Removing the last item one at a time keeps it, because an empty cart
+is treated as "no evidence about the coupon" rather than as grounds to drop it.
+
+Two routes to the same state with two outcomes. It is defensible — an explicit
+clear is explicit intent, and the implicit path is the one where silently
+deleting a customer's code would be wrong — but it is undocumented in the UI,
+so a customer could reasonably be surprised either way.
+
+### `clearAppliedCoupon` clears whatever is held, not what was judged
+
+The re-check reads the held coupon, decides, and then clears — without
+asserting that the coupon it is clearing is still the one it judged. If the
+customer applies a different code in that window, the verdict on the old code
+deletes the new one. `applyCoupon` returns success and the cart holds nothing.
+
+Narrow and non-corrupting: nothing is charged wrongly and re-applying fixes it.
+The airtight version gives `clearAppliedCoupon` and `touchCouponCheckedAt` an
+expected `couponId` and adds `eq(carts.couponId, expected)` to the where
+clause. `touchCouponCheckedAt` already carries half of this — an
+`isNotNull(carts.couponId)` guard — because without it a concurrent
+`removeCoupon` could leave `coupon_checked_at` set on a cart with no coupon.
+
+### `AppliedCoupon` carries two fields nobody reads
+
+`couponId` and `appliedAt` on the DTO have no consumers — every caller uses
+`code` (checkout, `CouponField`) or `checkedAt` (the freshness window). Left in
+place because the `couponId` is what the race fix above would need, and
+removing it now only to add it back is churn.
