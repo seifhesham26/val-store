@@ -2,7 +2,7 @@
 
 ## Status: IN PROGRESS — round 4 complete (post-fix verification). NOT converged.
 
-## Findings: 26 fixed (docs/AUDIT_FINDINGS.md) + 13 new in round 4, of which the 1 high and 5 med are now fixed and 7 low are open by decision — see the two round 4 sections at the bottom of this file
+## Findings: 26 fixed (docs/AUDIT_FINDINGS.md) + 13 new in round 4, **all now fixed** — the 1 high and 5 med first, then the 8 low in a later pass. See the three round 4 sections at the bottom of this file
 
 ## Round: 4
 
@@ -608,3 +608,164 @@ shapes. Both effects now narrow with the `in` operator, and the inline
 `(m: { text: string; link?: string })` annotation — an assertion, not a check,
 and the thing that let `stored.map is not a function` reach production — is
 gone, with the element type coming from the schema instead.
+
+---
+
+# Round 4 — low-severity fixes (the remaining 8)
+
+Applied on `feat/cart-coupon-hold` (the branch had moved on from
+`fix/audit-findings` by the time this ran), uncommitted.
+
+**These were left open by decision, not oversight**, and are now closed on
+request. Two of them turned out to hide a second defect apiece, noted below —
+which is the argument against triaging a low as "not worth reading again."
+
+## Gate after the fixes
+
+- `pnpm lint` — 0 problems
+- `pnpm test` — **421/421** (403 before, +18: 14 for the new `client-ip`
+  module, 4 for the cart-ceiling exemption)
+- `pnpm type-check` — **not clean, and not because of this work.** A
+  concurrent session committed `d5642a0 feat(cart): Add carts table and point
+cart items at it` — Task 1 of the cart-coupon-hold plan — while this pass
+  was running. That commit repoints `cart_items.user_id` to `cart_id` in
+  `src/db/schema.ts` without yet migrating the repository (Task 2), so
+  `cart.repository.ts:209`, `:371`, the Stripe webhook and
+  `public/checkout.ts` fail on `cartItems.userId`. Every remaining error is
+  one of those; none names a line this pass wrote. `pnpm build` is blocked by
+  the same thing and was not run.
+
+## 1. `addItem` read the same variant row twice — low
+
+`cart.repository.ts`
+
+The ownership check selected `{productId, isAvailable}`; `assertWithinStock`
+then re-selected `stockQuantity` for the same row. `stockQuantity` joins the
+first select and is handed down as `knownVariantStock`, which the helper takes
+as an optional parameter so the variant-less path and any future caller are
+unchanged. One ~58ms round trip off every add-to-cart of a variant product.
+
+## 2. The homepage and `/collections` fetched their rows on the client — low
+
+`ServerNewArrivals.tsx` (new), `NewArrivals.tsx`, `CollectionSection.tsx`,
+`(main)/page.tsx`, `(main)/collections/page.tsx`
+
+Both were `"use client"` with a `products.list` query on mount and no seed, on
+surfaces whose every sibling server-renders. `/collections` showed four empty
+skeleton grids and the homepage one empty row until hydration finished.
+
+Both now take an optional `initialPage` seeded by `getCachedFirstProductPage`
+— the same fetcher `/collections/*` already uses, so the seed cannot drift
+from what the client would have fetched. `/collections` resolves all four rows
+with `Promise.all`, and `NewArrivals` gets a thin async wrapper rather than
+making the homepage itself async, so it still streams beside its siblings.
+
+Both seeds are `.catch()`-guarded: a seed is an optimisation, so a failed read
+falls back to the client fetch instead of taking the page down. That is the
+same degradation rule the other homepage sections already follow.
+
+## 3. Assorted sequential awaits and unbounded queries — low
+
+- **`admin/customers.ts`** — `list` awaited its page and its count in series;
+  `getById` awaited three independent reads in series. Both are `Promise.all`
+  now, so postgres.js pipelines each group into roughly one round trip. In
+  `getById` the "does this customer exist" check moves _below_ the fetch
+  rather than gating it — the other two queries are keyed on the same id and
+  never needed to wait for it.
+- **`coupon.repository.findAll`** — the one admin list left without a ceiling
+  when reviews and inventory were given one. Now `DEFAULT_ADMIN_COUPON_LIMIT`
+  (200) with a `countAll`, reported through the same notice as the other two
+  (see 4). It also gained the `desc(id)` tiebreaker every other paginated
+  query has — `created_at` alone is not a total order and a seed writes
+  several coupons on one timestamp.
+- **`ImageUploadSection`** — `await` per file in a loop, now `Promise.all`.
+  **This one was hiding a real bug.** `isPrimary: images.length === 0` read a
+  value that does not change while the batch is being written, so uploading
+  three images into an empty gallery marked _all three_ primary. `isPrimary`
+  is now decided by index.
+- **`CartStockDialog.handleFixAll`** — `await` per line in a loop. Now
+  `Promise.allSettled`, not `Promise.all`: a "fix all" that stops at the first
+  failure leaves a half-corrected cart and no indication which half. Every
+  line is attempted and the toast says how many did not take.
+- **Five `next/image` `fill` usages with no `sizes`** — the optimizer was
+  serving full-viewport candidates for 36-128px thumbnails. Each now declares
+  its real box.
+
+## 4. Silent truncation on three admin tables — low
+
+`TruncationNotice.tsx` (new), the inventory / reviews / coupons routers,
+repositories and tables
+
+Fix #25 replaced unbounded admin queries with caps and no paging UI, so past
+the cap rows simply stopped appearing with nothing on the page to say so — on
+the inventory screen, stock an admin can neither see nor edit.
+
+Each of the three routers now returns `{ items, total, limit }`, with `total`
+from a new `countAll` / `countAllVariants` issued alongside the page
+(`Promise.all`, ~1 round trip). `TruncationNotice` renders "Showing the first
+N of M" and renders nothing while everything fits, so it costs nothing at the
+volumes where the cap is unreachable.
+
+The reviews page also had its **tab labels and header badge** switched to the
+true total. `Pending (200)` on a 340-review backlog is the same silent
+truncation one line higher up.
+
+Real pagination is still the better answer and is still not built; this makes
+the cap honest rather than removing it.
+
+## 5. The expiry sweep dropped `couponLimitExceeded` — low
+
+`cancel-expired-checkouts.use-case.ts`
+
+The third `markAsPaid` caller ignored its result, so an overrun recovered
+through the sweep produced no log line while the webhook and success page both
+recorded one. It now logs the same JSON shape, tagged `source: "expiry-sweep"`
+so the three paths are distinguishable. The admin note was always written
+inside the repository transaction, so only the log half was missing.
+
+## 6. `getClientIp` trusted a client-supplied header — low
+
+`client-ip.ts` (new), `client-ip.test.ts` (new), `rate-limiter.ts`
+
+Fix #9 closed this with a comment: "safe because we deploy on Vercel, which
+overwrites `X-Forwarded-For`." Probably true, and recorded nowhere that fails
+if it stops being true — the repo pins no deployment target.
+
+Now a control. The rule moved into a pure module and reads, in order: a
+platform-issued header (`x-vercel-forwarded-for`, `cf-connecting-ip`), then
+`X-Forwarded-For` counted **from the right** by `TRUSTED_PROXY_HOPS`
+(default 1), then `x-real-ip`, then `"unknown"`.
+
+**Not a behaviour change on Vercel**: because Vercel overwrites rather than
+appends, its chain is a single entry where leftmost and rightmost are the same
+value. Reading from the right is identical there and strictly safer anywhere
+that appends.
+
+A chain shorter than the hop count yields _nothing_ rather than falling back
+to `entries[0]` — that fallback would restore exactly the value an attacker
+controls. `TRUSTED_PROXY_HOPS` also refuses to widen trust on a bad value: 0,
+negative and non-numeric all fall back to the default. **14 unit tests**,
+including the spoofed-chain cases.
+
+## 7. An out-of-stock cart line could not be decremented — low
+
+`update-cart-item.use-case.ts`
+
+Fix #23 dropped `&& maxStock > 0` from the ceiling, correctly — and as a side
+effect made _any_ positive quantity throw when stock is 0, so a customer
+holding 3 of a sold-out item could not reduce it to 1. Every minus click
+returned "This item is out of stock" and removing the line was the only move.
+
+The ceiling now bounds _increases_ only: a reduction (`quantity <
+existingItem.quantity`) is always allowed. Re-submitting the same over-ceiling
+quantity is not a reduction and still throws, which is what keeps the
+exemption from decaying into "writes to an over-ceiling line are unchecked."
+Nothing can be oversold by it — `order.repository.create` re-checks every line
+under `FOR UPDATE`. **4 tests**, covering both halves.
+
+## 8. `admin/orders.ts` took an unbounded `status` string — low
+
+`listOrdersSchema.status` is `z.enum(ORDER_STATUSES)` now, the same domain
+source `updateOrderStatusSchema.status` twenty lines below already used. A
+value outside the enum reached Postgres as a comparison against the native
+`order_status` type and raised a 500 where a validation error belongs.

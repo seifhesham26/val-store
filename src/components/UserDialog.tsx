@@ -73,6 +73,7 @@ export function UserDialog({ user }: UserDialogProps) {
               src={user.image}
               alt={`${user.firstName} ${user.lastName}`}
               fill
+              sizes="36px"
               className="object-cover"
             />
           ) : (
@@ -96,6 +97,7 @@ export function UserDialog({ user }: UserDialogProps) {
                   src={user.image}
                   alt={`${user.firstName} ${user.lastName}`}
                   fill
+                  sizes="80px"
                   className="object-cover"
                 />
               ) : (

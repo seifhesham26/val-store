@@ -111,6 +111,9 @@ export function AppearanceSettings() {
                       src={form.logoUrl}
                       alt="Logo"
                       fill
+                      // The box is a fixed 128px; without this the optimizer
+                      // is told nothing and serves a full-viewport candidate.
+                      sizes="128px"
                       className="object-contain"
                       unoptimized
                     />
@@ -142,6 +145,7 @@ export function AppearanceSettings() {
                       src={form.faviconUrl}
                       alt="Favicon"
                       fill
+                      sizes="40px"
                       className="object-contain"
                       unoptimized
                     />

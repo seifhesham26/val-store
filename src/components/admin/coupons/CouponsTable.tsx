@@ -18,6 +18,7 @@ import { MoreHorizontal, Pencil, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { formatCurrency } from "@/lib/currency";
+import { TruncationNotice } from "@/components/admin/TruncationNotice";
 
 export interface CouponRow {
   id: string;
@@ -64,6 +65,8 @@ function statusOf(coupon: CouponRow): {
 
 interface CouponsTableProps {
   coupons: CouponRow[];
+  /** Coupons that exist, which may exceed the query's ceiling. */
+  total: number;
   onEdit: (coupon: CouponRow) => void;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
@@ -71,6 +74,7 @@ interface CouponsTableProps {
 
 export function CouponsTable({
   coupons,
+  total,
   onEdit,
   onToggle,
   onDelete,
@@ -81,109 +85,116 @@ export function CouponsTable({
   };
 
   return (
-    <div className="border rounded-lg">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Code</TableHead>
-            <TableHead>Discount</TableHead>
-            <TableHead>Usage</TableHead>
-            <TableHead>Expires</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="w-[50px]" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {coupons.length === 0 && (
+    <div className="space-y-3">
+      <TruncationNotice shown={coupons.length} total={total} noun="coupons" />
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell
-                colSpan={6}
-                className="text-center py-8 text-muted-foreground"
-              >
-                No coupons yet. Create your first one!
-              </TableCell>
+              <TableHead>Code</TableHead>
+              <TableHead>Discount</TableHead>
+              <TableHead>Usage</TableHead>
+              <TableHead>Expires</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="w-[50px]" />
             </TableRow>
-          )}
-          {coupons.map((coupon) => (
-            <TableRow key={coupon.id}>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <code className="font-mono font-semibold">{coupon.code}</code>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => copyCode(coupon.code)}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-                {coupon.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {coupon.description}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell>
-                {coupon.discountType === "percentage"
-                  ? `${coupon.discountValue}%`
-                  : formatCurrency(Number(coupon.discountValue))}
-              </TableCell>
-              <TableCell>
-                {coupon.usageCount}
-                {coupon.usageLimit && ` / ${coupon.usageLimit}`}
-              </TableCell>
-              <TableCell>
-                {coupon.expiresAt
-                  ? format(new Date(coupon.expiresAt), "MMM d, yyyy")
-                  : "Never"}
-              </TableCell>
-              <TableCell>
-                {(() => {
-                  const status = statusOf(coupon);
-                  return (
-                    <div className="space-y-0.5">
-                      <Badge variant={status.active ? "default" : "secondary"}>
-                        {status.active ? "Active" : "Inactive"}
-                      </Badge>
-                      {status.reason && (
-                        <p className="text-xs text-muted-foreground">
-                          {status.reason}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })()}
-              </TableCell>
-              <TableCell>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => onEdit(coupon)}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onToggle(coupon.id)}>
-                      {coupon.isActive ? "Deactivate" : "Activate"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => onDelete(coupon.id)}
+          </TableHeader>
+          <TableBody>
+            {coupons.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="text-center py-8 text-muted-foreground"
+                >
+                  No coupons yet. Create your first one!
+                </TableCell>
+              </TableRow>
+            )}
+            {coupons.map((coupon) => (
+              <TableRow key={coupon.id}>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono font-semibold">
+                      {coupon.code}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => copyCode(coupon.code)}
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  {coupon.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {coupon.description}
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {coupon.discountType === "percentage"
+                    ? `${coupon.discountValue}%`
+                    : formatCurrency(Number(coupon.discountValue))}
+                </TableCell>
+                <TableCell>
+                  {coupon.usageCount}
+                  {coupon.usageLimit && ` / ${coupon.usageLimit}`}
+                </TableCell>
+                <TableCell>
+                  {coupon.expiresAt
+                    ? format(new Date(coupon.expiresAt), "MMM d, yyyy")
+                    : "Never"}
+                </TableCell>
+                <TableCell>
+                  {(() => {
+                    const status = statusOf(coupon);
+                    return (
+                      <div className="space-y-0.5">
+                        <Badge
+                          variant={status.active ? "default" : "secondary"}
+                        >
+                          {status.active ? "Active" : "Inactive"}
+                        </Badge>
+                        {status.reason && (
+                          <p className="text-xs text-muted-foreground">
+                            {status.reason}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onEdit(coupon)}>
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onToggle(coupon.id)}>
+                        {coupon.isActive ? "Deactivate" : "Activate"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => onDelete(coupon.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

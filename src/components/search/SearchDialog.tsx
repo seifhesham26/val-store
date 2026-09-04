@@ -117,6 +117,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                           src={product.primaryImage}
                           alt={product.name}
                           fill
+                          sizes="48px"
                           className="object-cover"
                         />
                       ) : (

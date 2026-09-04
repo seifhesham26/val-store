@@ -4,8 +4,13 @@
  * Covers the stock ceiling check. `maxStock` is always a real number
  * (`DrizzleCartRepository.mapToEntity` — the chosen variant's stock, or a
  * variant-less product's summed stock, defaulted to 0 via `?? 0`), never an
- * "unknown" sentinel, so a maxStock of 0 must reject every quantity rather
- * than being read as "no limit."
+ * "unknown" sentinel, so a maxStock of 0 must reject rather than being read
+ * as "no limit."
+ *
+ * The one exemption is a reduction: the ceiling bounds increases, so a line
+ * that is already over it — stock fell after it was added — can still be
+ * decremented. Both halves are covered below, since the exemption is exactly
+ * the shape that decays into "over-ceiling lines are unchecked."
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -116,6 +121,74 @@ describe("UpdateCartItemUseCase", () => {
         userId: USER_ID,
       })
     ).rejects.toThrow(/out of stock/);
+  });
+
+  it("allows reducing a line that is already over the ceiling", async () => {
+    // Stock fell to 1 while 3 sat in the cart. The customer did not cause
+    // that and 3 -> 2 moves them towards a cart that can check out, so the
+    // ceiling must not block it. Only increases are bounded.
+    const repo = createMockRepository(
+      createTestCartItem({ quantity: 3, maxStock: 1 })
+    );
+    const useCase = new UpdateCartItemUseCase(repo);
+
+    await expect(
+      useCase.execute({
+        cartItemId: "cart-item-123",
+        quantity: 2,
+        userId: USER_ID,
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it("allows reducing a line whose stock has fallen to 0", async () => {
+    // The sold-out case. Without this the only way out of an out-of-stock
+    // line is removing it — every "-" click returned "This item is out of
+    // stock".
+    const repo = createMockRepository(
+      createTestCartItem({ quantity: 3, maxStock: 0 })
+    );
+    const useCase = new UpdateCartItemUseCase(repo);
+
+    await expect(
+      useCase.execute({
+        cartItemId: "cart-item-123",
+        quantity: 1,
+        userId: USER_ID,
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it("still rejects an increase on a line that is already over the ceiling", async () => {
+    const repo = createMockRepository(
+      createTestCartItem({ quantity: 3, maxStock: 1 })
+    );
+    const useCase = new UpdateCartItemUseCase(repo);
+
+    await expect(
+      useCase.execute({
+        cartItemId: "cart-item-123",
+        quantity: 4,
+        userId: USER_ID,
+      })
+    ).rejects.toThrow(/Maximum available stock is 1/);
+  });
+
+  it("still rejects re-submitting the same over-ceiling quantity", async () => {
+    // Not a reduction, so the ceiling applies. This is what keeps the
+    // exemption from becoming "any write to an over-ceiling line is fine".
+    const repo = createMockRepository(
+      createTestCartItem({ quantity: 3, maxStock: 1 })
+    );
+    const useCase = new UpdateCartItemUseCase(repo);
+
+    await expect(
+      useCase.execute({
+        cartItemId: "cart-item-123",
+        quantity: 3,
+        userId: USER_ID,
+      })
+    ).rejects.toThrow(/Maximum available stock is 1/);
   });
 
   it("still rejects quantities below 1 before checking stock", async () => {

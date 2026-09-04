@@ -11,12 +11,19 @@ import {
   InventoryLog,
   NewInventoryLog,
 } from "@/db/schema";
-import { eq, desc, lte, inArray } from "drizzle-orm";
+import { eq, desc, lte, inArray, sql } from "drizzle-orm";
 import {
   InventoryRepositoryInterface,
   InventoryLogWithDetails,
   VariantWithStock,
 } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
+
+/**
+ * Ceiling on the admin inventory table, which has no pagination or
+ * virtualisation. Exported so the router can report it alongside the true
+ * total — a cap the screen cannot see is a cap that hides stock.
+ */
+export const DEFAULT_ADMIN_VARIANT_LIMIT = 500;
 
 export class DrizzleInventoryRepository implements InventoryRepositoryInterface {
   async createLog(log: NewInventoryLog): Promise<InventoryLog> {
@@ -163,7 +170,9 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
     }));
   }
 
-  async getAllVariantsWithStock(limit = 500): Promise<VariantWithStock[]> {
+  async getAllVariantsWithStock(
+    limit = DEFAULT_ADMIN_VARIANT_LIMIT
+  ): Promise<VariantWithStock[]> {
     // The admin inventory table renders this with no pagination or
     // virtualisation, so an unbounded `findAll`-style query grows with the
     // catalogue forever. 500 comfortably covers the current ~36-product
@@ -191,6 +200,17 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
       productName: r.productName!,
       productSlug: r.productSlug!,
     }));
+  }
+
+  async countAllVariants(): Promise<number> {
+    // `count(*)::int` rather than `sql<number>count(*)`: postgres.js decodes a
+    // Postgres bigint as a string, so the unadorned form is a compile-time
+    // assertion the runtime does not honour. See CLAUDE.md.
+    const [row] = await db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(productVariants);
+
+    return row?.total ?? 0;
   }
 
   // Unlocked primitive — see the interface doc. `AdjustStockUseCase` used to

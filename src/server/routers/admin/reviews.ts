@@ -6,7 +6,10 @@
 
 import { router, adminProcedure, adminWriteProcedure } from "@/server/trpc";
 import { z } from "zod";
-import { DrizzleReviewRepository } from "@/infrastructure/database/repositories/reviews/review.repository";
+import {
+  DrizzleReviewRepository,
+  DEFAULT_ADMIN_REVIEW_LIMIT,
+} from "@/infrastructure/database/repositories/reviews/review.repository";
 import { TRPCError } from "@trpc/server";
 
 const reviewRepo = new DrizzleReviewRepository();
@@ -24,7 +27,18 @@ export const adminReviewsRouter = router({
         .optional()
     )
     .query(async ({ input }) => {
-      return reviewRepo.findAll(input?.onlyPending ?? false);
+      const onlyPending = input?.onlyPending ?? false;
+
+      // `total` alongside the rows: `findAll` is capped at
+      // `DEFAULT_ADMIN_REVIEW_LIMIT` and this table does not paginate, so
+      // without the total it silently stops showing reviews. Reviews are the
+      // one admin table that grows without an admin doing anything.
+      const [items, total] = await Promise.all([
+        reviewRepo.findAll(onlyPending),
+        reviewRepo.countAll(onlyPending),
+      ]);
+
+      return { items, total, limit: DEFAULT_ADMIN_REVIEW_LIMIT };
     }),
 
   /**

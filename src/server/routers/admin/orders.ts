@@ -13,7 +13,12 @@ import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value
 const listOrdersSchema = z
   .object({
     userId: z.string().optional(),
-    status: z.string().optional(),
+    // Same domain source as `updateOrderStatusSchema` below. A bare
+    // `z.string()` reaches Postgres as a comparison against the native
+    // `order_status` enum, so anything outside the enum raises `invalid input
+    // value for enum order_status` — a 500 on the admin orders table where a
+    // validation error belongs.
+    status: z.enum(ORDER_STATUSES).optional(),
     startDate: z.date().optional(),
     endDate: z.date().optional(),
     minTotal: z.number().optional(),

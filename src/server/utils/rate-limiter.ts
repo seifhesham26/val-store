@@ -114,36 +114,9 @@ export async function enforceRateLimit(
 /**
  * Helper to get client IP from request headers.
  *
- * Trusts the leftmost `X-Forwarded-For` value with no trusted-proxy check —
- * that entry is the one furthest from the server and the one a client
- * controls directly. This is safe only because the app is deployed on
- * Vercel, which overwrites `X-Forwarded-For` at its edge rather than
- * appending to whatever the client sent, so the leftmost value really is the
- * platform's view of the true client IP. That is a deployment fact, not
- * something this code enforces: moving off Vercel, or adding any path that
- * reaches this app directly (a self-hosted box behind a bare reverse proxy,
- * a health check, a second ingress), reopens spoofing via a hand-set header
- * — the fix then is a trusted-proxy hop count or reading a specific,
- * platform-issued header instead of the whole chain's first entry.
- *
- * Four IP-keyed consumers depend on this holding: `public.products.search`
- * (its only throttle — an unauthenticated `ILIKE '%…%'` scan), `newsletter.subscribe`
- * (also its only throttle), `auth.signIn` (one of two limits on sign-in —
- * see `signin:ip:${ip}` above), and `api/csp-report/route.ts`. A spoofable
- * IP here means each of those loses its per-client budget entirely.
+ * The resolution rule — platform-issued headers first, then `X-Forwarded-For`
+ * counted from the **right** by `TRUSTED_PROXY_HOPS` — lives in
+ * `./client-ip`, which is pure and unit-tested. See that file for why the
+ * leftmost entry is the one an attacker writes.
  */
-export function getClientIp(headers: Headers): string {
-  // Check common proxy headers
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-
-  const realIp = headers.get("x-real-ip");
-  if (realIp) {
-    return realIp;
-  }
-
-  // Fallback
-  return "unknown";
-}
+export { resolveClientIp as getClientIp } from "./client-ip";

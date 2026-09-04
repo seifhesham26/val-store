@@ -46,6 +46,15 @@ export interface InventoryRepositoryInterface {
    */
   getAllVariantsWithStock(limit?: number): Promise<VariantWithStock[]>;
   /**
+   * How many variants exist in total.
+   *
+   * Pairs with `getAllVariantsWithStock` so a caller can tell the admin that
+   * the table is showing the first N of M. Without it the cap truncates
+   * silently, which on this screen means stock that simply is not there to
+   * see or edit — a worse failure than a slow page.
+   */
+  countAllVariants(): Promise<number>;
+  /**
    * Unlocked, unconditional absolute write — no row lock, no audit log.
    * Nothing in the codebase calls this today. Do not use it for a
    * read-then-write stock change (read the level, decide a new one, write

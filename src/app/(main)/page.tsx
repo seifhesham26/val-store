@@ -1,7 +1,7 @@
 import { ServerHeroSection } from "@/components/home/ServerHeroSection";
 import { ServerFeaturedCategories } from "@/components/home/ServerFeaturedCategories";
 import { ServerFeaturedProducts } from "@/components/home/ServerFeaturedProducts";
-import { NewArrivals } from "@/components/home/NewArrivals";
+import { ServerNewArrivals } from "@/components/home/ServerNewArrivals";
 import { PromoBanner } from "@/components/home/PromoBanner";
 import { BrandStory } from "@/components/home/BrandStory";
 import { NewsletterSection } from "@/components/home/NewsletterSection";
@@ -14,7 +14,7 @@ export default function Home() {
       <ServerFeaturedCategories />
       <BrandStory />
       <ServerFeaturedProducts />
-      <NewArrivals />
+      <ServerNewArrivals />
       <PromoBanner />
       <NewsletterSection />
       <TrustIndicators />

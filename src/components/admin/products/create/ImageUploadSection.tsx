@@ -98,28 +98,39 @@ export function ImageUploadSection({
   }, [handleNotifyParent]);
 
   const handleUploadComplete = async (res: { url: string; name: string }[]) => {
-    for (const file of res) {
-      if (productId) {
-        await addMutation.mutateAsync({
-          productId,
-          imageUrl: file.url,
-          altText: file.name,
-          isPrimary: images.length === 0,
-        });
-      } else {
-        setLocalImages((prev) => [
-          ...prev,
-          {
-            id: `local-${Date.now()}-${prev.length}`,
+    if (productId) {
+      // Independent inserts with no ordering between them, so they go down
+      // the connection together rather than costing a round trip each.
+      //
+      // `isPrimary` is decided by index rather than by `images.length` read
+      // inside the loop. That value does not change while the batch is being
+      // written — it is the gallery as it stood before the upload — so the
+      // sequential version marked *every* image of a batch primary whenever
+      // the gallery started empty.
+      await Promise.all(
+        res.map((file, index) =>
+          addMutation.mutateAsync({
+            productId,
             imageUrl: file.url,
             altText: file.name,
-            isPrimary: prev.length === 0,
-            displayOrder: prev.length,
-            isLocal: true,
-          },
-        ]);
-      }
+            isPrimary: images.length === 0 && index === 0,
+          })
+        )
+      );
+    } else {
+      setLocalImages((prev) => [
+        ...prev,
+        ...res.map((file, index) => ({
+          id: `local-${Date.now()}-${prev.length + index}`,
+          imageUrl: file.url,
+          altText: file.name,
+          isPrimary: prev.length + index === 0,
+          displayOrder: prev.length + index,
+          isLocal: true,
+        })),
+      ]);
     }
+
     toast.success(`${res.length} image(s) uploaded`);
   };
 

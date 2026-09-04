@@ -11,7 +11,7 @@ import {
   Review,
   NewReview,
 } from "@/db/schema";
-import { eq, and, desc, avg, count, inArray } from "drizzle-orm";
+import { eq, and, desc, avg, count, inArray, sql } from "drizzle-orm";
 import {
   ReviewPage,
   ReviewRepositoryInterface,
@@ -22,7 +22,7 @@ import {
 // which is always called with a `page`. Reviews are the one table here that
 // grows without bound, so a caller that forgets to page still gets a bounded
 // result rather than every row ever written.
-const DEFAULT_ADMIN_REVIEW_LIMIT = 200;
+export const DEFAULT_ADMIN_REVIEW_LIMIT = 200;
 
 export class DrizzleReviewRepository implements ReviewRepositoryInterface {
   async findById(id: string): Promise<Review | null> {
@@ -110,6 +110,17 @@ export class DrizzleReviewRepository implements ReviewRepositoryInterface {
       .offset(page?.offset ?? 0);
 
     return results;
+  }
+
+  async countAll(onlyPending = false): Promise<number> {
+    // `COUNT(*)::int` — postgres.js hands back a bigint as a string, so the
+    // cast is what makes the `number` annotation true rather than asserted.
+    const [row] = await db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(reviews)
+      .where(onlyPending ? eq(reviews.isApproved, false) : undefined);
+
+    return row?.total ?? 0;
   }
 
   async create(review: NewReview): Promise<Review> {

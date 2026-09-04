@@ -9,6 +9,7 @@ import { z } from "zod";
 import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";
 import { inventoryChangeTypeEnum } from "@/db/schema";
+import { DEFAULT_ADMIN_VARIANT_LIMIT } from "@/infrastructure/database/repositories/inventory/inventory.repository";
 
 const inventoryRepo = container.getInventoryRepository();
 
@@ -17,7 +18,17 @@ export const adminInventoryRouter = router({
    * Get all variants with stock levels
    */
   listVariants: adminProcedure.query(async () => {
-    return inventoryRepo.getAllVariantsWithStock();
+    // `total` alongside the rows so the table can say what it is not showing.
+    // The cap exists because this screen has no pagination; without the total
+    // it truncates in silence, and on the inventory screen that means stock an
+    // admin can neither see nor edit.
+    // Independent queries, so `Promise.all` pipelines them into ~1 round trip.
+    const [items, total] = await Promise.all([
+      inventoryRepo.getAllVariantsWithStock(),
+      inventoryRepo.countAllVariants(),
+    ]);
+
+    return { items, total, limit: DEFAULT_ADMIN_VARIANT_LIMIT };
   }),
 
   /**

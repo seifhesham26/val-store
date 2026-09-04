@@ -20,7 +20,8 @@ export default function AdminCouponsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<CouponRow | null>(null);
 
-  const { data: coupons, isLoading } = trpc.admin.coupons.list.useQuery();
+  const { data: couponPage, isLoading } = trpc.admin.coupons.list.useQuery();
+  const coupons = couponPage?.items;
   const utils = trpc.useUtils();
 
   const createMutation = trpc.admin.coupons.create.useMutation({
@@ -126,6 +127,7 @@ export default function AdminCouponsPage() {
       />
       <CouponsTable
         coupons={coupons ?? []}
+        total={couponPage?.total ?? coupons?.length ?? 0}
         onEdit={(coupon) => {
           setEditingCoupon(coupon);
           setDialogOpen(true);

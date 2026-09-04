@@ -67,13 +67,14 @@ export const adminCustomersRouter = router({
         query = query.where(searchWhere) as typeof query;
       }
 
-      const customers = await query;
-
-      // Same predicate as the rows above.
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(user)
-        .where(searchWhere);
+      // Independent queries — the count does not read the page. Issued
+      // together so postgres.js pipelines them down one connection and the
+      // pair costs about one round trip instead of two.
+      const [customers, [{ total }]] = await Promise.all([
+        query,
+        // Same predicate as the rows above.
+        db.select({ total: count() }).from(user).where(searchWhere),
+      ]);
 
       return {
         customers: customers.map((c) => ({
@@ -97,46 +98,50 @@ export const adminCustomersRouter = router({
       })
     )
     .query(async ({ input }) => {
-      const customer = await db.query.user.findFirst({
-        where: eq(user.id, input.id),
-      });
-
-      if (!customer) return null;
-
       const limit = input.orderLimit ?? 20;
       const offset = input.orderOffset ?? 0;
 
-      // Bounded. This used to load every order the customer had ever placed,
-      // with every line item and every joined product row — unbounded in the
-      // number of orders, on a dialog that renders a summary list.
-      const customerOrders = await db.query.orders.findMany({
-        where: eq(orders.userId, input.id),
-        orderBy: [desc(orders.createdAt)],
-        limit,
-        offset,
-        with: {
-          items: {
-            with: {
-              product: true,
+      // Three independent reads, so they go down the connection together —
+      // ~1 round trip rather than 3. The orders and totals queries are keyed
+      // on the same id the customer lookup uses, so nothing here waits on
+      // anything else here; the "does this customer exist" check just moves
+      // below the fetch instead of gating it.
+      const [customer, customerOrders, [totals]] = await Promise.all([
+        db.query.user.findFirst({ where: eq(user.id, input.id) }),
+        // Bounded. This used to load every order the customer had ever
+        // placed, with every line item and every joined product row —
+        // unbounded in the number of orders, on a dialog that renders a
+        // summary list.
+        db.query.orders.findMany({
+          where: eq(orders.userId, input.id),
+          orderBy: [desc(orders.createdAt)],
+          limit,
+          offset,
+          with: {
+            items: {
+              with: {
+                product: true,
+              },
             },
           },
-        },
-      });
+        }),
+        // Aggregated in SQL rather than folded over the rows above: those are
+        // now one page, so deriving totals from them would report the first 20
+        // orders as the customer's lifetime figures.
+        //
+        // `totalSpent` uses the shared revenue definition, so a customer who
+        // abandoned three checkouts and cancelled a fourth no longer reads as
+        // a high-value account.
+        db
+          .select({
+            orderCount: count(),
+            totalSpent: sql<string>`${SUM_NET_REVENUE}`,
+          })
+          .from(orders)
+          .where(eq(orders.userId, input.id)),
+      ]);
 
-      // Aggregated in SQL rather than folded over the rows above: those are
-      // now one page, so deriving totals from them would report the first 20
-      // orders as the customer's lifetime figures.
-      //
-      // `totalSpent` uses the shared revenue definition, so a customer who
-      // abandoned three checkouts and cancelled a fourth no longer reads as a
-      // high-value account.
-      const [totals] = await db
-        .select({
-          orderCount: count(),
-          totalSpent: sql<string>`${SUM_NET_REVENUE}`,
-        })
-        .from(orders)
-        .where(eq(orders.userId, input.id));
+      if (!customer) return null;
 
       return {
         ...customer,
