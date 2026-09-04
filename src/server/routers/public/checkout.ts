@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
-import { isTransientCouponRejection } from "@/application/coupons/use-cases/validate-coupon.use-case";
+import { clearHeldCouponIfDead } from "@/server/utils/clear-dead-coupon";
 import { db } from "@/db";
 import { orders } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -52,33 +52,16 @@ export const checkoutRouter = router({
         // *why*, and most of the reasons are not the coupon's fault. Ask the
         // validator, and drop the held code only if it is genuinely dead.
         if (held) {
-          try {
-            const subtotal = await container
-              .getCartRepository()
-              .getCartTotal(ctx.user.id);
-            const verdict = await container
-              .getValidateCouponUseCase()
-              .execute(held.code, subtotal, ctx.user.id);
-
-            // Only a dead coupon is dropped. A cart that is merely ineligible
-            // right now is the same condition GetCartUseCase deliberately
-            // keeps, and an error that had nothing to do with the coupon
-            // (stock, a bad address) comes back valid and leaves it alone.
-            if (!verdict.valid && !isTransientCouponRejection(verdict.reason)) {
-              await container
-                .getCartRepository()
-                .clearAppliedCoupon(ctx.user.id);
-            }
-          } catch (clearError) {
-            // Never let the cleanup's failure replace the error that
-            // explains what actually went wrong.
-            console.error(
-              "[Checkout] classifying the applied coupon failed:",
-              clearError instanceof Error
-                ? clearError.message
-                : String(clearError)
-            );
-          }
+          // Only a dead coupon is dropped, and this swallows its own
+          // failures — the error below is the one that must reach the caller.
+          await clearHeldCouponIfDead(
+            {
+              cartRepository: container.getCartRepository(),
+              validateCoupon: container.getValidateCouponUseCase(),
+            },
+            ctx.user.id,
+            held.code
+          );
         }
         throw error;
       }
@@ -124,33 +107,16 @@ export const checkoutRouter = router({
         // could not be honoured, so classify it before clearing and drop
         // only a genuinely dead code.
         if (held) {
-          try {
-            const subtotal = await container
-              .getCartRepository()
-              .getCartTotal(ctx.user.id);
-            const verdict = await container
-              .getValidateCouponUseCase()
-              .execute(held.code, subtotal, ctx.user.id);
-
-            // Only a dead coupon is dropped. A cart that is merely ineligible
-            // right now is the same condition GetCartUseCase deliberately
-            // keeps, and an error that had nothing to do with the coupon
-            // (stock, a bad address) comes back valid and leaves it alone.
-            if (!verdict.valid && !isTransientCouponRejection(verdict.reason)) {
-              await container
-                .getCartRepository()
-                .clearAppliedCoupon(ctx.user.id);
-            }
-          } catch (clearError) {
-            // Never let the cleanup's failure replace the error that
-            // explains what actually went wrong.
-            console.error(
-              "[Checkout] classifying the applied coupon failed:",
-              clearError instanceof Error
-                ? clearError.message
-                : String(clearError)
-            );
-          }
+          // Only a dead coupon is dropped, and this swallows its own
+          // failures — the error below is the one that must reach the caller.
+          await clearHeldCouponIfDead(
+            {
+              cartRepository: container.getCartRepository(),
+              validateCoupon: container.getValidateCouponUseCase(),
+            },
+            ctx.user.id,
+            held.code
+          );
         }
         throw error;
       }
