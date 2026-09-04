@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { useCartStore } from "@/lib/stores/cart-store";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import { CheckoutOrderSummary } from "@/components/checkout/CheckoutOrderSummary";
 import { CheckoutAddressSelection } from "@/components/checkout/CheckoutAddressSelection";
@@ -28,53 +27,8 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("cash_on_delivery");
 
-  // Coupon state
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    couponId: string;
-    discountAmount: number;
-    discountType: string;
-    discountValue: string;
-  } | null>(null);
-  const [couponError, setCouponError] = useState<string | null>(null);
-
-  const subtotal = useCartStore((state) => state.getSubtotal());
-
   const { hasProblems, revalidate, openDialog } = useCartStock();
   const [isVerifyingStock, setIsVerifyingStock] = useState(false);
-
-  const validateCoupon = trpc.public.coupons.validate.useMutation({
-    onSuccess: (result) => {
-      if (result.valid && "code" in result) {
-        setAppliedCoupon({
-          code: result.code,
-          couponId: result.couponId,
-          discountAmount: result.discountAmount ?? 0,
-          discountType: result.discountType,
-          discountValue: result.discountValue,
-        });
-        setCouponCode("");
-        setCouponError(null);
-      } else if (!result.valid && "error" in result) {
-        setCouponError(result.error ?? "Invalid coupon");
-      }
-    },
-    onError: (err) => {
-      setCouponError(err.message);
-    },
-  });
-
-  const handleApplyCoupon = () => {
-    if (!couponCode.trim()) return;
-    setCouponError(null);
-    validateCoupon.mutate({ code: couponCode, subtotal });
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponError(null);
-  };
 
   const defaultAddressId = useMemo(() => {
     const def = addresses.find((a) => a.isDefault);
@@ -153,15 +107,12 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
       setIsVerifyingStock(false);
     }
 
-    // Only the code is sent — the server re-validates it and derives the
-    // discount itself, so the displayed total can never diverge from the charge.
-    const couponCodeToApply = appliedCoupon?.code;
-
+    // No coupon is sent. The cart holds the applied code and the server reads
+    // it from there, so there is one source of truth and the client is not it.
     if (paymentMethod === "stripe") {
       const res = await createStripeSession.mutateAsync({
         shippingAddressId: effectiveSelectedAddressId,
         billingAddressId: effectiveBillingAddressId,
-        couponCode: couponCodeToApply,
       });
       if (res?.url) {
         window.location.href = res.url;
@@ -172,7 +123,6 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
     const res = await createCodOrder.mutateAsync({
       shippingAddressId: effectiveSelectedAddressId,
       billingAddressId: effectiveBillingAddressId,
-      couponCode: couponCodeToApply,
     });
     router.push(`/checkout/success?order_id=${res.orderId}`);
   };
@@ -264,15 +214,7 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
           {/* Right Column: Order Summary sticky */}
           <div className="lg:col-span-5 mt-10 lg:mt-0">
             <div className="sticky top-24 lg:top-32 w-full">
-              <CheckoutOrderSummary
-                couponCode={couponCode}
-                setCouponCode={setCouponCode}
-                appliedCoupon={appliedCoupon}
-                onApplyCoupon={handleApplyCoupon}
-                onRemoveCoupon={handleRemoveCoupon}
-                isValidating={validateCoupon.isPending}
-                couponError={couponError}
-              />
+              <CheckoutOrderSummary />
             </div>
           </div>
         </div>

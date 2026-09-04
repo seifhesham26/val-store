@@ -5,6 +5,7 @@ import { ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CartItem } from "@/components/cart/CartItem";
 import { CartSummary } from "@/components/cart/CartSummary";
+import { CouponField } from "@/components/cart/CouponField";
 import { useCart } from "@/components/providers/cart-provider";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 
@@ -67,7 +68,13 @@ export function CartPopulated() {
         </div>
 
         {/* Order Summary */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-4">
+          {/* Above the summary: the code is entered before the totals it will
+              change, and the summary itself quotes no discount — checkout
+              prices the coupon. */}
+          <div className="rounded-lg border border-white/10 bg-zinc-900 p-4">
+            <CouponField />
+          </div>
           <CartSummary
             subtotal={subtotal}
             itemCount={itemCount}

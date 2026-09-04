@@ -26,18 +26,34 @@ export const checkoutRouter = router({
         // explicit choice (the "same as shipping" checkbox, checked by
         // default, sends shippingAddressId back here itself).
         billingAddressId: z.string().min(1),
-        couponCode: z.string().trim().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // The cart owns the applied coupon. Taking it from the request as well
+      // would be a second source of truth, and the client controls that one.
+      const held = await container
+        .getCartRepository()
+        .getAppliedCoupon(ctx.user.id);
+
       const useCase = container.getCreateCheckoutSessionUseCase();
-      return useCase.execute({
-        userId: ctx.user.id,
-        email: ctx.user.email,
-        shippingAddressId: input.shippingAddressId,
-        billingAddressId: input.billingAddressId,
-        couponCode: input.couponCode,
-      });
+
+      try {
+        return await useCase.execute({
+          userId: ctx.user.id,
+          email: ctx.user.email,
+          shippingAddressId: input.shippingAddressId,
+          billingAddressId: input.billingAddressId,
+          couponCode: held?.code,
+        });
+      } catch (error) {
+        // The use case throws when a coupon has gone bad rather than silently
+        // charging full price. Drop the dead code so the retry is not stuck
+        // on it — the customer still sees the error that explains why.
+        if (held) {
+          await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+        }
+        throw error;
+      }
     }),
 
   /**
@@ -51,24 +67,36 @@ export const checkoutRouter = router({
         // explicit choice (the "same as shipping" checkbox, checked by
         // default, sends shippingAddressId back here itself).
         billingAddressId: z.string().min(1),
-        couponCode: z.string().trim().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const useCase = container.getCreateOrderUseCase();
-      const { order } = await useCase.execute({
-        userId: ctx.user.id,
-        shippingAddressId: input.shippingAddressId,
-        billingAddressId: input.billingAddressId,
-        paymentMethod: "cash_on_delivery",
-        couponCode: input.couponCode,
-        // The card path gets the address from the Stripe session; COD has no
-        // gateway to ask, so the confirmation address comes from the session
-        // user here.
-        customerEmail: ctx.user.email,
-      });
+      // See createSession: the cart is the only place the applied code lives.
+      const held = await container
+        .getCartRepository()
+        .getAppliedCoupon(ctx.user.id);
 
-      return { orderId: order.id };
+      const useCase = container.getCreateOrderUseCase();
+
+      try {
+        const { order } = await useCase.execute({
+          userId: ctx.user.id,
+          shippingAddressId: input.shippingAddressId,
+          billingAddressId: input.billingAddressId,
+          paymentMethod: "cash_on_delivery",
+          couponCode: held?.code,
+          // The card path gets the address from the Stripe session; COD has no
+          // gateway to ask, so the confirmation address comes from the session
+          // user here.
+          customerEmail: ctx.user.email,
+        });
+
+        return { orderId: order.id };
+      } catch (error) {
+        if (held) {
+          await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+        }
+        throw error;
+      }
     }),
 
   /**

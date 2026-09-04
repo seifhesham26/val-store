@@ -46,7 +46,10 @@ export function createCartModule(deps: CartModuleDeps) {
     getAddToCartUseCase: () =>
       (addToCart ??= new AddToCartUseCase(getCartRepository())),
     getGetCartUseCase: () =>
-      (getCart ??= new GetCartUseCase(getCartRepository())),
+      (getCart ??= new GetCartUseCase(
+        getCartRepository(),
+        deps.getValidateCouponUseCase()
+      )),
     getUpdateCartItemUseCase: () =>
       (updateCartItem ??= new UpdateCartItemUseCase(getCartRepository())),
     getRemoveCartItemUseCase: () =>
