@@ -13,7 +13,9 @@ import {
   categories,
   orders,
   orderItems,
+  carts,
   cartItems,
+  coupons,
   wishlist,
   reviews,
   user,
@@ -150,16 +152,36 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 }));
 
 // ============================================
+// CART RELATIONS
+// ============================================
+
+/**
+ * Cart belongs to a user, optionally has an applied coupon, and has
+ * many cart items.
+ */
+export const cartsRelations = relations(carts, ({ one, many }) => ({
+  user: one(user, {
+    fields: [carts.userId],
+    references: [user.id],
+  }),
+  coupon: one(coupons, {
+    fields: [carts.couponId],
+    references: [coupons.id],
+  }),
+  items: many(cartItems),
+}));
+
+// ============================================
 // CART ITEM RELATIONS
 // ============================================
 
 /**
- * CartItem belongs to user and product
+ * CartItem belongs to a cart and a product
  */
 export const cartItemsRelations = relations(cartItems, ({ one }) => ({
-  user: one(user, {
-    fields: [cartItems.userId],
-    references: [user.id],
+  cart: one(carts, {
+    fields: [cartItems.cartId],
+    references: [carts.id],
   }),
   product: one(products, {
     fields: [cartItems.productId],
