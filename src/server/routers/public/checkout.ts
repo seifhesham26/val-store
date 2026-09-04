@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
+import { isTransientCouponRejection } from "@/application/coupons/use-cases/validate-coupon.use-case";
 import { db } from "@/db";
 import { orders } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -46,17 +47,33 @@ export const checkoutRouter = router({
           couponCode: held?.code,
         });
       } catch (error) {
-        // The use case throws when a coupon has gone bad rather than silently
-        // charging full price. Drop the dead code so the retry is not stuck
-        // on it — the customer still sees the error that explains why.
+        // The use case throws rather than silently charging full price when
+        // the coupon cannot be honoured — but the throw says nothing about
+        // *why*, and most of the reasons are not the coupon's fault. Ask the
+        // validator, and drop the held code only if it is genuinely dead.
         if (held) {
           try {
-            await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+            const subtotal = await container
+              .getCartRepository()
+              .getCartTotal(ctx.user.id);
+            const verdict = await container
+              .getValidateCouponUseCase()
+              .execute(held.code, subtotal, ctx.user.id);
+
+            // Only a dead coupon is dropped. A cart that is merely ineligible
+            // right now is the same condition GetCartUseCase deliberately
+            // keeps, and an error that had nothing to do with the coupon
+            // (stock, a bad address) comes back valid and leaves it alone.
+            if (!verdict.valid && !isTransientCouponRejection(verdict.reason)) {
+              await container
+                .getCartRepository()
+                .clearAppliedCoupon(ctx.user.id);
+            }
           } catch (clearError) {
             // Never let the cleanup's failure replace the error that
             // explains what actually went wrong.
             console.error(
-              "[Checkout] clearing the applied coupon failed:",
+              "[Checkout] classifying the applied coupon failed:",
               clearError instanceof Error
                 ? clearError.message
                 : String(clearError)
@@ -103,14 +120,32 @@ export const checkoutRouter = router({
 
         return { orderId: order.id };
       } catch (error) {
+        // See createSession: the throw says nothing about why the coupon
+        // could not be honoured, so classify it before clearing and drop
+        // only a genuinely dead code.
         if (held) {
           try {
-            await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+            const subtotal = await container
+              .getCartRepository()
+              .getCartTotal(ctx.user.id);
+            const verdict = await container
+              .getValidateCouponUseCase()
+              .execute(held.code, subtotal, ctx.user.id);
+
+            // Only a dead coupon is dropped. A cart that is merely ineligible
+            // right now is the same condition GetCartUseCase deliberately
+            // keeps, and an error that had nothing to do with the coupon
+            // (stock, a bad address) comes back valid and leaves it alone.
+            if (!verdict.valid && !isTransientCouponRejection(verdict.reason)) {
+              await container
+                .getCartRepository()
+                .clearAppliedCoupon(ctx.user.id);
+            }
           } catch (clearError) {
             // Never let the cleanup's failure replace the error that
             // explains what actually went wrong.
             console.error(
-              "[Checkout] clearing the applied coupon failed:",
+              "[Checkout] classifying the applied coupon failed:",
               clearError instanceof Error
                 ? clearError.message
                 : String(clearError)

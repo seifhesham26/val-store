@@ -48,6 +48,10 @@ describe("ApplyCouponUseCase", () => {
 
     expect(result).toEqual({ applied: true, code: "PROMO20" });
     expect(repo.setAppliedCoupon).toHaveBeenCalledWith("user-1", "coupon-1");
+    // The code is normalised before it reaches the validator, not merely
+    // echoed back from the coupon row — asserted on the argument, because
+    // asserting on the result would pass with the trim/uppercase deleted.
+    expect(validate.execute).toHaveBeenCalledWith("PROMO20", 500, "user-1");
   });
 
   it("validates against the cart's own subtotal", async () => {

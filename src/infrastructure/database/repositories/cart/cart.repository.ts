@@ -15,7 +15,7 @@ import {
   coupons,
 } from "@/db/schema";
 import type { Cart } from "@/db/schema";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
 import {
   CartRepositoryInterface,
   AppliedCoupon,
@@ -100,12 +100,15 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
   }
 
   /**
-   * Find all cart items for a user
+   * Find all cart items for a user.
+   *
+   * Joins through `carts` rather than resolving the cart id in a statement of
+   * its own — the shape `findById` already uses. A round trip to Neon (~58ms)
+   * is the unit of cost here, and this is the query the cart provider runs on
+   * mount and after every mutation. A user with no cart row matches nothing,
+   * which is the empty array the pre-read returned.
    */
   async findByUserId(userId: string): Promise<CartItemEntity[]> {
-    const cart = await this.findCartByUserId(userId);
-    if (!cart) return [];
-
     const results = await db
       .select({
         cartItem: cartItems,
@@ -121,6 +124,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         )`,
       })
       .from(cartItems)
+      .innerJoin(carts, eq(cartItems.cartId, carts.id))
       .leftJoin(products, eq(cartItems.productId, products.id))
       .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
       .leftJoin(
@@ -130,7 +134,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
           eq(productImages.isPrimary, true)
         )
       )
-      .where(eq(cartItems.cartId, cart.id));
+      .where(eq(carts.userId, userId));
 
     return results
       .filter((r) => r.product)
@@ -381,32 +385,38 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    * The coupon currently applied to this user's cart, or null.
    */
   async getAppliedCoupon(userId: string): Promise<AppliedCoupon | null> {
-    const cart = await this.findCartByUserId(userId);
+    // One statement rather than a cart read followed by a coupon read: the
+    // caller always wants the code, and each extra round trip is ~58ms. The
+    // join is a LEFT join so a cart with no coupon still returns its row and
+    // the null-checking below stays the only place that decides.
+    const [row] = await db
+      .select({
+        couponId: carts.couponId,
+        couponAppliedAt: carts.couponAppliedAt,
+        couponCheckedAt: carts.couponCheckedAt,
+        code: coupons.code,
+      })
+      .from(carts)
+      .leftJoin(coupons, eq(carts.couponId, coupons.id))
+      .where(eq(carts.userId, userId))
+      .limit(1);
 
     // The three columns move together, so any null means no coupon. Checked
     // explicitly rather than trusting `couponId` alone: a partially written
     // row is a bug, and reading it as "applied" would hide that.
-    if (!cart?.couponId || !cart.couponAppliedAt || !cart.couponCheckedAt) {
+    if (!row?.couponId || !row.couponAppliedAt || !row.couponCheckedAt) {
       return null;
     }
 
-    // Joined rather than exposed as a second method: the caller always wants
-    // the code, and `coupon_id` alone would force a round trip per read.
-    const [coupon] = await db
-      .select({ code: coupons.code })
-      .from(coupons)
-      .where(eq(coupons.id, cart.couponId))
-      .limit(1);
-
     // The coupon was deleted out from under the cart. `ON DELETE SET NULL`
     // should prevent this, so treat it as no coupon rather than guessing.
-    if (!coupon) return null;
+    if (!row.code) return null;
 
     return {
-      couponId: cart.couponId,
-      code: coupon.code,
-      appliedAt: cart.couponAppliedAt,
-      checkedAt: cart.couponCheckedAt,
+      couponId: row.couponId,
+      code: row.code,
+      appliedAt: row.couponAppliedAt,
+      checkedAt: row.couponCheckedAt,
     };
   }
 
@@ -430,11 +440,14 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
 
   /**
    * Remove the applied coupon. Nulls all three columns.
+   *
+   * Keyed straight off `carts.user_id`, which is unique, rather than reading
+   * the row and then updating it by id — that second round trip bought
+   * nothing. No guard is needed: clearing an already-clear cart, or a user
+   * with no cart row at all, updates nothing, which is the same no-op the
+   * pre-read produced.
    */
   async clearAppliedCoupon(userId: string): Promise<void> {
-    const cart = await this.findCartByUserId(userId);
-    if (!cart) return;
-
     await db
       .update(carts)
       .set({
@@ -443,21 +456,27 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         couponCheckedAt: null,
         updatedAt: new Date(),
       })
-      .where(eq(carts.id, cart.id));
+      .where(eq(carts.userId, userId));
   }
 
   /**
    * Record that the applied coupon was just re-validated successfully.
+   *
+   * One statement keyed off the unique `carts.user_id`, and the
+   * `coupon_id IS NOT NULL` guard is load-bearing rather than cosmetic. The
+   * caller read the coupon, validated it, and is only now writing the
+   * timestamp; a `removeCoupon` landing in between would otherwise leave the
+   * row at `couponId: null, couponAppliedAt: null, couponCheckedAt: now` —
+   * exactly the mix the three-columns-move-together rule calls invalid. With
+   * the guard that race writes nothing, which is the right answer: the
+   * customer removed the coupon.
    */
   async touchCouponCheckedAt(userId: string): Promise<void> {
-    const cart = await this.findCartByUserId(userId);
-    if (!cart) return;
-
     const now = new Date();
     await db
       .update(carts)
       .set({ couponCheckedAt: now, updatedAt: now })
-      .where(eq(carts.id, cart.id));
+      .where(and(eq(carts.userId, userId), isNotNull(carts.couponId)));
   }
 
   /**

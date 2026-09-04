@@ -453,32 +453,30 @@ export const orderItems = pgTable(
 // SHOPPING CART TABLE
 // ============================================
 
-export const carts = pgTable(
-  "carts",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    // Unique for now, which preserves exactly the current "one cart per
-    // user" behaviour. Dropping this constraint is what would later allow
-    // saved or multiple carts; nothing else needs to change for that.
-    userId: text("user_id")
-      .notNull()
-      .unique()
-      .references(() => user.id, { onDelete: "cascade" }),
-    // SET NULL, deliberately not cascade: deleting a coupon must not delete
-    // the carts that referenced it.
-    couponId: uuid("coupon_id").references(() => coupons.id, {
-      onDelete: "set null",
-    }),
-    // These three move together. Either all are set or all are null.
-    couponAppliedAt: timestamp("coupon_applied_at"),
-    couponCheckedAt: timestamp("coupon_checked_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (table) => ({
-    userIdIdx: index("idx_carts_user_id").on(table.userId),
-  })
-);
+// No explicit index on `user_id`: the `.unique()` on the column already
+// creates a unique btree, and every lookup in the cart repository is
+// keyed on it. A second index would be the same tree maintained twice on
+// every write.
+export const carts = pgTable("carts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Unique for now, which preserves exactly the current "one cart per
+  // user" behaviour. Dropping this constraint is what would later allow
+  // saved or multiple carts; nothing else needs to change for that.
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // SET NULL, deliberately not cascade: deleting a coupon must not delete
+  // the carts that referenced it.
+  couponId: uuid("coupon_id").references(() => coupons.id, {
+    onDelete: "set null",
+  }),
+  // These three move together. Either all are set or all are null.
+  couponAppliedAt: timestamp("coupon_applied_at"),
+  couponCheckedAt: timestamp("coupon_checked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 export const cartItems = pgTable(
   "cart_items",

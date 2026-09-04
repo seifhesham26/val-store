@@ -51,6 +51,7 @@ const ALL_REASONS: CouponRejectionReason[] = [
   "not_yet_valid",
   "expired",
   "usage_limit",
+  "global_pending",
   "user_limit",
   "pending_order",
   "below_minimum",
@@ -123,9 +124,11 @@ describe("ValidateCouponUseCase rejection reasons", () => {
     expect(result.reason).toBe("usage_limit");
   });
 
-  it("counts unpaid checkouts against the global limit", async () => {
-    // The last redemption is spoken for by an order nobody has paid for yet,
-    // so the code is gone even though usageCount says otherwise.
+  it("tags the last slots being held by unpaid checkouts global_pending", async () => {
+    // The last redemption is spoken for by an order nobody has paid for yet.
+    // That order expires on its own and the slot comes back, so this is a fact
+    // about the store right now, not about the coupon — tagged apart from
+    // usage_limit so a cart holding the code keeps it.
     const repo = couponRepo(coupon({ usageLimit: 10, usageCount: 9 }), {
       pending: 1,
     });
@@ -136,7 +139,24 @@ describe("ValidateCouponUseCase rejection reasons", () => {
     );
 
     expect(result.valid).toBe(false);
+    expect(result.reason).toBe("global_pending");
+  });
+
+  it("still tags a spent coupon usage_limit when checkouts are also in flight", async () => {
+    // Redemptions alone have reached the limit, so the pending count cannot
+    // change the answer — and the query for it is never issued.
+    const repo = couponRepo(coupon({ usageLimit: 10, usageCount: 10 }), {
+      pending: 3,
+    });
+
+    const result = await new ValidateCouponUseCase(repo).execute(
+      "PROMO20",
+      500
+    );
+
+    expect(result.valid).toBe(false);
     expect(result.reason).toBe("usage_limit");
+    expect(repo.countPendingOrders).not.toHaveBeenCalled();
   });
 
   it("only counts unpaid checkouts inside the payment window", async () => {
@@ -294,7 +314,11 @@ describe("ValidateCouponUseCase discount amounts", () => {
 describe("isTransientCouponRejection", () => {
   // The drop rule in GetCartUseCase reads exactly this. A reason it calls
   // transient keeps the customer's code; anything else deletes it.
-  const transient: CouponRejectionReason[] = ["below_minimum", "pending_order"];
+  const transient: CouponRejectionReason[] = [
+    "below_minimum",
+    "pending_order",
+    "global_pending",
+  ];
 
   for (const reason of ALL_REASONS) {
     const expected = transient.includes(reason);

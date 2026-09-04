@@ -14,19 +14,28 @@ export type CouponRejectionReason =
   | "inactive"
   | "not_yet_valid"
   | "expired"
+  // The coupon itself is spent: redemptions alone have reached the limit.
   | "usage_limit"
+  // Room is left on the limit, but other customers' unpaid checkouts are
+  // holding the remaining slots. Those expire on their own.
+  | "global_pending"
   | "user_limit"
   | "pending_order"
   | "below_minimum";
 
 /**
- * True when the rejection describes the cart, not the coupon — the same code
- * will validate again once the cart changes, so a held coupon survives it.
+ * True when the rejection describes the cart or the store right now rather
+ * than the coupon — the same code will validate again once the cart changes
+ * or the in-flight checkouts expire, so a held coupon survives it.
  */
 export function isTransientCouponRejection(
   reason: CouponRejectionReason | undefined
 ): boolean {
-  return reason === "below_minimum" || reason === "pending_order";
+  return (
+    reason === "below_minimum" ||
+    reason === "pending_order" ||
+    reason === "global_pending"
+  );
 }
 
 export interface ValidateCouponResult {
@@ -98,17 +107,38 @@ export class ValidateCouponUseCase {
     // expire releases its claim on its own.
     const inFlightSince = new Date(Date.now() - PAYMENT_WINDOW_MS);
 
-    // Check global usage limit
+    // Check global usage limit.
+    //
+    // Two different conditions, tagged apart on purpose — see the per-user
+    // block below, which splits the same way. Redemptions on their own
+    // reaching the limit is a property of the coupon: it is spent, and a cart
+    // holding it should let it go. Redemptions plus unpaid checkouts reaching
+    // the limit is a property of the store right now: those checkouts expire
+    // after PAYMENT_WINDOW_MS and the slots come back, so the code is still
+    // alive and a held coupon must survive it.
+    //
+    // Testing the exhausted case first also means an already-spent coupon
+    // never pays for the pending-order query.
     if (coupon.usageLimit) {
-      const pending = await this.couponRepo.countPendingOrders(
-        coupon.id,
-        inFlightSince
-      );
-      if (coupon.usageCount + pending >= coupon.usageLimit) {
+      if (coupon.usageCount >= coupon.usageLimit) {
         return {
           valid: false,
           reason: "usage_limit",
           error: "This coupon has reached its usage limit",
+        };
+      }
+
+      const pending = await this.couponRepo.countPendingOrders(
+        coupon.id,
+        inFlightSince
+      );
+
+      if (coupon.usageCount + pending >= coupon.usageLimit) {
+        return {
+          valid: false,
+          reason: "global_pending",
+          error:
+            "This coupon is fully claimed by checkouts in progress. Try again shortly.",
         };
       }
     }
