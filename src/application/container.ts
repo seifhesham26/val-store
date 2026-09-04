@@ -47,10 +47,11 @@ function createContainer() {
   });
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
+  const couponsModule = createCouponModule();
   const cart = createCartModule({
     getProductVariantRepository: products.getProductVariantRepository,
+    getValidateCouponUseCase: couponsModule.getValidateCouponUseCase,
   });
-  const couponsModule = createCouponModule();
   const checkout = createCheckoutModule({
     getOrderRepository: orders.getOrderRepository,
     getCartRepository: cart.getCartRepository,

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { db } from "@/db";
-import { cartItems, orders } from "@/db/schema";
+import { orders } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { TRPCError } from "@trpc/server";
@@ -136,7 +136,7 @@ export const checkoutRouter = router({
         });
       }
 
-      await db.delete(cartItems).where(eq(cartItems.userId, ctx.user.id));
+      await container.getCartRepository().clearCart(ctx.user.id);
 
       return { paid: true, orderId: order.id, status: "paid" as const };
     }),

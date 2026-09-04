@@ -4,6 +4,7 @@
 
 import { DrizzleCartRepository } from "@/infrastructure/database/repositories/cart/cart.repository";
 import { ProductVariantRepositoryInterface } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
+import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-coupon.use-case";
 import { AddToCartUseCase } from "./use-cases/add-to-cart.use-case";
 import { GetCartUseCase } from "./use-cases/get-cart.use-case";
 import { UpdateCartItemUseCase } from "./use-cases/update-cart-item.use-case";
@@ -12,6 +13,8 @@ import { ClearCartUseCase } from "./use-cases/clear-cart.use-case";
 import { CheckCartStockUseCase } from "./use-cases/check-cart-stock.use-case";
 import { ChangeCartItemVariantUseCase } from "./use-cases/change-cart-item-variant.use-case";
 import { MergeGuestCartItemsUseCase } from "./use-cases/merge-guest-cart-items.use-case";
+import { ApplyCouponUseCase } from "./use-cases/apply-coupon.use-case";
+import { RemoveCouponUseCase } from "./use-cases/remove-coupon.use-case";
 
 /**
  * Reconciling the cart against live stock needs the variant repository, which
@@ -20,6 +23,7 @@ import { MergeGuestCartItemsUseCase } from "./use-cases/merge-guest-cart-items.u
  */
 export interface CartModuleDeps {
   getProductVariantRepository: () => ProductVariantRepositoryInterface;
+  getValidateCouponUseCase: () => ValidateCouponUseCase;
 }
 
 export function createCartModule(deps: CartModuleDeps) {
@@ -34,6 +38,8 @@ export function createCartModule(deps: CartModuleDeps) {
   let checkCartStock: CheckCartStockUseCase | undefined;
   let changeCartItemVariant: ChangeCartItemVariantUseCase | undefined;
   let mergeGuestCartItems: MergeGuestCartItemsUseCase | undefined;
+  let applyCoupon: ApplyCouponUseCase | undefined;
+  let removeCoupon: RemoveCouponUseCase | undefined;
 
   return {
     getCartRepository,
@@ -62,6 +68,13 @@ export function createCartModule(deps: CartModuleDeps) {
         getCartRepository(),
         deps.getProductVariantRepository()
       )),
+    getApplyCouponUseCase: () =>
+      (applyCoupon ??= new ApplyCouponUseCase(
+        getCartRepository(),
+        deps.getValidateCouponUseCase()
+      )),
+    getRemoveCouponUseCase: () =>
+      (removeCoupon ??= new RemoveCouponUseCase(getCartRepository())),
   };
 }
 

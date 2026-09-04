@@ -7,16 +7,58 @@
 
 import { db } from "@/db";
 import {
+  carts,
   cartItems,
   products,
   productVariants,
   productImages,
+  coupons,
 } from "@/db/schema";
+import type { Cart } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
-import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
+import {
+  CartRepositoryInterface,
+  AppliedCoupon,
+} from "@/domain/cart/interfaces/repositories/cart.repository.interface";
 import { CartItemEntity } from "@/domain/cart/entities/cart-item.entity";
 
 export class DrizzleCartRepository implements CartRepositoryInterface {
+  /**
+   * The cart row for a user, or null.
+   *
+   * Reads use this: a customer who has never added anything has no cart row,
+   * and reading their cart must not create one. Only writes create.
+   */
+  private async findCartByUserId(userId: string): Promise<Cart | null> {
+    const [cart] = await db
+      .select()
+      .from(carts)
+      .where(eq(carts.userId, userId))
+      .limit(1);
+    return cart ?? null;
+  }
+
+  /**
+   * The cart row for a user, creating it if this is their first write.
+   *
+   * `onConflictDoNothing` plus a re-read rather than a read-then-insert: two
+   * concurrent first adds would both see no row and both try to insert, and
+   * `carts.user_id` is unique, so the loser would throw. This lets the loser
+   * fall through to the re-read and find the winner's row.
+   */
+  private async getOrCreateCart(userId: string): Promise<Cart> {
+    const existing = await this.findCartByUserId(userId);
+    if (existing) return existing;
+
+    await db.insert(carts).values({ userId }).onConflictDoNothing();
+
+    const created = await this.findCartByUserId(userId);
+    if (!created) {
+      throw new Error("Failed to create cart");
+    }
+    return created;
+  }
+
   /**
    * Find cart item by ID
    */
@@ -27,6 +69,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         product: products,
         variant: productVariants,
         image: productImages,
+        userId: carts.userId,
         // Fallback stock for products that have no variants at all, so an
         // unvariated product is not treated as permanently out of stock.
         productStock: sql<number>`(
@@ -36,6 +79,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
         )`,
       })
       .from(cartItems)
+      .innerJoin(carts, eq(cartItems.cartId, carts.id))
       .leftJoin(products, eq(cartItems.productId, products.id))
       .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
       .leftJoin(
@@ -59,6 +103,9 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    * Find all cart items for a user
    */
   async findByUserId(userId: string): Promise<CartItemEntity[]> {
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return [];
+
     const results = await db
       .select({
         cartItem: cartItems,
@@ -83,9 +130,11 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
           eq(productImages.isPrimary, true)
         )
       )
-      .where(eq(cartItems.userId, userId));
+      .where(eq(cartItems.cartId, cart.id));
 
-    return results.filter((r) => r.product).map((r) => this.mapToEntity(r));
+    return results
+      .filter((r) => r.product)
+      .map((r) => this.mapToEntity({ ...r, userId }));
   }
 
   /**
@@ -96,6 +145,9 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
     productId: string,
     variantId: string | null = null
   ): Promise<CartItemEntity | null> {
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return null;
+
     const result = await db
       .select({
         cartItem: cartItems,
@@ -122,7 +174,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       )
       .where(
         and(
-          eq(cartItems.userId, userId),
+          eq(cartItems.cartId, cart.id),
           eq(cartItems.productId, productId),
           variantId === null
             ? isNull(cartItems.variantId)
@@ -135,7 +187,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
       return null;
     }
 
-    return this.mapToEntity(result[0]);
+    return this.mapToEntity({ ...result[0], userId });
   }
 
   /**
@@ -203,10 +255,12 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
     }
 
     // Insert new item
+    const cart = await this.getOrCreateCart(cartItem.userId);
+
     const [newItem] = await db
       .insert(cartItems)
       .values({
-        userId: cartItem.userId,
+        cartId: cart.id,
         productId: cartItem.productId,
         variantId: cartItem.variantId,
         quantity: cartItem.quantity,
@@ -254,10 +308,33 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
   }
 
   /**
-   * Clear all cart items for a user
+   * Clear all cart items for a user, and drop any applied coupon with them —
+   * an emptied cart must not keep a coupon applied to nothing.
+   *
+   * Nulls the coupon columns directly with the cart id already in hand,
+   * rather than calling `clearAppliedCoupon` (which would re-resolve the
+   * same cart via its own `findCartByUserId`). The delete and the update are
+   * fired without an `await` between them so postgres.js pipelines both
+   * statements onto the connection in one round trip.
    */
   async clearCart(userId: string): Promise<void> {
-    await db.delete(cartItems).where(eq(cartItems.userId, userId));
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return;
+
+    const deleteItems = db
+      .delete(cartItems)
+      .where(eq(cartItems.cartId, cart.id));
+    const clearCoupon = db
+      .update(carts)
+      .set({
+        couponId: null,
+        couponAppliedAt: null,
+        couponCheckedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(carts.id, cart.id));
+
+    await Promise.all([deleteItems, clearCoupon]);
   }
 
   /**
@@ -272,10 +349,13 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    * Get cart item count for a user
    */
   async getCartItemCount(userId: string): Promise<number> {
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return 0;
+
     const result = await db
       .select({ count: sql<number>`COALESCE(SUM(${cartItems.quantity}), 0)` })
       .from(cartItems)
-      .where(eq(cartItems.userId, userId));
+      .where(eq(cartItems.cartId, cart.id));
 
     return Number(result[0]?.count ?? 0);
   }
@@ -284,14 +364,100 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
    * Check if product is in user's cart
    */
   async isProductInCart(userId: string, productId: string): Promise<boolean> {
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return false;
+
     const [row] = await db
       .select({ id: cartItems.id })
       .from(cartItems)
       .where(
-        and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
+        and(eq(cartItems.cartId, cart.id), eq(cartItems.productId, productId))
       )
       .limit(1);
     return !!row;
+  }
+
+  /**
+   * The coupon currently applied to this user's cart, or null.
+   */
+  async getAppliedCoupon(userId: string): Promise<AppliedCoupon | null> {
+    const cart = await this.findCartByUserId(userId);
+
+    // The three columns move together, so any null means no coupon. Checked
+    // explicitly rather than trusting `couponId` alone: a partially written
+    // row is a bug, and reading it as "applied" would hide that.
+    if (!cart?.couponId || !cart.couponAppliedAt || !cart.couponCheckedAt) {
+      return null;
+    }
+
+    // Joined rather than exposed as a second method: the caller always wants
+    // the code, and `coupon_id` alone would force a round trip per read.
+    const [coupon] = await db
+      .select({ code: coupons.code })
+      .from(coupons)
+      .where(eq(coupons.id, cart.couponId))
+      .limit(1);
+
+    // The coupon was deleted out from under the cart. `ON DELETE SET NULL`
+    // should prevent this, so treat it as no coupon rather than guessing.
+    if (!coupon) return null;
+
+    return {
+      couponId: cart.couponId,
+      code: coupon.code,
+      appliedAt: cart.couponAppliedAt,
+      checkedAt: cart.couponCheckedAt,
+    };
+  }
+
+  /**
+   * Apply a coupon, replacing any already applied. Sets all three columns.
+   */
+  async setAppliedCoupon(userId: string, couponId: string): Promise<void> {
+    const cart = await this.getOrCreateCart(userId);
+    const now = new Date();
+
+    await db
+      .update(carts)
+      .set({
+        couponId,
+        couponAppliedAt: now,
+        couponCheckedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(carts.id, cart.id));
+  }
+
+  /**
+   * Remove the applied coupon. Nulls all three columns.
+   */
+  async clearAppliedCoupon(userId: string): Promise<void> {
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return;
+
+    await db
+      .update(carts)
+      .set({
+        couponId: null,
+        couponAppliedAt: null,
+        couponCheckedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(carts.id, cart.id));
+  }
+
+  /**
+   * Record that the applied coupon was just re-validated successfully.
+   */
+  async touchCouponCheckedAt(userId: string): Promise<void> {
+    const cart = await this.findCartByUserId(userId);
+    if (!cart) return;
+
+    const now = new Date();
+    await db
+      .update(carts)
+      .set({ couponCheckedAt: now, updatedAt: now })
+      .where(eq(carts.id, cart.id));
   }
 
   /**
@@ -351,8 +517,9 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
     variant: typeof productVariants.$inferSelect | null;
     image?: typeof productImages.$inferSelect | null;
     productStock?: number | null;
+    userId: string;
   }): CartItemEntity {
-    const { cartItem, product, variant, image, productStock } = result;
+    const { cartItem, product, variant, image, productStock, userId } = result;
 
     // Stock ceiling: the chosen variant's stock, or — for a product with no
     // variants — the product's total stock. Previously this always resolved to
@@ -368,7 +535,7 @@ export class DrizzleCartRepository implements CartRepositoryInterface {
 
     return new CartItemEntity(
       cartItem.id,
-      cartItem.userId,
+      userId,
       cartItem.productId,
       product?.name ?? "Unknown Product",
       price,

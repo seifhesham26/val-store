@@ -70,6 +70,10 @@ function createMockRepository(
     getCartTotal: vi.fn().mockResolvedValue(0),
     getCartItemCount: vi.fn().mockResolvedValue(0),
     isProductInCart: vi.fn(),
+    getAppliedCoupon: vi.fn().mockResolvedValue(null),
+    setAppliedCoupon: vi.fn(),
+    clearAppliedCoupon: vi.fn(),
+    touchCouponCheckedAt: vi.fn(),
   };
 }
 

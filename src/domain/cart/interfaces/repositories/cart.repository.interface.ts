@@ -7,6 +7,15 @@
 
 import { CartItemEntity } from "@/domain/cart/entities/cart-item.entity";
 
+/** The coupon a cart is currently holding. */
+export interface AppliedCoupon {
+  couponId: string;
+  /** The human-readable code, joined from `coupons` — what the UI renders. */
+  code: string;
+  appliedAt: Date;
+  checkedAt: Date;
+}
+
 export interface CartRepositoryInterface {
   /**
    * Find a cart item by ID
@@ -69,4 +78,21 @@ export interface CartRepositoryInterface {
    * Check if product is in user's cart
    */
   isProductInCart(userId: string, productId: string): Promise<boolean>;
+
+  /**
+   * The coupon currently applied to this user's cart, or null.
+   *
+   * Returns the coupon *id*, not a discount. The cart records which code is
+   * applied; what it is worth is computed once, at checkout.
+   */
+  getAppliedCoupon(userId: string): Promise<AppliedCoupon | null>;
+
+  /** Apply a coupon, replacing any already applied. Sets all three columns. */
+  setAppliedCoupon(userId: string, couponId: string): Promise<void>;
+
+  /** Remove the applied coupon. Nulls all three columns. */
+  clearAppliedCoupon(userId: string): Promise<void>;
+
+  /** Record that the applied coupon was just re-validated successfully. */
+  touchCouponCheckedAt(userId: string): Promise<void>;
 }
