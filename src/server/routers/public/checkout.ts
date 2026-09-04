@@ -50,7 +50,18 @@ export const checkoutRouter = router({
         // charging full price. Drop the dead code so the retry is not stuck
         // on it — the customer still sees the error that explains why.
         if (held) {
-          await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+          try {
+            await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+          } catch (clearError) {
+            // Never let the cleanup's failure replace the error that
+            // explains what actually went wrong.
+            console.error(
+              "[Checkout] clearing the applied coupon failed:",
+              clearError instanceof Error
+                ? clearError.message
+                : String(clearError)
+            );
+          }
         }
         throw error;
       }
@@ -93,7 +104,18 @@ export const checkoutRouter = router({
         return { orderId: order.id };
       } catch (error) {
         if (held) {
-          await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+          try {
+            await container.getCartRepository().clearAppliedCoupon(ctx.user.id);
+          } catch (clearError) {
+            // Never let the cleanup's failure replace the error that
+            // explains what actually went wrong.
+            console.error(
+              "[Checkout] clearing the applied coupon failed:",
+              clearError instanceof Error
+                ? clearError.message
+                : String(clearError)
+            );
+          }
         }
         throw error;
       }

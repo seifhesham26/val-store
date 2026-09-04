@@ -9,11 +9,38 @@ import { Coupon } from "@/db/schema";
 import { PAYMENT_WINDOW_MS } from "@/domain/orders/entities/order.entity";
 import { formatCurrency } from "@/lib/currency";
 
+export type CouponRejectionReason =
+  | "not_found"
+  | "inactive"
+  | "not_yet_valid"
+  | "expired"
+  | "usage_limit"
+  | "user_limit"
+  | "pending_order"
+  | "below_minimum";
+
+/**
+ * True when the rejection describes the cart, not the coupon — the same code
+ * will validate again once the cart changes, so a held coupon survives it.
+ */
+export function isTransientCouponRejection(
+  reason: CouponRejectionReason | undefined
+): boolean {
+  return reason === "below_minimum" || reason === "pending_order";
+}
+
 export interface ValidateCouponResult {
   valid: boolean;
   coupon?: Coupon;
   discountAmount?: number;
   error?: string;
+  /**
+   * Why validation failed, as a value rather than prose. Lets a caller tell a
+   * dead coupon (drop it) from a cart that is merely ineligible right now
+   * (keep it). Optional so existing callers, which read `valid` and `error`,
+   * are unaffected.
+   */
+  reason?: CouponRejectionReason;
 }
 
 export class ValidateCouponUseCase {
@@ -28,22 +55,38 @@ export class ValidateCouponUseCase {
     const coupon = await this.couponRepo.findByCode(code);
 
     if (!coupon) {
-      return { valid: false, error: "Invalid coupon code" };
+      return {
+        valid: false,
+        reason: "not_found",
+        error: "Invalid coupon code",
+      };
     }
 
     // Check if active
     if (!coupon.isActive) {
-      return { valid: false, error: "This coupon is no longer active" };
+      return {
+        valid: false,
+        reason: "inactive",
+        error: "This coupon is no longer active",
+      };
     }
 
     // Check start date
     if (coupon.startsAt && new Date(coupon.startsAt) > new Date()) {
-      return { valid: false, error: "This coupon is not yet valid" };
+      return {
+        valid: false,
+        reason: "not_yet_valid",
+        error: "This coupon is not yet valid",
+      };
     }
 
     // Check expiration
     if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
-      return { valid: false, error: "This coupon has expired" };
+      return {
+        valid: false,
+        reason: "expired",
+        error: "This coupon has expired",
+      };
     }
 
     // Redemption is only recorded once a payment lands, so a coupon sitting on
@@ -64,6 +107,7 @@ export class ValidateCouponUseCase {
       if (coupon.usageCount + pending >= coupon.usageLimit) {
         return {
           valid: false,
+          reason: "usage_limit",
           error: "This coupon has reached its usage limit",
         };
       }
@@ -79,6 +123,7 @@ export class ValidateCouponUseCase {
       if (userUsageCount >= coupon.perUserLimit) {
         return {
           valid: false,
+          reason: "user_limit",
           error:
             "You have already used this coupon the maximum number of times",
         };
@@ -87,6 +132,7 @@ export class ValidateCouponUseCase {
       if (userUsageCount + userPending >= coupon.perUserLimit) {
         return {
           valid: false,
+          reason: "pending_order",
           error:
             "You already have an unpaid order using this coupon. Finish paying for it, or wait for it to expire, and then try again.",
         };
@@ -100,6 +146,7 @@ export class ValidateCouponUseCase {
     if (subtotal < minPurchase) {
       return {
         valid: false,
+        reason: "below_minimum",
         error: `Minimum purchase of ${formatCurrency(minPurchase)} required`,
       };
     }
