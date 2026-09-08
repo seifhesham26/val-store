@@ -16,6 +16,13 @@ import { Button } from "@/components/ui/button";
 import { NotificationsLoading } from "@/components/account/notifications/NotificationsLoading";
 import { NotificationsEmpty } from "@/components/account/notifications/NotificationsEmpty";
 import { NotificationsList } from "@/components/account/notifications/NotificationsList";
+import { cachePatch, runOptimistic } from "@/lib/optimistic-patches";
+import { showRetryToast } from "@/lib/optimistic-toast";
+import type { AppRouter } from "@/server";
+import type { inferRouterOutputs } from "@trpc/server";
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type NotificationRows = RouterOutputs["public"]["notifications"]["list"];
 
 /** The router caps `limit` at 50. */
 const PAGE_LIMIT = 50;
@@ -33,32 +40,118 @@ export default function NotificationsPage() {
   const { data: unreadCount = 0 } =
     trpc.public.notifications.unreadCount.useQuery();
 
-  // Every mutation touches both the list and the bell's badge, so they are
-  // invalidated together rather than leaving the badge counting deleted rows.
-  const refresh = () => {
-    utils.public.notifications.list.invalidate();
-    utils.public.notifications.unreadCount.invalidate();
-  };
+  const listInput = { limit: PAGE_LIMIT, unreadOnly };
+
+  const listPatch = (
+    patch: (rows: NotificationRows | undefined) => NotificationRows | undefined
+  ) =>
+    cachePatch({
+      cancel: () => utils.public.notifications.list.cancel(listInput),
+      read: () => utils.public.notifications.list.getData(listInput),
+      write: (data) => utils.public.notifications.list.setData(listInput, data),
+      invalidate: () => utils.public.notifications.list.invalidate(),
+      patch,
+    });
+
+  const countPatch = (next: (current: number) => number) =>
+    cachePatch({
+      cancel: () => utils.public.notifications.unreadCount.cancel(),
+      read: () => utils.public.notifications.unreadCount.getData(),
+      write: (data) =>
+        utils.public.notifications.unreadCount.setData(undefined, data),
+      invalidate: () => utils.public.notifications.unreadCount.invalidate(),
+      patch: (current) => (current === undefined ? current : next(current)),
+    });
+
+  /** Was this row unread a moment ago? Decides whether the badge moves. */
+  const isUnread = (id: string) =>
+    utils.public.notifications.list
+      .getData(listInput)
+      ?.find((row) => row.id === id)?.isRead === false;
+
+  function retryMarkAsRead(id: string) {
+    markAsRead.mutate({ id });
+  }
 
   const markAsRead = trpc.public.notifications.markAsRead.useMutation({
-    onSuccess: refresh,
-    onError: (err) => toast.error(err.message),
+    onMutate: ({ id }) => {
+      const wasUnread = isUnread(id);
+      return runOptimistic([
+        listPatch((rows) =>
+          // On the Unread tab a row that becomes read leaves the list; on All
+          // it stays and simply loses its emphasis.
+          unreadOnly
+            ? rows?.filter((row) => row.id !== id)
+            : rows?.map((row) =>
+                row.id === id ? { ...row, isRead: true } : row
+              )
+        ),
+        countPatch((current) =>
+          wasUnread ? Math.max(0, current - 1) : current
+        ),
+      ]);
+    },
+    onError: (_err, variables, handle) => {
+      handle?.rollback();
+      showRetryToast("Couldn't mark that as read.", () =>
+        retryMarkAsRead(variables.id)
+      );
+    },
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
+    },
   });
+
+  function retryMarkAllAsRead() {
+    markAllAsRead.mutate();
+  }
 
   const markAllAsRead = trpc.public.notifications.markAllAsRead.useMutation({
+    onMutate: () =>
+      runOptimistic([
+        listPatch((rows) =>
+          unreadOnly ? [] : rows?.map((row) => ({ ...row, isRead: true }))
+        ),
+        countPatch(() => 0),
+      ]),
     onSuccess: () => {
-      refresh();
       toast.success("All notifications marked as read");
     },
-    onError: (err) => toast.error(err.message),
+    onError: (_err, _variables, handle) => {
+      handle?.rollback();
+      showRetryToast("Couldn't mark them all as read.", retryMarkAllAsRead);
+    },
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
+    },
   });
 
+  function retryDelete(id: string) {
+    remove.mutate({ id });
+  }
+
   const remove = trpc.public.notifications.delete.useMutation({
+    onMutate: ({ id }) => {
+      const wasUnread = isUnread(id);
+      return runOptimistic([
+        listPatch((rows) => rows?.filter((row) => row.id !== id)),
+        countPatch((current) =>
+          wasUnread ? Math.max(0, current - 1) : current
+        ),
+      ]);
+    },
     onSuccess: () => {
-      refresh();
       toast.success("Notification deleted");
     },
-    onError: (err) => toast.error(err.message),
+    onError: (_err, variables, handle) => {
+      handle?.rollback();
+      showRetryToast("Couldn't delete that notification.", () =>
+        retryDelete(variables.id)
+      );
+    },
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
+    },
   });
 
   if (isLoading) return <NotificationsLoading />;

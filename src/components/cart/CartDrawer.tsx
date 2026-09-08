@@ -7,12 +7,15 @@
 
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ShoppingBag,
   ArrowRight,
   ShoppingCart,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import {
   Sheet,
@@ -33,7 +36,6 @@ export function CartDrawer() {
   const {
     items,
     isOpen,
-    isSyncing,
     itemCount,
     subtotal,
     isEmpty,
@@ -41,11 +43,33 @@ export function CartDrawer() {
     updateQuantity,
     removeItem,
     closeCart,
+    flushPendingWrites,
   } = useCart();
 
   // Opening the drawer is an action, so the check runs here too — the customer
   // should not be able to look straight at a cart that cannot be ordered.
   const { hasProblems, openDialog } = useCartStock();
+
+  const router = useRouter();
+  const [isLeaving, setIsLeaving] = useState(false);
+
+  /**
+   * Send everything still on a debounce before leaving for checkout.
+   *
+   * This replaces `disabled={isSyncing}`, which blocked the button while *any*
+   * write was in flight and did nothing at all during the debounce window
+   * before it — the moment when the cart is actually ahead of the server.
+   */
+  const handleCheckout = async () => {
+    setIsLeaving(true);
+    try {
+      await flushPendingWrites();
+    } finally {
+      setIsLeaving(false);
+    }
+    closeCart();
+    router.push("/checkout");
+  };
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closeCart()}>
@@ -94,7 +118,6 @@ export function CartDrawer() {
                     item={item}
                     onUpdateQuantity={updateQuantity}
                     onRemove={removeItem}
-                    disabled={isSyncing}
                   />
                 ))}
               </div>
@@ -133,14 +156,16 @@ export function CartDrawer() {
                   <Button
                     className="w-full bg-val-accent hover:bg-val-accent/90 text-black font-medium"
                     size="lg"
-                    asChild
-                    disabled={isSyncing}
+                    onClick={handleCheckout}
+                    disabled={isLeaving}
                   >
-                    <Link href="/checkout" onClick={closeCart}>
+                    {isLeaving ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
                       <ShoppingBag className="mr-2 h-4 w-4" />
-                      Checkout
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
+                    )}
+                    Checkout
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 )}
 

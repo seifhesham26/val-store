@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CartItem } from "@/components/cart/CartItem";
@@ -12,15 +14,30 @@ import { useCartStock } from "@/components/providers/cart-stock-provider";
 export function CartPopulated() {
   const {
     items,
-    isSyncing,
     itemCount,
     subtotal,
     updateQuantity,
     removeItem,
     clearCart,
+    flushPendingWrites,
   } = useCart();
 
   const { hasProblems, openDialog } = useCartStock();
+
+  const router = useRouter();
+  const [isLeaving, setIsLeaving] = useState(false);
+
+  // See CartDrawer: checkout waits for the server to catch up, rather than the
+  // whole cart being disabled whenever it hasn't.
+  const handleCheckout = async () => {
+    setIsLeaving(true);
+    try {
+      await flushPendingWrites();
+    } finally {
+      setIsLeaving(false);
+    }
+    router.push("/checkout");
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
@@ -34,7 +51,6 @@ export function CartPopulated() {
           size="sm"
           className="text-gray-400 hover:text-red-400"
           onClick={clearCart}
-          disabled={isSyncing}
         >
           <Trash2 className="h-4 w-4 mr-2" />
           Clear Cart
@@ -51,7 +67,6 @@ export function CartPopulated() {
                 item={item}
                 onUpdateQuantity={updateQuantity}
                 onRemove={removeItem}
-                disabled={isSyncing}
               />
             ))}
           </div>
@@ -78,7 +93,8 @@ export function CartPopulated() {
           <CartSummary
             subtotal={subtotal}
             itemCount={itemCount}
-            isLoading={isSyncing}
+            onCheckout={handleCheckout}
+            isLoading={isLeaving}
             stockBlocked={hasProblems}
             onReviewStock={openDialog}
           />

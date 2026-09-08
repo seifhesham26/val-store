@@ -13,6 +13,8 @@ import { trpc } from "@/lib/trpc";
 import { useSession } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { cachePatch, runOptimistic } from "@/lib/optimistic-patches";
+import { showRetryToast } from "@/lib/optimistic-toast";
 
 // UUID v4 format check — prevents queries with mock/placeholder IDs (e.g. "na1")
 const UUID_RE =
@@ -48,61 +50,64 @@ export function WishlistButton({
 
   const isInWishlist = wishlistStatus?.inWishlist ?? false;
 
+  /**
+   * The heart's own cache, patched for both directions.
+   *
+   * This component was the storefront's only correct optimistic mutation, and
+   * it cost 55 hand-written lines to be so — which is exactly why nothing else
+   * was. Same behaviour, now expressed in the shared vocabulary.
+   */
+  const statusPatch = (inWishlist: boolean) =>
+    cachePatch({
+      cancel: () => utils.public.wishlist.checkStatus.cancel({ productId }),
+      read: () => utils.public.wishlist.checkStatus.getData({ productId }),
+      write: (data) =>
+        utils.public.wishlist.checkStatus.setData({ productId }, data),
+      invalidate: () =>
+        utils.public.wishlist.checkStatus.invalidate({ productId }),
+      patch: () => ({ inWishlist }) as const,
+    });
+
+  const refreshLists = () => {
+    utils.public.wishlist.getMyWishlist.invalidate();
+    utils.public.wishlist.getCount.invalidate();
+  };
+
+  function retryAdd() {
+    addMutation.mutate({ productId });
+  }
+
+  function retryRemove() {
+    removeMutation.mutate({ productId });
+  }
+
   const addMutation = trpc.public.wishlist.addToWishlist.useMutation({
-    onMutate: async () => {
-      await utils.public.wishlist.checkStatus.cancel({ productId });
-      const previousStatus = utils.public.wishlist.checkStatus.getData({
-        productId,
-      }) as { inWishlist: boolean } | undefined;
-      utils.public.wishlist.checkStatus.setData(
-        { productId },
-        { inWishlist: true }
-      );
-      return { previousStatus };
-    },
+    onMutate: () => runOptimistic([statusPatch(true)]),
     onSuccess: () => {
-      utils.public.wishlist.getMyWishlist.invalidate();
-      utils.public.wishlist.getCount.invalidate();
+      refreshLists();
       toast("Added to wishlist");
     },
-    onError: (_err, _variables, context) => {
-      utils.public.wishlist.checkStatus.setData(
-        { productId },
-        context?.previousStatus ?? { inWishlist: false }
-      );
-      toast.error("Failed to add to wishlist");
+    onError: (_err, _variables, handle) => {
+      handle?.rollback();
+      showRetryToast("Couldn't add that to your wishlist.", retryAdd);
     },
-    onSettled: () => {
-      utils.public.wishlist.checkStatus.invalidate({ productId });
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
     },
   });
 
   const removeMutation = trpc.public.wishlist.removeFromWishlist.useMutation({
-    onMutate: async () => {
-      await utils.public.wishlist.checkStatus.cancel({ productId });
-      const previousStatus = utils.public.wishlist.checkStatus.getData({
-        productId,
-      }) as { inWishlist: boolean } | undefined;
-      utils.public.wishlist.checkStatus.setData(
-        { productId },
-        { inWishlist: false }
-      );
-      return { previousStatus };
-    },
+    onMutate: () => runOptimistic([statusPatch(false)]),
     onSuccess: () => {
-      utils.public.wishlist.getMyWishlist.invalidate();
-      utils.public.wishlist.getCount.invalidate();
+      refreshLists();
       toast("Removed from wishlist");
     },
-    onError: (_err, _variables, context) => {
-      utils.public.wishlist.checkStatus.setData(
-        { productId },
-        context?.previousStatus ?? { inWishlist: true }
-      );
-      toast.error("Failed to remove from wishlist");
+    onError: (_err, _variables, handle) => {
+      handle?.rollback();
+      showRetryToast("Couldn't remove that from your wishlist.", retryRemove);
     },
-    onSettled: () => {
-      utils.public.wishlist.checkStatus.invalidate({ productId });
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
     },
   });
 

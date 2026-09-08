@@ -7,18 +7,22 @@
 
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSession } from "@/lib/auth-client";
 import { trpc } from "@/lib/trpc";
 import {
   useCartStore,
   GUEST_CART_ITEM_ID_PREFIX,
+  PENDING_CART_ITEM_ID_PREFIX,
+  isLocalOnlyCartItemId,
   type CartItem,
 } from "@/lib/stores/cart-store";
 import {
   createCartSyncRegistry,
   reconcileServerCart,
 } from "@/lib/cart-sync-registry";
+import { cartAddKey, createCartAddRegistry } from "@/lib/cart-add-registry";
+import { showRetryToast } from "@/lib/optimistic-toast";
 import { toast } from "sonner";
 
 // Module scope, not inside `useCart()` — every component that calls the
@@ -29,6 +33,12 @@ import { toast } from "sonner";
 // separate timer per mounted component per line, so two surfaces editing
 // the same line within a second could each win.
 const cartSyncRegistry = createCartSyncRegistry();
+
+// The same reasoning, for adds. Keyed on product+variant rather than cart item
+// id, because a line being added may not have a server row yet. Note the two
+// registries behave differently on purpose: quantity edits replace, adds
+// accumulate — see the header of `cart-add-registry.ts`.
+const cartAddRegistry = createCartAddRegistry();
 
 interface CartProviderProps {
   children: React.ReactNode;
@@ -76,7 +86,12 @@ export function CartProvider({ children }: CartProviderProps) {
         maxStock: item.maxStock,
       }));
       const localItems = useCartStore.getState().items;
-      setItems(reconcileServerCart(items, localItems, cartSyncRegistry));
+      setItems(
+        reconcileServerCart(items, localItems, {
+          isPendingItem: cartSyncRegistry.isPending,
+          isPendingAdd: cartAddRegistry.isPending,
+        })
+      );
     }
   }, [isAuthenticated, serverCart, setItems]);
 
@@ -171,8 +186,29 @@ export function CartProvider({ children }: CartProviderProps) {
   return <>{children}</>;
 }
 
-/** Product data the store needs to render a guest cart line locally. */
-export interface GuestCartItemDetails {
+/**
+ * How many units of one product+variant the server has not confirmed yet.
+ *
+ * Drives the "Added N" counter on the add buttons. The registry is a plain
+ * module singleton with no React in it, so this subscribes the way the navbar
+ * badge does, and reports 0 during SSR — a pending write cannot exist on the
+ * server, and forcing the value keeps the button out of hydration mismatches.
+ */
+export function useCartAddDelta(
+  productId: string,
+  variantId: string | null
+): number {
+  const key = cartAddKey(productId, variantId);
+
+  return useSyncExternalStore(
+    cartAddRegistry.subscribe,
+    () => cartAddRegistry.pendingDelta(key),
+    () => 0
+  );
+}
+
+/** Product data the store needs to render a cart line before the server does. */
+export interface CartLineDetails {
   productName: string;
   productPrice: number;
   productImage: string | null;
@@ -216,149 +252,234 @@ export function useCart() {
     onSuccess: invalidateCart,
   });
 
-  // Add item - sync with server if authenticated, otherwise write straight
-  // to the local store. `guestDetails` is the display data (name, price,
-  // image, stock) the caller already has on hand for the product being
-  // added — the guest branch has no server round trip to fetch it from, and
-  // none of it is trusted again once it matters: CartProvider's merge
-  // re-resolves both price and stock from the database at sign-in.
+  // Add item — a local write, always. For a signed-in customer the server call
+  // is debounced and additive: press thirty times and the cart reads thirty
+  // immediately while the server hears one `+30`. `details` is the display
+  // data (name, price, image, stock) the caller already has for the product;
+  // none of it is trusted again once it matters, because the server re-resolves
+  // price and stock on both the add and the guest merge.
   const addItem = useCallback(
-    async (
+    (
       productId: string,
       quantity: number = 1,
       variantId: string | null = null,
-      guestDetails?: GuestCartItemDetails
+      details?: CartLineDetails
     ) => {
-      if (isAuthenticated) {
-        store.setSyncing(true);
-        try {
-          await addMutation.mutateAsync({ productId, quantity, variantId });
-        } finally {
-          store.setSyncing(false);
-        }
-        return;
-      }
-
-      if (!guestDetails) {
-        // No display data to show locally with — this means a call site
-        // hasn't been updated to pass it, not that the guest did anything
-        // wrong, but silently dropping the click would look identical to a
-        // real failure from where the customer is standing.
+      if (!details) {
+        // No display data to show locally with — this means a call site hasn't
+        // been updated to pass it, not that the customer did anything wrong,
+        // but silently dropping the click would look identical to a real
+        // failure from where they are standing.
         toast.error("Could not add this item to your cart");
         return;
       }
 
-      store.addItem({
-        id: `${GUEST_CART_ITEM_ID_PREFIX}${crypto.randomUUID()}`,
-        productId,
-        variantId,
-        variantLabel: guestDetails.variantLabel,
-        productName: guestDetails.productName,
-        productPrice: guestDetails.productPrice,
-        productImage: guestDetails.productImage,
-        quantity,
-        maxStock: guestDetails.maxStock,
-      });
-    },
-    [isAuthenticated, addMutation, store]
-  );
+      const display = details;
+      const prefix = isAuthenticated
+        ? PENDING_CART_ITEM_ID_PREFIX
+        : GUEST_CART_ITEM_ID_PREFIX;
 
-  // Update quantity
-  const updateQuantity = useCallback(
-    (cartItemId: string, quantity: number) => {
-      // 1. Instantly update the local Zustand store for snappy UI
-      store.updateQuantity(cartItemId, quantity);
+      /** Show `delta` more units right now. */
+      function addLocally(delta: number) {
+        // `store.addItem` merges on product + variant, so the generated id is
+        // only ever used when this is a brand-new line.
+        store.addItem({
+          id: `${prefix}${crypto.randomUUID()}`,
+          productId,
+          variantId,
+          variantLabel: display.variantLabel,
+          productName: display.productName,
+          productPrice: display.productPrice,
+          productImage: display.productImage,
+          quantity: delta,
+          maxStock: display.maxStock,
+        });
+      }
 
-      // A `guest-` id has no server row to update yet — even if sign-in has
-      // already flipped `isAuthenticated`, the merge may not have landed.
-      // Sending it as a cartItemId would fail uuid validation outright, so
-      // it stays local until the merge replaces it with a real one.
-      const isUnmergedGuestLine = cartItemId.startsWith(
-        GUEST_CART_ITEM_ID_PREFIX
-      );
+      /** Take `delta` units back out after a write the server refused. */
+      function takeBackLocally(delta: number) {
+        const line = useCartStore
+          .getState()
+          .items.find(
+            (item) =>
+              item.productId === productId && item.variantId === variantId
+          );
+        if (!line) return;
 
-      if (isAuthenticated && !isUnmergedGuestLine) {
-        // 2. Schedule the actual server mutation. `scheduleUpdate` shares
-        // its timer across every `useCart()` instance and marks this id
-        // "pending" for the sync effect (see the shared registry above),
-        // and replaces any write already scheduled for this same id.
-        cartSyncRegistry.scheduleUpdate(cartItemId, async () => {
-          store.setSyncing(true);
+        const next = line.quantity - delta;
+        if (next > 0) store.updateQuantity(line.id, next);
+        else store.removeItem(line.id);
+      }
+
+      addLocally(quantity);
+
+      // A guest line stays local until `mergeGuestItems` folds it into the
+      // server cart at sign-in.
+      if (!isAuthenticated) return;
+
+      const key = cartAddKey(productId, variantId);
+
+      function queue(delta: number) {
+        cartAddRegistry.queueAdd(key, delta, async (totalDelta) => {
           try {
-            await updateMutation.mutateAsync({ cartItemId, quantity });
-          } catch {
-            // The optimistic write from step 1 never happened as far as the
-            // server is concerned — surface that rather than leaving the
-            // customer looking at a quantity nobody agrees with, and pull
-            // the real value back in. `isPending` clears the moment this
-            // catch block finishes, so the reconciled sync effect is free
-            // to apply whatever `cart.get` returns from the invalidation
-            // below.
-            toast.error(
-              "Couldn't save that quantity change. Restoring your cart."
-            );
+            await addMutation.mutateAsync({
+              productId,
+              quantity: totalDelta,
+              variantId,
+            });
+          } catch (error) {
+            // Take back exactly what this call was carrying. Presses that
+            // arrived while it was on the wire are a separate call and are
+            // still perfectly good.
+            takeBackLocally(totalDelta);
+            // The client caps at the cached ceiling, so reaching here means
+            // stock moved underneath us — refresh the figure the ceiling is
+            // computed from so the page corrects itself.
+            utils.public.products.getStock.invalidate();
             invalidateCart();
-          } finally {
-            store.setSyncing(false);
+            showRetryToast(
+              error instanceof Error && error.message
+                ? error.message
+                : "Couldn't add that to your cart.",
+              () => {
+                addLocally(totalDelta);
+                queue(totalDelta);
+              }
+            );
           }
         });
       }
+
+      queue(quantity);
+    },
+    [isAuthenticated, addMutation, store, utils, invalidateCart]
+  );
+
+  // Update quantity — local first, server on a shared 1s debounce.
+  const updateQuantity = useCallback(
+    (cartItemId: string, quantity: number) => {
+      store.updateQuantity(cartItemId, quantity);
+
+      // A `guest-` or `pending-` id has no server row to update yet. Sending
+      // one as a cartItemId would fail uuid validation outright, so it stays
+      // local until the merge — or the add — replaces it with a real one.
+      if (!isAuthenticated || isLocalOnlyCartItemId(cartItemId)) return;
+
+      function schedule() {
+        // `scheduleUpdate` shares its timer across every `useCart()` instance
+        // and marks this id "pending" for the sync effect, replacing any write
+        // already scheduled for the same id — last call wins.
+        cartSyncRegistry.scheduleUpdate(cartItemId, async () => {
+          try {
+            await updateMutation.mutateAsync({ cartItemId, quantity });
+          } catch {
+            // As far as the server is concerned the optimistic write never
+            // happened. Pull the real value back in rather than leaving the
+            // customer looking at a quantity nobody agrees with, and give them
+            // a way to try again that does not mean re-finding the item.
+            invalidateCart();
+            showRetryToast("Couldn't save that quantity change.", () => {
+              store.updateQuantity(cartItemId, quantity);
+              schedule();
+            });
+          }
+        });
+      }
+
+      schedule();
     },
     [isAuthenticated, updateMutation, store, invalidateCart]
   );
 
   // Remove item
   const removeItem = useCallback(
-    async (cartItemId: string) => {
+    (cartItemId: string) => {
       // A debounced quantity write may still be armed for this id — let it
       // fire after the row is gone and `UpdateCartItemUseCase` rejects with
       // "Cart item not found" for no one to see.
       cartSyncRegistry.cancel(cartItemId);
 
-      // See updateQuantity: a `guest-` id may not have a server row yet even
-      // once `isAuthenticated` is true, if the merge hasn't landed.
-      if (
-        isAuthenticated &&
-        !cartItemId.startsWith(GUEST_CART_ITEM_ID_PREFIX)
-      ) {
-        store.setSyncing(true);
-        try {
-          // Optimistically update local state
-          store.removeItem(cartItemId);
-          await removeMutation.mutateAsync({ cartItemId });
-        } finally {
-          store.setSyncing(false);
-        }
-      } else {
-        store.removeItem(cartItemId);
+      // Queued units for this product have nowhere to go now either.
+      const line = useCartStore
+        .getState()
+        .items.find((item) => item.id === cartItemId);
+      if (line) {
+        cartAddRegistry.cancel(cartAddKey(line.productId, line.variantId));
       }
+
+      store.removeItem(cartItemId);
+
+      // See updateQuantity: a local-only id has no server row to delete.
+      if (!isAuthenticated || isLocalOnlyCartItemId(cartItemId)) return;
+
+      function attempt() {
+        removeMutation.mutate(
+          { cartItemId },
+          {
+            onError: () => {
+              // The row survived, so the refetch restores it under the same
+              // id — which is what makes retrying the identical call valid.
+              invalidateCart();
+              showRetryToast("Couldn't remove that item.", () => {
+                store.removeItem(cartItemId);
+                attempt();
+              });
+            },
+          }
+        );
+      }
+
+      attempt();
     },
-    [isAuthenticated, removeMutation, store]
+    [isAuthenticated, removeMutation, store, invalidateCart]
   );
 
   // Clear cart
-  const clearCart = useCallback(async () => {
+  const clearCart = useCallback(() => {
     // Same reasoning as removeItem, for every line at once.
     cartSyncRegistry.cancelAll();
+    cartAddRegistry.cancelAll();
 
-    if (isAuthenticated) {
-      store.setSyncing(true);
-      try {
-        store.clearCart();
-        await clearMutation.mutateAsync();
-      } finally {
-        store.setSyncing(false);
-      }
-    } else {
-      store.clearCart();
+    const snapshot = useCartStore.getState().items;
+    store.clearCart();
+
+    if (!isAuthenticated) return;
+
+    function attempt() {
+      clearMutation.mutate(undefined, {
+        onError: () => {
+          // Nothing was deleted, so put the whole cart back rather than
+          // waiting for a refetch to notice.
+          store.setItems(snapshot);
+          showRetryToast("Couldn't empty your cart.", () => {
+            store.clearCart();
+            attempt();
+          });
+        },
+      });
     }
+
+    attempt();
   }, [isAuthenticated, clearMutation, store]);
+
+  /**
+   * Send everything that is still sitting on a debounce, and wait for it.
+   *
+   * Checkout is the one place where being behind the server actually costs
+   * something, and disabling a button while `isSyncing` was only ever an
+   * accidental approximation of this.
+   */
+  const flushPendingWrites = useCallback(async () => {
+    await Promise.all([
+      cartAddRegistry.flushAll(),
+      cartSyncRegistry.flushAll(),
+    ]);
+  }, []);
 
   return {
     items: store.items,
     isOpen: store.isOpen,
     isLoading: store.isLoading,
-    isSyncing: store.isSyncing,
     itemCount: store.getItemCount(),
     subtotal: store.getSubtotal(),
     isEmpty: store.isEmpty(),
@@ -369,6 +490,7 @@ export function useCart() {
     updateQuantity,
     removeItem,
     clearCart,
+    flushPendingWrites,
     openCart: store.openCart,
     closeCart: store.closeCart,
     toggleCart: store.toggleCart,

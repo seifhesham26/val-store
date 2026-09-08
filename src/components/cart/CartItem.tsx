@@ -18,15 +18,9 @@ interface CartItemProps {
   item: CartItemType;
   onUpdateQuantity: (cartItemId: string, quantity: number) => void;
   onRemove: (cartItemId: string) => void;
-  disabled?: boolean;
 }
 
-export function CartItem({
-  item,
-  onUpdateQuantity,
-  onRemove,
-  disabled = false,
-}: CartItemProps) {
+export function CartItem({ item, onUpdateQuantity, onRemove }: CartItemProps) {
   const { availableFor } = useCartStock();
 
   // The live figure wins; the quantity baked into the cart payload is only a
@@ -102,7 +96,7 @@ export function CartItem({
               size="icon"
               className="h-7 w-7 rounded-full border-white/20 bg-transparent hover:bg-white/10"
               onClick={handleDecrease}
-              disabled={disabled || !canDecrease}
+              disabled={!canDecrease}
             >
               <Minus className="h-3 w-3 text-white" />
             </Button>
@@ -116,7 +110,7 @@ export function CartItem({
               size="icon"
               className="h-7 w-7 rounded-full border-white/20 bg-transparent hover:bg-white/10"
               onClick={handleIncrease}
-              disabled={disabled || !canIncrease}
+              disabled={!canIncrease}
             >
               <Plus className="h-3 w-3 text-white" />
             </Button>
@@ -132,7 +126,6 @@ export function CartItem({
               size="icon"
               className="h-7 w-7 text-gray-400 hover:text-red-400"
               onClick={() => onRemove(item.id)}
-              disabled={disabled}
             >
               <Trash2 className="h-4 w-4" />
             </Button>

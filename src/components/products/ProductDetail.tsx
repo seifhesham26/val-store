@@ -10,10 +10,7 @@ import { ProductImageGallery } from "@/components/products/product-detail/Produc
 import { ProductInfo } from "@/components/products/product-detail/ProductInfo";
 import { ProductVariantSelector } from "@/components/products/product-detail/ProductVariantSelector";
 import { ProductActions } from "@/components/products/product-detail/ProductActions";
-import {
-  StockIssueDialog,
-  type StockIssue,
-} from "@/components/products/StockIssueDialog";
+import { quantityInCart, remainingCapacity } from "@/lib/cart-stock-limit";
 import { useVariantStock } from "@/hooks/use-variant-stock";
 
 interface ProductDetailProps {
@@ -41,16 +38,6 @@ interface ProductDetailProps {
   };
 }
 
-/**
- * Pull the remaining count out of the server's message ("Only 2 left in stock"),
- * so the dialog can offer to add what is actually available.
- */
-function parseStockFromMessage(message: string): number | null {
-  if (/out of stock/i.test(message)) return 0;
-  const match = message.match(/only\s+(\d+)\s+left/i);
-  return match ? Number(match[1]) : null;
-}
-
 export function ProductDetail({ product }: ProductDetailProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -61,9 +48,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     product.images?.[0] || ""
   );
 
-  const [isAdding, setIsAdding] = useState(false);
-  const [stockIssue, setStockIssue] = useState<StockIssue | null>(null);
-  const { addItem, openCart, isAuthenticated } = useCart();
+  const { addItem, openCart, isAuthenticated, items } = useCart();
 
   // One shared, self-refreshing stock source. The server-rendered numbers below
   // are a 60s-cached snapshot; this keeps the ceiling current without a reload.
@@ -73,10 +58,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const hasColors = (product.colors?.length ?? 0) > 0;
 
   // Resolve the chosen size/colour back to the concrete variant row.
-  const variantLabel = [selectedColor, selectedSize]
-    .filter(Boolean)
-    .join(" / ");
-
   const selectedVariant =
     product.variants.find(
       (v) =>
@@ -84,12 +65,22 @@ export function ProductDetail({ product }: ProductDetailProps) {
         (!hasColors || v.color === selectedColor)
     ) ?? null;
 
-  // How many of the current selection can actually be ordered. Prefers the live
-  // cached figure and falls back to the server-rendered snapshot. Null while no
-  // concrete variant is resolved, so the stepper stays unconstrained until the
-  // customer has actually chosen something.
-  const maxQuantity = selectedVariant
+  // Raw availability for the chosen variant: the live cached figure when there
+  // is one, otherwise the server-rendered snapshot. Null while no concrete
+  // variant is resolved, so nothing is claimed before the customer has chosen.
+  const variantStock = selectedVariant
     ? (stock.get(selectedVariant.id) ?? selectedVariant.availableStock)
+    : null;
+
+  // How many *more* may be added, which is not the same number: the server
+  // enforces `already in cart + requested <= stock`, and until now the client
+  // did not know that, so the stepper offered five with three already held.
+  const inCartQuantity = selectedVariant
+    ? quantityInCart(items, product.id, selectedVariant.id)
+    : quantityInCart(items, product.id, null);
+
+  const maxQuantity = selectedVariant
+    ? remainingCapacity(variantStock, inCartQuantity)
     : null;
 
   // Only claim "out of stock" once we actually know which variant is meant.
@@ -97,21 +88,29 @@ export function ProductDetail({ product }: ProductDetailProps) {
   // out of stock would tell the customer a perfectly available product is
   // unavailable. In that state the button stays enabled and the click handler
   // below explains what is missing.
+  //
+  // Read from raw stock, never from `maxQuantity`: a customer holding all five
+  // of a five-stock item is at the ceiling, not looking at a sold-out product,
+  // and the two deserve different words.
   const isSelectionInStock =
     product.variants.length === 0
       ? (product.inStock ?? false)
       : selectedVariant
-        ? (maxQuantity ?? 0) > 0
+        ? (variantStock ?? 0) > 0
         : true;
 
+  /** In stock, but the cart already holds every unit that exists. */
+  const atCeiling = isSelectionInStock && maxQuantity === 0;
+
   // Clamp on read rather than writing state during render: switching to a
-  // lower-stock variant must not leave a quantity that cannot be fulfilled.
+  // lower-stock variant, or adding until the ceiling drops, must not leave a
+  // quantity that cannot be fulfilled.
   const effectiveQuantity =
     maxQuantity !== null && maxQuantity > 0
       ? Math.min(quantity, maxQuantity)
       : quantity;
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = () => {
     if (hasSizes && !selectedSize) {
       toast.error("Please select a size");
       return;
@@ -122,54 +121,24 @@ export function ProductDetail({ product }: ProductDetailProps) {
       return;
     }
 
-    setIsAdding(true);
-    try {
-      // Guests get a real cart now. The sign-in gate that used to stand here
-      // made the store's guest branch unreachable — `useCart` keeps guest lines
-      // in localStorage and merges them into the server cart on sign-in, and
-      // the details below are what it needs to render a line before there is a
-      // server row to read one from.
-      //
-      // Prices are display-only: the merge re-resolves both price and stock
-      // from the database, so a cart left open for days cannot carry a stale
-      // price into an order.
-      await addItem(
-        product.id,
-        effectiveQuantity,
-        selectedVariant?.id ?? null,
-        {
-          productName: product.name,
-          productPrice: product.salePrice ?? product.price,
-          productImage: product.images?.[0] ?? null,
-          variantLabel: selectedVariant
-            ? [selectedVariant.size, selectedVariant.color]
-                .filter(Boolean)
-                .join(" / ")
-            : null,
-          maxStock: maxQuantity ?? effectiveQuantity,
-        }
-      );
-      toast.success(`${product.name} added to cart`);
-      openCart();
-    } catch (error) {
-      // The client already caps at the cached ceiling, so reaching here means
-      // stock moved underneath us — worth a dialog rather than a toast, and
-      // worth refreshing the cache so the page corrects itself.
-      stock.refresh();
-      const message = error instanceof Error ? error.message : "";
-      const remaining = parseStockFromMessage(message);
+    // Local, immediate, debounced. A failure surfaces from the provider as a
+    // toast with a Retry action, carrying the server's own message — which is
+    // why there is nothing to catch here and no dialog to open.
+    addItem(product.id, effectiveQuantity, selectedVariant?.id ?? null, {
+      productName: product.name,
+      productPrice: product.salePrice ?? product.price,
+      productImage: product.images?.[0] ?? null,
+      variantLabel: selectedVariant
+        ? [selectedVariant.size, selectedVariant.color]
+            .filter(Boolean)
+            .join(" / ")
+        : null,
+      maxStock: variantStock ?? effectiveQuantity,
+    });
 
-      setStockIssue({
-        productName: product.name,
-        productImage: product.images?.[0] ?? null,
-        variantLabel: variantLabel || null,
-        requested: effectiveQuantity,
-        available: remaining,
-        message: message || undefined,
-      });
-    } finally {
-      setIsAdding(false);
-    }
+    // The product page keeps the auto-open: there is no burst-pressing problem
+    // behind a full-width button, and the drawer is the confirmation.
+    openCart();
   };
 
   return (
@@ -219,16 +188,11 @@ export function ProductDetail({ product }: ProductDetailProps) {
               maxQuantity={maxQuantity}
             />
 
-            <StockIssueDialog
-              issue={stockIssue}
-              onOpenChange={(open) => !open && setStockIssue(null)}
-              onUseMax={(max) => setQuantity(max)}
-            />
-
             <ProductActions
               isAuthenticated={isAuthenticated}
-              isAdding={isAdding}
               inStock={isSelectionInStock}
+              atCeiling={atCeiling}
+              inCartQuantity={inCartQuantity}
               onAddToCart={handleAddToCart}
               details={product.details}
             />
