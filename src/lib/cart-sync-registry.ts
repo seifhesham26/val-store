@@ -23,6 +23,8 @@
  * asked.
  */
 
+import { cartAddKey } from "./cart-add-registry";
+
 /** Matches the previous inline debounce in `cart-provider.tsx`. */
 export const CART_UPDATE_DEBOUNCE_MS = 1000;
 
@@ -49,17 +51,27 @@ export interface CartSyncRegistry {
   cancelAll(): void;
   /** True while `cartItemId` has a write scheduled or currently in flight. */
   isPending(cartItemId: string): boolean;
+  /**
+   * Fire every armed timer now and resolve once every triggered write, and any
+   * write already in flight, has settled. Awaited before checkout, so the
+   * order is never priced against a cart the server has not caught up to.
+   */
+  flushAll(): Promise<void>;
 }
 
 export function createCartSyncRegistry(
   delayMs: number = CART_UPDATE_DEBOUNCE_MS
 ): CartSyncRegistry {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  // The write each armed timer is holding, so `flushAll` can fire it early.
+  const runs = new Map<string, () => Promise<void>>();
   // Ids with a write scheduled *or* currently awaiting the server. A timer
   // alone isn't the whole story — the gap between the timer firing and the
   // mutation settling is exactly when a `cart.get` refetch could land and
   // overwrite the optimistic value with the pre-edit quantity.
   const pending = new Set<string>();
+  // Outstanding write promises, so `flushAll` can await them.
+  const inFlight = new Set<Promise<void>>();
 
   function cancel(cartItemId: string): void {
     const timer = timers.get(cartItemId);
@@ -67,34 +79,47 @@ export function createCartSyncRegistry(
       clearTimeout(timer);
       timers.delete(cartItemId);
     }
+    runs.delete(cartItemId);
     pending.delete(cartItemId);
+  }
+
+  function fire(cartItemId: string): void {
+    timers.delete(cartItemId);
+    const run = runs.get(cartItemId);
+    runs.delete(cartItemId);
+    if (!run) return;
+
+    // Stay "pending" until the mutation itself settles, not just until the
+    // timer fires — the caller is expected to catch its own rejection (see
+    // cart-provider.tsx) so it can toast and reconcile; this only needs to
+    // know when the line is safe for the sync effect to overwrite again. The
+    // `.catch` here is a backstop so a caller that forgets to handle its own
+    // rejection cannot produce an unhandled promise rejection — it does not
+    // hide the error from whatever `run` itself does with it.
+    const promise = run()
+      .catch(() => {})
+      .finally(() => {
+        pending.delete(cartItemId);
+      });
+
+    inFlight.add(promise);
+    void promise.finally(() => {
+      inFlight.delete(promise);
+    });
   }
 
   return {
     scheduleUpdate(cartItemId, run) {
       // Replaces, rather than adds to, whatever this id already had pending
-      // — matches the previous per-instance behaviour of clearing the prior
-      // timer for the same item before arming a new one.
+      // — an absolute quantity is last-call-wins. (`cart-add-registry`
+      // accumulates instead, because `cart.add` is additive.)
       cancel(cartItemId);
       pending.add(cartItemId);
-
-      const timer = setTimeout(() => {
-        timers.delete(cartItemId);
-        // Stay "pending" until the mutation itself settles, not just until
-        // the timer fires — the caller is expected to catch its own
-        // rejection (see cart-provider.tsx) so it can toast and reconcile;
-        // this only needs to know when the line is safe for the sync effect
-        // to overwrite again. The `.catch` here is a backstop so a caller
-        // that forgets to handle its own rejection cannot produce an
-        // unhandled promise rejection — it does not hide the error from
-        // whatever `run` itself does with it.
-        void run()
-          .catch(() => {})
-          .finally(() => {
-            pending.delete(cartItemId);
-          });
-      }, delayMs);
-      timers.set(cartItemId, timer);
+      runs.set(cartItemId, run);
+      timers.set(
+        cartItemId,
+        setTimeout(() => fire(cartItemId), delayMs)
+      );
     },
 
     cancel,
@@ -102,39 +127,85 @@ export function createCartSyncRegistry(
     cancelAll() {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
+      runs.clear();
       pending.clear();
     },
 
     isPending(cartItemId) {
       return pending.has(cartItemId);
     },
+
+    async flushAll() {
+      for (const [cartItemId, timer] of [...timers]) {
+        clearTimeout(timer);
+        fire(cartItemId);
+      }
+      // allSettled, not all: a rejected write is the caller's problem to
+      // report, not a reason to leave checkout hanging.
+      await Promise.allSettled([...inFlight]);
+    },
   };
 }
 
 /**
- * Merge a freshly-fetched server cart with what the local store already
- * holds, without letting the fetch clobber a line that has a write in
- * flight.
+ * What the client currently believes it owes the server.
  *
- * `cart.get` is refetched by *any* cart mutation's `invalidateCart()`, not
- * just the one for the line being edited — add an item from the drawer
- * while a different line's debounced quantity edit is still pending, and
- * the refetch would otherwise overwrite that line with its pre-edit
- * quantity before the debounced write ever reaches the server.
+ * Two registries answer this, keyed differently: a quantity edit is addressed
+ * by cart item id, an add by product+variant (an added line may not have a
+ * server row, and therefore no id, yet).
  */
-export function reconcileServerCart<T extends { id: string }>(
-  serverItems: T[],
-  localItems: T[],
-  registry: Pick<CartSyncRegistry, "isPending">
-): T[] {
-  return serverItems.map((serverItem) => {
-    if (!registry.isPending(serverItem.id)) {
+export interface PendingCartWrites {
+  /** True while `cartItemId` has a debounced quantity edit outstanding. */
+  isPendingItem(cartItemId: string): boolean;
+  /** True while `cartAddKey(productId, variantId)` has an add outstanding. */
+  isPendingAdd(key: string): boolean;
+}
+
+/**
+ * Merge a freshly-fetched server cart with what the local store already holds,
+ * without letting the fetch clobber a write that has not landed yet.
+ *
+ * `cart.get` is refetched by *any* cart mutation's `invalidateCart()`, not just
+ * the one for the line being edited. Three things have to survive that:
+ *
+ * 1. A line mid-quantity-edit keeps its local value, or it flips back to the
+ *    pre-edit quantity and then forward again when the debounced write lands.
+ * 2. A line with an add still queued keeps its local value too — the server
+ *    row is genuinely *behind*, by exactly the delta still sitting in the add
+ *    registry.
+ * 3. A line that exists only locally, because its add has not been sent yet,
+ *    has to be carried through. Mapping over server items alone dropped it,
+ *    which made a just-added item vanish and reappear a second later.
+ *
+ * Once nothing is pending for a line, the server wins — including for a
+ * local-only line, whose absence from the server then means the add failed or
+ * was rolled back.
+ */
+export function reconcileServerCart<
+  T extends { id: string; productId: string; variantId: string | null },
+>(serverItems: T[], localItems: T[], pending: PendingCartWrites): T[] {
+  const keyOf = (item: T) => cartAddKey(item.productId, item.variantId);
+
+  const merged = serverItems.map((serverItem) => {
+    const key = keyOf(serverItem);
+    if (!pending.isPendingItem(serverItem.id) && !pending.isPendingAdd(key)) {
       return serverItem;
     }
-    // Keep whatever the customer is mid-edit on. If the local copy is
-    // somehow gone (shouldn't happen — a pending id only exists for a line
-    // that was just edited, not removed), fall back to the server's value
-    // rather than dropping the line.
-    return localItems.find((item) => item.id === serverItem.id) ?? serverItem;
+    // Prefer the same row by id; fall back to the same product+variant, which
+    // is how an optimistic `pending-` line matches the server row that has
+    // just replaced it. If the local copy is somehow gone, the server's value
+    // is better than dropping the line.
+    return (
+      localItems.find((item) => item.id === serverItem.id) ??
+      localItems.find((item) => keyOf(item) === key) ??
+      serverItem
+    );
   });
+
+  const serverKeys = new Set(serverItems.map(keyOf));
+  const unsent = localItems.filter(
+    (item) => !serverKeys.has(keyOf(item)) && pending.isPendingAdd(keyOf(item))
+  );
+
+  return [...merged, ...unsent];
 }

@@ -23,6 +23,36 @@ import { persist, createJSONStorage } from "zustand/middleware";
  */
 export const GUEST_CART_ITEM_ID_PREFIX = "guest-";
 
+/**
+ * Id prefix for a line added optimistically by a signed-in customer.
+ *
+ * Deliberately **not** `guest-`. `CartProvider`'s merge effect keys off that
+ * prefix to decide what to fold into the server cart at sign-in, so an
+ * authenticated optimistic line carrying it would be added a second time —
+ * once by the add itself and once by the merge. This prefix is excluded from
+ * the merge filter and dropped by `clearSignedOutItems`, because the line
+ * belongs to an account rather than to the browser.
+ *
+ * A `pending-` line lives only until its `cart.add` lands and `cart.get`
+ * returns the real row; `reconcileServerCart` matches the two on product +
+ * variant, so the swap is invisible.
+ */
+export const PENDING_CART_ITEM_ID_PREFIX = "pending-";
+
+/**
+ * True for a line that has no server row to address yet — a guest line
+ * awaiting its merge, or an optimistic add still in flight.
+ *
+ * Both would fail `z.string().uuid()` if sent as a `cartItemId`, so quantity
+ * edits and removals on these stay local.
+ */
+export function isLocalOnlyCartItemId(cartItemId: string): boolean {
+  return (
+    cartItemId.startsWith(GUEST_CART_ITEM_ID_PREFIX) ||
+    cartItemId.startsWith(PENDING_CART_ITEM_ID_PREFIX)
+  );
+}
+
 export interface CartItem {
   id: string;
   productId: string;
@@ -39,7 +69,6 @@ interface CartState {
   items: CartItem[];
   isOpen: boolean;
   isLoading: boolean;
-  isSyncing: boolean;
 }
 
 interface CartActions {
@@ -53,7 +82,6 @@ interface CartActions {
   closeCart: () => void;
   toggleCart: () => void;
   setLoading: (loading: boolean) => void;
-  setSyncing: (syncing: boolean) => void;
   getItemCount: () => number;
   getSubtotal: () => number;
   isEmpty: () => boolean;
@@ -68,7 +96,6 @@ export const useCartStore = create<CartStore>()(
       items: [],
       isOpen: false,
       isLoading: false,
-      isSyncing: false,
 
       // Actions
       setItems: (items: CartItem[]) => set({ items }),
@@ -128,7 +155,6 @@ export const useCartStore = create<CartStore>()(
       toggleCart: () => set((state: CartState) => ({ isOpen: !state.isOpen })),
 
       setLoading: (loading: boolean) => set({ isLoading: loading }),
-      setSyncing: (syncing: boolean) => set({ isSyncing: syncing }),
 
       getItemCount: () => {
         const { items } = get();

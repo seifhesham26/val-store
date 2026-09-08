@@ -1,21 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, LogIn, Truck, RefreshCw, Shield } from "lucide-react";
+import { LogIn, Truck, RefreshCw, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ProductActionsProps {
   isAuthenticated: boolean;
-  isAdding: boolean;
   inStock?: boolean;
+  /** In stock, but the cart already holds every available unit. */
+  atCeiling?: boolean;
+  /** How many are already in the cart, for the at-ceiling label. */
+  inCartQuantity?: number;
   onAddToCart: () => void;
   details?: string[];
 }
 
 export function ProductActions({
   isAuthenticated,
-  isAdding,
   inStock,
+  atCeiling = false,
+  inCartQuantity = 0,
   onAddToCart,
   details,
 }: ProductActionsProps) {
@@ -38,21 +42,19 @@ export function ProductActions({
             </Link>
           </Button>
         ) : (
+          // No pending state: the press is a local write, so there is no round
+          // trip to spin for and no reason the button should ever go dead
+          // between presses. The stock ceiling is the only thing that stops it.
           <Button
             onClick={onAddToCart}
             className="flex-1 bg-white text-black hover:bg-val-silver py-6 text-lg font-medium"
-            disabled={!inStock || isAdding}
+            disabled={!inStock || atCeiling}
           >
-            {isAdding ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                Adding...
-              </>
-            ) : inStock ? (
-              "Add to Cart"
-            ) : (
-              "Out of Stock"
-            )}
+            {!inStock
+              ? "Out of Stock"
+              : atCeiling
+                ? `All ${inCartQuantity} in cart`
+                : "Add to Cart"}
           </Button>
         )}
       </div>

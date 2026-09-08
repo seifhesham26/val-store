@@ -9,17 +9,14 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useCart } from "@/components/providers/cart-provider";
+import { useState } from "react";
+import { useCart, useCartAddDelta } from "@/components/providers/cart-provider";
 import { toast } from "sonner";
 
 import { VerticalWheel } from "@/components/products/quick-add/VerticalWheel";
 import { QuickAddButton } from "@/components/products/quick-add/QuickAddButton";
-import {
-  StockIssueDialog,
-  type StockIssue,
-} from "@/components/products/StockIssueDialog";
 import { useVariantStock } from "@/hooks/use-variant-stock";
+import { quantityInCart, remainingCapacity } from "@/lib/cart-stock-limit";
 
 export interface QuickAddVariant {
   id: string;
@@ -59,22 +56,12 @@ export function QuickAddSliderBar({
 
   const [sizeIndex, setSizeIndex] = useState(0);
   const [colorIndex, setColorIndex] = useState(0);
-  const [isAdding, setIsAdding] = useState(false);
-  const [justAdded, setJustAdded] = useState(false);
-  const [stockIssue, setStockIssue] = useState<StockIssue | null>(null);
-  const justAddedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (justAddedTimerRef.current) clearTimeout(justAddedTimerRef.current);
-    };
-  }, []);
 
   // Shares the same cached stock query as the product page — one fetch per set
   // of variants, refreshed in the background, not one request per add.
   const stock = useVariantStock(variants.map((v) => v.id));
 
-  const { addItem, openCart, isAuthenticated } = useCart();
+  const { addItem, isAuthenticated, items } = useCart();
 
   const selectedSize = sizes[sizeIndex] || null;
   const selectedColor = colors[colorIndex] || null;
@@ -85,13 +72,27 @@ export function QuickAddSliderBar({
       (selectedSize === null || v.size === selectedSize) &&
       (selectedColor === null || v.color === selectedColor)
   );
+  const variantId = matchingVariant?.id ?? null;
+
   // Live figure when the cache has it, otherwise the flag the grid was rendered
   // with.
   const liveStock = stock.get(matchingVariant?.id);
   const inStock =
     liveStock !== null ? liveStock > 0 : (matchingVariant?.inStock ?? false);
 
-  const handleQuickAdd = async (e: React.MouseEvent) => {
+  // What the cart already holds is part of the ceiling: the server checks
+  // `already in cart + requested <= stock`, and the customer should not have to
+  // discover that by being refused.
+  const inCartQuantity = quantityInCart(items, productId, variantId);
+  const remaining = remainingCapacity(liveStock, inCartQuantity);
+  const atCeiling = inStock && remaining === 0;
+
+  // Units this button has queued that the server has not confirmed. Replaces
+  // the old fixed 2s "Added!" flag, which under burst pressing re-armed thirty
+  // times and said nothing about whether press seven landed.
+  const pendingAdded = useCartAddDelta(productId, variantId);
+
+  const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -100,50 +101,28 @@ export function QuickAddSliderBar({
       return;
     }
 
-    setIsAdding(true);
-    try {
-      // Guests included. The gate that used to stand above this made the
-      // store's guest branch unreachable from the grid.
-      await addItem(productId, 1, matchingVariant?.id ?? null, {
-        productName,
-        productPrice,
-        productImage: productImage ?? null,
-        variantLabel:
-          [selectedSize, selectedColor].filter(Boolean).join(" / ") || null,
-        // The grid's variant shape carries only a boolean, so when the live
-        // cache has no figure yet we allow one unit and let the merge resolve
-        // the real ceiling from the database.
-        maxStock: liveStock ?? 1,
-      });
-      setJustAdded(true);
-      toast.success(`${productName} added to cart`);
-      openCart();
-      if (justAddedTimerRef.current) clearTimeout(justAddedTimerRef.current);
-      justAddedTimerRef.current = setTimeout(() => {
-        setJustAdded(false);
-        justAddedTimerRef.current = null;
-      }, 2000);
-    } catch (error) {
-      stock.refresh();
-      const message = error instanceof Error ? error.message : "";
-      const match = message.match(/only\s+(\d+)\s+left/i);
+    // The button is disabled at the ceiling; this is the belt to that pair of
+    // braces, and it is what makes "the thirty-first press issues no request"
+    // true at the call site rather than only in the arithmetic.
+    if (remaining <= 0) return;
 
-      setStockIssue({
-        productName,
-        productImage,
-        variantLabel:
-          [selectedColor, selectedSize].filter(Boolean).join(" / ") || null,
-        requested: 1,
-        available: /out of stock/i.test(message)
-          ? 0
-          : match
-            ? Number(match[1])
-            : null,
-        message: message || undefined,
-      });
-    } finally {
-      setIsAdding(false);
-    }
+    // Local and immediate. Thirty presses become one additive `cart.add`; a
+    // refusal surfaces from the provider as a toast with a Retry action.
+    addItem(productId, 1, variantId, {
+      productName,
+      productPrice,
+      productImage: productImage ?? null,
+      variantLabel:
+        [selectedSize, selectedColor].filter(Boolean).join(" / ") || null,
+      // The grid's variant shape carries only a boolean, so when the live
+      // cache has no figure yet we allow one unit and let the server resolve
+      // the real ceiling.
+      maxStock: liveStock ?? 1,
+    });
+
+    // No `openCart()` here on purpose: with burst pressing, press one would
+    // slide the drawer over the card still being pressed. The navbar badge and
+    // the button's own "Added N" are the confirmation.
   };
 
   // If no variants at all, show a simple fallback
@@ -187,17 +166,13 @@ export function QuickAddSliderBar({
       <div className="flex-1 min-w-0">
         <QuickAddButton
           isAuthenticated={isAuthenticated}
-          isAdding={isAdding}
-          justAdded={justAdded}
           inStock={inStock}
+          atCeiling={atCeiling}
+          inCartQuantity={inCartQuantity}
+          pendingAdded={pendingAdded}
           onAdd={handleQuickAdd}
         />
       </div>
-
-      <StockIssueDialog
-        issue={stockIssue}
-        onOpenChange={(open) => !open && setStockIssue(null)}
-      />
     </div>
   );
 }

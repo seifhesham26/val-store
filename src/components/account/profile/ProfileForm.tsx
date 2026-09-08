@@ -4,6 +4,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
+import { cachePatch, runOptimistic } from "@/lib/optimistic-patches";
+import { showRetryToast } from "@/lib/optimistic-toast";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type UserProfile = RouterOutputs["public"]["profile"]["me"];
@@ -31,13 +33,34 @@ export function ProfileForm({ user }: { user: UserProfile | undefined }) {
     setName(user.name || "");
   }
 
+  function retryUpdateName(nextName: string) {
+    updateName.mutate({ name: nextName });
+  }
+
   const updateName = trpc.public.profile.updateName.useMutation({
+    // `profile.me` is what the account header reads, so patching it is what
+    // makes the new name appear at the same moment the button is pressed.
+    onMutate: ({ name: nextName }) =>
+      runOptimistic([
+        cachePatch({
+          cancel: () => utils.public.profile.me.cancel(),
+          read: () => utils.public.profile.me.getData(),
+          write: (data) => utils.public.profile.me.setData(undefined, data),
+          invalidate: () => utils.public.profile.me.invalidate(),
+          patch: (current) => current && { ...current, name: nextName },
+        }),
+      ]),
     onSuccess: () => {
-      utils.public.profile.me.invalidate();
       toast.success("Profile updated");
     },
-    onError: (err) => {
-      toast.error("Failed to update profile", { description: err.message });
+    onError: (err, variables, handle) => {
+      handle?.rollback();
+      showRetryToast(err.message || "Couldn't update your profile.", () =>
+        retryUpdateName(variables.name)
+      );
+    },
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
     },
   });
 

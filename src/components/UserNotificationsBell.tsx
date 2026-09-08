@@ -24,6 +24,12 @@ import {
   notificationIcon,
   notificationColor,
 } from "@/components/notifications/notification-visuals";
+import { cachePatch, runOptimistic } from "@/lib/optimistic-patches";
+import { showRetryToast } from "@/lib/optimistic-toast";
+import type { AppRouter } from "@/server";
+import type { inferRouterOutputs } from "@trpc/server";
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export function UserNotificationsBell() {
   const { data: session } = useSession();
@@ -41,18 +47,73 @@ export function UserNotificationsBell() {
 
   const utils = trpc.useUtils();
 
+  const listInput = { limit: 10 } as const;
+
+  /** The dropdown's ten most recent, patched in place. */
+  const listPatch = (
+    patch: (
+      rows: RouterOutputs["public"]["notifications"]["list"] | undefined
+    ) => RouterOutputs["public"]["notifications"]["list"] | undefined
+  ) =>
+    cachePatch({
+      cancel: () => utils.public.notifications.list.cancel(listInput),
+      read: () => utils.public.notifications.list.getData(listInput),
+      write: (data) => utils.public.notifications.list.setData(listInput, data),
+      invalidate: () => utils.public.notifications.list.invalidate(),
+      patch,
+    });
+
+  /** The badge. */
+  const countPatch = (next: (current: number) => number) =>
+    cachePatch({
+      cancel: () => utils.public.notifications.unreadCount.cancel(),
+      read: () => utils.public.notifications.unreadCount.getData(),
+      write: (data) =>
+        utils.public.notifications.unreadCount.setData(undefined, data),
+      invalidate: () => utils.public.notifications.unreadCount.invalidate(),
+      patch: (current) => (current === undefined ? current : next(current)),
+    });
+
+  function retryMarkAsRead(id: string) {
+    markAsReadMutation.mutate({ id });
+  }
+
   const markAsReadMutation = trpc.public.notifications.markAsRead.useMutation({
-    onSuccess: () => {
-      utils.public.notifications.list.invalidate();
-      utils.public.notifications.unreadCount.invalidate();
+    onMutate: ({ id }) =>
+      runOptimistic([
+        listPatch((rows) =>
+          rows?.map((row) => (row.id === id ? { ...row, isRead: true } : row))
+        ),
+        countPatch((current) => Math.max(0, current - 1)),
+      ]),
+    onError: (_err, variables, handle) => {
+      handle?.rollback();
+      showRetryToast("Couldn't mark that as read.", () =>
+        retryMarkAsRead(variables.id)
+      );
+    },
+    onSettled: (_data, _err, _variables, handle) => {
+      handle?.settle();
     },
   });
 
+  function retryMarkAllAsRead() {
+    markAllAsReadMutation.mutate();
+  }
+
   const markAllAsReadMutation =
     trpc.public.notifications.markAllAsRead.useMutation({
-      onSuccess: () => {
-        utils.public.notifications.list.invalidate();
-        utils.public.notifications.unreadCount.invalidate();
+      onMutate: () =>
+        runOptimistic([
+          listPatch((rows) => rows?.map((row) => ({ ...row, isRead: true }))),
+          countPatch(() => 0),
+        ]),
+      onError: (_err, _variables, handle) => {
+        handle?.rollback();
+        showRetryToast("Couldn't mark them all as read.", retryMarkAllAsRead);
+      },
+      onSettled: (_data, _err, _variables, handle) => {
+        handle?.settle();
       },
     });
 

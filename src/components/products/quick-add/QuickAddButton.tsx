@@ -1,20 +1,25 @@
 "use client";
 
-import { ShoppingCart, Check, Loader2, LogIn } from "lucide-react";
+import { ShoppingCart, Check, LogIn } from "lucide-react";
 
 interface QuickAddButtonProps {
   isAuthenticated: boolean;
-  isAdding: boolean;
-  justAdded: boolean;
   inStock: boolean;
+  /** In stock, but the cart already holds every available unit. */
+  atCeiling: boolean;
+  /** How many are already in the cart, for the at-ceiling label. */
+  inCartQuantity: number;
+  /** Units queued locally that the server has not confirmed yet. */
+  pendingAdded: number;
   onAdd: (e: React.MouseEvent) => void;
 }
 
 export function QuickAddButton({
   isAuthenticated,
-  isAdding,
-  justAdded,
   inStock,
+  atCeiling,
+  inCartQuantity,
+  pendingAdded,
   onAdd,
 }: QuickAddButtonProps) {
   if (!isAuthenticated) {
@@ -30,30 +35,35 @@ export function QuickAddButton({
     );
   }
 
+  // Two different stops, two different words: nothing left to sell, versus the
+  // customer already holding all of it. "Sold Out" for the second would be a
+  // lie about the product.
+  const stopped = !inStock || atCeiling;
+
   return (
     <button
       onClick={onAdd}
-      disabled={isAdding || !inStock}
+      // Never disabled merely because a write is in flight — the press is a
+      // local write, and a button that goes dead between presses is the whole
+      // problem this replaces.
+      disabled={stopped}
       className={`flex items-center justify-center gap-1 w-full text-[10px] py-2 rounded-md font-semibold transition-all duration-200 ${
-        !inStock
+        stopped
           ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-          : justAdded
+          : pendingAdded > 0
             ? "bg-green-600 text-white"
             : "bg-white text-black hover:bg-val-silver"
       }`}
     >
-      {isAdding ? (
-        <>
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Adding
-        </>
-      ) : justAdded ? (
+      {!inStock ? (
+        "Sold Out"
+      ) : atCeiling ? (
+        `All ${inCartQuantity} in cart`
+      ) : pendingAdded > 0 ? (
         <>
           <Check className="h-3 w-3" />
-          Added!
+          Added {pendingAdded}
         </>
-      ) : !inStock ? (
-        "Sold Out"
       ) : (
         <>
           <ShoppingCart className="h-3 w-3" />
