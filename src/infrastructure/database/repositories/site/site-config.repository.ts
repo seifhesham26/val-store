@@ -30,6 +30,7 @@ import {
   ContentSectionHistoryEntity,
 } from "@/domain/site/entities/content-section.entity";
 import { FeaturedItemEntity } from "@/domain/site/entities/featured-item.entity";
+import { STORE_LOCALE, STORE_TIMEZONE } from "@/lib/store-locale";
 
 export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
   // ============================================
@@ -76,8 +77,8 @@ export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
         // that disagrees with what customers are charged is how the four
         // conflicting currencies started in the first place.
         currency: STORE_CURRENCY,
-        locale: "en-US",
-        timezone: "UTC",
+        locale: STORE_LOCALE,
+        timezone: STORE_TIMEZONE,
       })
       .returning();
 

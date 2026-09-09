@@ -1,3 +1,15 @@
+/**
+ * Homepage trust badges.
+ *
+ * These are commercial claims on the store's most-visited page, so they must
+ * agree with `content/legal/returns.md` and `shipping.md`. They previously did
+ * not: the returns badge advertised a "30-day return policy" (the statutory
+ * change-of-mind window is 14 days; 30 days is the separate defect window), and
+ * the shipping badge promised free delivery "on every order, no minimum" while
+ * the shipping policy sets per-zone charges above a threshold. Both were
+ * misleading commercial claims, not just stale copy.
+ */
+
 import { Truck, RefreshCw, Award } from "lucide-react";
 
 interface TrustIndicator {
@@ -9,13 +21,13 @@ interface TrustIndicator {
 const indicators: TrustIndicator[] = [
   {
     icon: Truck,
-    title: "Free Shipping",
-    description: "On every order, no minimum",
+    title: "Delivery Across Egypt",
+    description: "To every governorate",
   },
   {
     icon: RefreshCw,
     title: "Easy Returns",
-    description: "30-day return policy",
+    description: "14 days to change your mind",
   },
   {
     icon: Award,

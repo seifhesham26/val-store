@@ -9,11 +9,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UploadDropzone } from "@/components/ui/upload";
-import { Trash2, Star, Loader2, ImageIcon } from "lucide-react";
+import { useUploadThing } from "@/components/ui/upload";
+import { CropDialog } from "./CropDialog";
+import { Trash2, Star, Loader2, ImageIcon, Upload } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import Image from "next/image";
+import { ProductImage } from "@/components/shared/ProductImage";
 
 type LocalImage = {
   id: string;
@@ -37,6 +38,39 @@ export function ImageUploadSection({
 }: ImageUploadSectionProps) {
   const [localImages, setLocalImages] = useState<LocalImage[]>([]);
   const utils = trpc.useUtils();
+
+  const { startUpload, isUploading } = useUploadThing("productImage", {
+    onClientUploadComplete: (res) =>
+      handleUploadComplete(res.map((f) => ({ url: f.ufsUrl, name: f.name }))),
+    onUploadError: (error) => {
+      toast.error(`Upload failed: ${error.message}`);
+    },
+  });
+
+  const [queue, setQueue] = useState<File[]>([]);
+  const [ready, setReady] = useState<File[]>([]);
+
+  // Files are reviewed one at a time; the head of the queue is what the
+  // dialog is showing.
+  const handleResolve = (result: File | null) => {
+    const rest = queue.slice(1);
+    const collected = result ? [...ready, result] : ready;
+    setQueue(rest);
+    if (rest.length === 0) {
+      setReady([]);
+      if (collected.length > 0) void startUpload(collected);
+    } else {
+      setReady(collected);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    // Reset the input so picking the same file twice in a row still fires
+    // a change event.
+    e.target.value = "";
+    if (files.length > 0) setQueue(files);
+  };
 
   const { data: existingImages, isLoading } = trpc.admin.images.list.useQuery(
     { productId: productId! },
@@ -181,11 +215,9 @@ export function ImageUploadSection({
                 key={image.id}
                 className="relative group aspect-square rounded-lg overflow-hidden border bg-muted"
               >
-                <Image
+                <ProductImage
                   src={image.imageUrl}
                   alt={image.altText || "Product image"}
-                  fill
-                  className="object-cover"
                   sizes="(max-width: 768px) 50vw, 25vw"
                 />
                 {image.isPrimary && (
@@ -233,14 +265,37 @@ export function ImageUploadSection({
           </div>
         )}
 
-        <UploadDropzone
-          endpoint="productImage"
-          onClientUploadComplete={handleUploadComplete}
-          onUploadError={(error: Error) => {
-            toast.error(`Upload failed: ${error.message}`);
-          }}
-          className="border-dashed"
-        />
+        <div className="flex flex-col items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-transparent"
+            onClick={() =>
+              document.getElementById("product-image-input")?.click()
+            }
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-2" />
+            )}
+            {isUploading ? "Uploading..." : "Select images"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            PNG, JPG, WebP up to 4MB each. Each image is framed before upload.
+          </p>
+          <input
+            id="product-image-input"
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+        </div>
+
+        <CropDialog file={queue[0] ?? null} onResolve={handleResolve} />
       </CardContent>
     </Card>
   );

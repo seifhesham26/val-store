@@ -16,8 +16,8 @@ interface PromoBannerProps {
 
 export function PromoBanner({
   preHeadline = "Limited Time",
-  headline = "Winter Sale",
-  description = "Up to 40% off on selected items. Don't miss out on our biggest sale of the season.",
+  headline = "Sale",
+  description = "Selected styles at reduced prices, while stocks last.",
   ctaText = "Shop Sale",
   ctaLink = "/collections/sale",
 }: PromoBannerProps) {

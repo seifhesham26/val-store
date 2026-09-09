@@ -1,18 +1,15 @@
-import { ReturnsHeader } from "@/components/returns/ReturnsHeader";
-import { ReturnsOptions } from "@/components/returns/ReturnsOptions";
-import { ReturnsContent } from "@/components/returns/ReturnsContent";
+import { LegalPage } from "@/components/legal/LegalPage";
 
 export const metadata = {
   title: "Returns & Exchanges | Valkyrie",
-  description: "Learn about our hassle-free return and exchange policy.",
+  description:
+    "Your rights when you return an item, under Egyptian consumer protection law.",
 };
 
-export default function ReturnsPage() {
+export default function Page() {
   return (
-    <div className="container mx-auto px-4 py-12">
-      <ReturnsHeader />
-      <ReturnsOptions />
-      <ReturnsContent />
+    <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+      <LegalPage slug="returns" />
     </div>
   );
 }

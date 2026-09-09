@@ -16,6 +16,8 @@ import { container } from "@/application/container";
 import { createAnonymousCaller } from "@/server/caller";
 import { isReservedCollectionSlug } from "@/domain/categories/reserved-slugs";
 import { parseSectionContent } from "@/lib/cms-content-parser";
+import { parseLegalDocument } from "@/lib/legal-frontmatter";
+import type { LegalSlug } from "@/domain/legal/legal-slugs";
 import {
   parseHeroContent,
   parseAnnouncementContent,
@@ -575,6 +577,89 @@ export const getCachedNavCategories = unstable_cache(
 export type NavCategory = Awaited<
   ReturnType<typeof getCachedNavCategories>
 >[number];
+
+/**
+ * One legal page, by slug.
+ *
+ * `unstable_cache` cannot take a closure argument in its key, so this is a
+ * factory: one cached fetcher per slug, each with its own tag. `admin.legal`
+ * calls `revalidateTag(`legal-<slug>`, "max")` after a write, which is the
+ * actual correctness mechanism — the TTL is only a backstop.
+ *
+ * It calls the router rather than reimplementing its query, so a
+ * server-rendered policy page cannot drift from what the admin editor reads.
+ */
+const legalPageFetchers = new Map<
+  LegalSlug,
+  () => Promise<LegalPagePayload | null>
+>();
+
+export type LegalPagePayload = {
+  slug: string;
+  title: string;
+  bodyMarkdown: string;
+  effectiveDate: string;
+};
+
+export function getCachedLegalPage(slug: LegalSlug) {
+  const existing = legalPageFetchers.get(slug);
+  if (existing) return existing;
+
+  const fetcher = unstable_cache(
+    async () => {
+      const caller = createAnonymousCaller();
+      return (await caller.public.legal.getBySlug({
+        slug,
+      })) as LegalPagePayload | null;
+    },
+    ["legal-page", slug],
+    { revalidate: CATALOGUE_REVALIDATE, tags: [`legal-${slug}`] }
+  );
+
+  legalPageFetchers.set(slug, fetcher);
+  return fetcher;
+}
+
+/**
+ * The page content, with the repo markdown as a fallback.
+ *
+ * Every CMS-backed surface in this codebase degrades rather than crashing, and
+ * a policy page is where that matters most: a database blip must not replace
+ * a customer's statutory rights with a 500. `content/legal/*.md` is the same
+ * text the database was seeded from, so falling back to it is truthful rather
+ * than merely non-empty.
+ *
+ * These pages are prerendered, so this path runs at build time where the repo
+ * is on disk. If even that fails the caller renders a short notice.
+ */
+export async function resolveLegalPage(
+  slug: LegalSlug
+): Promise<LegalPagePayload | null> {
+  try {
+    const page = await getCachedLegalPage(slug)();
+    if (page) return page;
+  } catch {
+    // fall through to the repo copy
+  }
+
+  try {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const raw = readFileSync(
+      join(process.cwd(), "content", "legal", `${slug}.md`),
+      "utf-8"
+    );
+    const doc = parseLegalDocument(raw);
+    return {
+      slug,
+      title: doc.title,
+      bodyMarkdown: doc.body,
+      effectiveDate: doc.effectiveDate,
+    };
+  } catch {
+    return null;
+  }
+}
 
 // Export cache tags for revalidation
 export { CACHE_TAGS };

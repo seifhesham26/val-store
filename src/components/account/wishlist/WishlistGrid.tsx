@@ -1,8 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Heart, ShoppingCart, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { formatCurrency } from "@/lib/currency";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
@@ -40,15 +40,19 @@ export function WishlistGrid({ items, onRemove }: WishlistGridProps) {
             >
               <div className="relative aspect-square bg-white/[0.04]">
                 {item.productImage ? (
-                  <Image
-                    src={item.productImage}
-                    alt={item.productImageAlt ?? item.productName}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className={`object-cover ${
-                      outOfStock ? "opacity-40 grayscale" : ""
-                    }`}
-                  />
+                  <div
+                    className={
+                      outOfStock
+                        ? "absolute inset-0 opacity-40 grayscale"
+                        : "absolute inset-0"
+                    }
+                  >
+                    <ProductImage
+                      src={item.productImage}
+                      alt={item.productImageAlt ?? item.productName}
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                  </div>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-600">
                     <Heart className="h-10 w-10" />

@@ -9,6 +9,8 @@ import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-
 import { NotificationService } from "@/application/notifications/notification.service";
 import { SendOrderConfirmationUseCase } from "@/application/orders/use-cases/send-order-confirmation.use-case";
 import { AddressRepositoryInterface } from "@/domain/address/interfaces/repositories/address.repository.interface";
+import type { Address } from "@/db/schema";
+import { calculateShippingCost } from "@/domain/shipping/shipping-rate";
 import { TaskSchedulerInterface } from "@/application/interfaces/task-scheduler.interface";
 
 export interface CreateOrderInput {
@@ -64,7 +66,7 @@ export class CreateOrderUseCase {
   private async assertAddressesOwnedBy(
     userId: string,
     addressIds: string[]
-  ): Promise<void> {
+  ): Promise<Map<string, Address>> {
     // Bounded at two ids (shipping, billing), so this is never more than one
     // round trip: postgres.js pipelines queries issued together down a single
     // connection. Awaiting them one at a time in a loop paid for two round
@@ -81,11 +83,17 @@ export class CreateOrderUseCase {
     if (addresses.some((address) => !address || address.userId !== userId)) {
       throw new Error("Selected address is not available");
     }
+
+    // Returned rather than discarded so pricing can read the destination
+    // governorate without paying for a second lookup of a row we already have.
+    return new Map(
+      addresses.filter((a): a is Address => Boolean(a)).map((a) => [a.id, a])
+    );
   }
 
   async execute(input: CreateOrderInput): Promise<CreateOrderOutput> {
     // Before anything is read or written: the ids came from the browser.
-    await this.assertAddressesOwnedBy(input.userId, [
+    const addressesById = await this.assertAddressesOwnedBy(input.userId, [
       input.shippingAddressId,
       input.billingAddressId,
     ]);
@@ -114,7 +122,15 @@ export class CreateOrderUseCase {
     );
 
     const tax = 0;
-    const shippingCost = 0;
+
+    // Priced from the destination governorate, server-side, against the
+    // subtotal computed above — never from anything the client sent. Rates are
+    // configuration and currently default to zero, so this returns 0 until the
+    // store sets them; that is the behaviour that was already live.
+    const shippingCost = calculateShippingCost({
+      subtotal,
+      governorate: addressesById.get(input.shippingAddressId)?.state,
+    });
 
     // Re-validate the coupon server-side against the subtotal we just computed.
     // The client only ever sends a code; the discount amount is derived here so

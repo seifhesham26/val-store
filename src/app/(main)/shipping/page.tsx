@@ -1,21 +1,14 @@
-import { ShippingHeader } from "@/components/shipping/ShippingHeader";
-import { ShippingOptions } from "@/components/shipping/ShippingOptions";
-import { ShippingPolicy } from "@/components/shipping/ShippingPolicy";
+import { LegalPage } from "@/components/legal/LegalPage";
 
 export const metadata = {
-  title: "Shipping Information | Valkyrie",
-  description:
-    "Learn about our shipping options, delivery times, and policies.",
+  title: "Shipping | Valkyrie",
+  description: "Delivery times, charges and tracking for orders within Egypt.",
 };
 
-export default function ShippingPage() {
+export default function Page() {
   return (
-    <div className="container mx-auto px-4 py-12">
-      <ShippingHeader />
-      <div className="grid md:grid-cols-2 gap-6 mb-12">
-        <ShippingOptions />
-      </div>
-      <ShippingPolicy />
+    <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+      <LegalPage slug="shipping" />
     </div>
   );
 }

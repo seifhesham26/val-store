@@ -30,7 +30,7 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
-import Image from "next/image";
+import { ProductImage } from "@/components/shared/ProductImage";
 import type { ProductFilters } from "./ProductsListHeader";
 import { formatCurrency } from "@/lib/currency";
 
@@ -182,13 +182,13 @@ export const ProductsTable = forwardRef<
                 <TableRow key={product.id}>
                   <TableCell>
                     {product.primaryImage ? (
-                      <Image
-                        src={product.primaryImage}
-                        alt={product.name}
-                        width={48}
-                        height={48}
-                        className="h-12 w-12 rounded-md object-cover"
-                      />
+                      <div className="relative h-12 w-12 overflow-hidden rounded-md">
+                        <ProductImage
+                          src={product.primaryImage}
+                          alt={product.name}
+                          sizes="48px"
+                        />
+                      </div>
                     ) : (
                       <div className="h-12 w-12 rounded-md bg-muted" />
                     )}

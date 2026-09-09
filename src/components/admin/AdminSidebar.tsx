@@ -14,6 +14,7 @@ import {
   Warehouse,
   Star,
   Tag,
+  Scale,
   ExternalLink,
 } from "lucide-react";
 
@@ -67,6 +68,11 @@ const navItems = [
     title: "Analytics",
     href: "/admin/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Legal",
+    href: "/admin/legal",
+    icon: Scale,
   },
 ];
 
