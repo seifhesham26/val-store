@@ -24,23 +24,20 @@ import {
   parseBrandStoryContent,
   parsePromoBannerContent,
 } from "@/domain/site/value-objects/content-schemas";
+import { CMS_SECTIONS_TAG, cmsSectionTag } from "./cms-cache-tags";
 
-// Cache tags for easy invalidation
+// Cache tags for easy invalidation.
+//
+// The four CMS section tags are NOT written out here. They come from
+// `cmsSectionTag`, which the admin write path also calls — see
+// `./cms-cache-tags` for the mismatch that cost the hero and the announcement
+// their invalidation entirely.
 const CACHE_TAGS = {
-  HERO: "hero-section",
   SITE_SETTINGS: "site-settings",
   FEATURED_PRODUCTS: "featured-products",
   FEATURED_CATEGORIES: "featured-categories",
   CATEGORIES: "categories",
-  ANNOUNCEMENT: "announcement",
-  // Named to match `cms-<type>` on the write side, which is what
-  // `revalidateTag` is called with when the admin saves one of these.
-  BRAND_STORY: "cms-brand_story",
-  PROMO_BANNER: "cms-promo_banner",
 } as const;
-
-/** The "any CMS section changed" tag every content-section write also fires. */
-const CMS_SECTIONS_TAG = "cms-sections";
 
 // Default revalidation time (60 seconds)
 const DEFAULT_REVALIDATE = 60;
@@ -89,8 +86,11 @@ export const getCachedHeroSection = unstable_cache(
       parsedContent,
     };
   },
-  [CACHE_TAGS.HERO],
-  { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.HERO] }
+  [cmsSectionTag("hero")],
+  {
+    revalidate: DEFAULT_REVALIDATE,
+    tags: [cmsSectionTag("hero"), CMS_SECTIONS_TAG],
+  }
 );
 
 /**
@@ -131,22 +131,20 @@ export const getCachedAnnouncementSection = unstable_cache(
       parsedContent,
     };
   },
-  [CACHE_TAGS.ANNOUNCEMENT],
-  { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.ANNOUNCEMENT] }
+  [cmsSectionTag("announcement")],
+  {
+    revalidate: DEFAULT_REVALIDATE,
+    tags: [cmsSectionTag("announcement"), CMS_SECTIONS_TAG],
+  }
 );
 
 /**
  * Get the brand story section with caching.
  *
- * Both tags are deliberate. `content-sections.ts` calls
- * `revalidateTag("cms-<type>")` and `revalidateTag("cms-sections")` on every
+ * Both tags are deliberate, here and on all four CMS sections:
+ * `content-sections.ts` fires the per-section tag and `cms-sections` on every
  * save, so listing both is what makes an admin edit appear immediately rather
  * than waiting out the TTL.
- *
- * Worth knowing while you are here: `getCachedHeroSection` above is tagged
- * `hero-section`, which matches neither of the tags the write path fires. Its
- * edits are picked up by the 60-second revalidate, not by invalidation. That
- * predates this section and is left alone rather than changed as a drive-by.
  */
 export const getCachedBrandStorySection = unstable_cache(
   async () => {
@@ -170,10 +168,10 @@ export const getCachedBrandStorySection = unstable_cache(
       parsedContent,
     };
   },
-  [CACHE_TAGS.BRAND_STORY],
+  [cmsSectionTag("brand_story")],
   {
     revalidate: DEFAULT_REVALIDATE,
-    tags: [CACHE_TAGS.BRAND_STORY, CMS_SECTIONS_TAG],
+    tags: [cmsSectionTag("brand_story"), CMS_SECTIONS_TAG],
   }
 );
 
@@ -199,10 +197,10 @@ export const getCachedPromoBannerSection = unstable_cache(
       parsedContent,
     };
   },
-  [CACHE_TAGS.PROMO_BANNER],
+  [cmsSectionTag("promo_banner")],
   {
     revalidate: DEFAULT_REVALIDATE,
-    tags: [CACHE_TAGS.PROMO_BANNER, CMS_SECTIONS_TAG],
+    tags: [cmsSectionTag("promo_banner"), CMS_SECTIONS_TAG],
   }
 );
 

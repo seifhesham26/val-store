@@ -2,6 +2,10 @@ import { z } from "zod";
 import { adminProcedure, adminWriteProcedure } from "../../../trpc";
 import { container } from "@/application/container";
 import { revalidateTag } from "next/cache";
+// Shared with `src/lib/cache.ts`, which tags the fetchers these invalidate.
+// The two used to spell the tags independently and disagreed on two of the
+// four section types — see `cms-cache-tags.ts`.
+import { CMS_SECTIONS_TAG, cmsSectionTag } from "@/lib/cms-cache-tags";
 // Input validation lives in `./content-section-input`, which imports no
 // container and so can be unit tested without a database.
 import {
@@ -87,8 +91,8 @@ export const contentSectionsProcedures = {
         ctx.user.id
       );
 
-      revalidateTag(`cms-${input.sectionType}`, "max");
-      revalidateTag("cms-sections", "max");
+      revalidateTag(cmsSectionTag(input.sectionType), "max");
+      revalidateTag(CMS_SECTIONS_TAG, "max");
 
       return {
         ...updated.toObject(),
@@ -147,8 +151,8 @@ export const contentSectionsProcedures = {
       // Same pair `updateContentSection` invalidates — a revert is a write
       // like any other, and skipping this would leave it the one CMS write
       // that doesn't announce itself.
-      revalidateTag(`cms-${input.sectionType}`, "max");
-      revalidateTag("cms-sections", "max");
+      revalidateTag(cmsSectionTag(input.sectionType), "max");
+      revalidateTag(CMS_SECTIONS_TAG, "max");
 
       return {
         ...reverted.toObject(),
