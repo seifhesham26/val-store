@@ -2,28 +2,16 @@ import { z } from "zod";
 import { adminProcedure, adminWriteProcedure } from "../../../trpc";
 import { container } from "@/application/container";
 import { revalidateTag } from "next/cache";
+// Input validation lives in `./content-section-input`, which imports no
+// container and so can be unit tested without a database.
 import {
-  heroContentSchema,
-  announcementContentSchema,
-} from "@/domain/site/value-objects/content-schemas";
+  contentSchemaBySectionType,
+  sectionTypeSchema,
+  updateContentSectionSchema,
+  type SectionType,
+} from "./content-section-input";
 
-// ============================================
-// VALIDATION SCHEMAS
-//
-// `promo_banner`, `brand_story`, `newsletter` and `instagram` were removed
-// (ISSUES.md #29) — their components never read this content back, so the
-// schemas were decorative. Only the two section types wired end to end
-// remain.
-// ============================================
-
-export const sectionTypeSchema = z.enum(["hero", "announcement"]);
-
-type SectionType = z.infer<typeof sectionTypeSchema>;
-
-const contentSchemaBySectionType = {
-  hero: heroContentSchema,
-  announcement: announcementContentSchema,
-} as const;
+export { sectionTypeSchema, updateContentSectionSchema };
 
 /**
  * Read `content_sections.content` back as a validated shape, or `null`.
@@ -59,13 +47,6 @@ function parseSectionContent(sectionType: SectionType, raw: string) {
     return null;
   }
 }
-
-export const updateContentSectionSchema = z.object({
-  sectionType: sectionTypeSchema,
-  content: z.union([heroContentSchema, announcementContentSchema]),
-  displayOrder: z.number().optional(),
-  isActive: z.boolean().optional(),
-});
 
 // ============================================
 // PROCEDURES

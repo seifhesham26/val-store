@@ -31,6 +31,7 @@ import { Save, Loader2, RefreshCw, History, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { ContentHistoryDialog } from "./ContentHistoryDialog";
+import { SimpleSectionEditor } from "./SimpleSectionEditor";
 
 export function HomepageSettings() {
   const [isSaving, setIsSaving] = useState(false);
@@ -486,6 +487,42 @@ export function HomepageSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/*
+       * Both sections keep their brand gradient when no image is set, so an
+       * empty Image field is a valid state rather than an unfinished one.
+       * Ratios come from docs/IMAGE-PROMPTS.md and match the frames these
+       * render into — a mismatched ratio is letterboxed, not cropped.
+       */}
+      <SimpleSectionEditor
+        sectionType="brand_story"
+        title="Brand Story"
+        description="The 'Our Story' panel between the categories and featured products"
+        bodyLabel="Body copy"
+        bodyHelp="Separate paragraphs with a blank line. Leave empty to use the built-in copy."
+        imageHelp="Portrait, 4:5 — 1200×1500 works well. Leave empty for the brand gradient."
+        placeholders={{
+          preHeadline: "Our Story",
+          headline: "Crafted for the Bold",
+          ctaText: "Learn More",
+          ctaLink: "/about",
+        }}
+      />
+
+      <SimpleSectionEditor
+        sectionType="promo_banner"
+        title="Promo Banner"
+        description="The promotional panel below new arrivals"
+        bodyLabel="Description"
+        bodyHelp="One short paragraph. Leave empty to use the built-in copy."
+        imageHelp="Square, 1:1 — 1600×1600 works well. Leave empty for the brand gradient."
+        placeholders={{
+          preHeadline: "Limited Time",
+          headline: "Sale",
+          ctaText: "Shop Sale",
+          ctaLink: "/collections/sale",
+        }}
+      />
 
       <ContentHistoryDialog
         sectionType={historySection ?? "hero"}

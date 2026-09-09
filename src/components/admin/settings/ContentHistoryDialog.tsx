@@ -34,9 +34,12 @@ import { Loader2, RotateCcw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import type { SectionTypeKey } from "@/domain/site/value-objects/content-schemas";
 
 interface ContentHistoryDialogProps {
-  sectionType: "hero" | "announcement";
+  // The domain's list rather than a hand-written pair, so a new CMS section
+  // type gets history without anyone remembering to widen this.
+  sectionType: SectionTypeKey;
   sectionLabel: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;

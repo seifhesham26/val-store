@@ -131,6 +131,7 @@ async function seed() {
         content: JSON.stringify({
           title: "Something is coming",
           subtitle: "Premium streetwear, made for Egypt. Launching soon.",
+          backgroundImage: "/brand/hero.jpg",
           overlayOpacity: 40,
           ctaText: "See the first drop",
           ctaLink: "/collections/all",
@@ -162,8 +163,43 @@ async function seed() {
         isActive: true,
         version: 1,
       },
+      {
+        // Art lives in `public/brand/`, not in the upload store, because it is
+        // shipped with the build rather than merchandised. `urlOrAssetPath`
+        // accepts either, so the admin can replace these with uploads without
+        // a code change.
+        sectionType: "brand_story",
+        content: JSON.stringify({
+          preHeadline: "Our Story",
+          headline: "Crafted for the Bold",
+          paragraphs: [
+            "Valkyrie was born from a simple idea: fashion should empower. Every piece in our collection is designed for those who refuse to blend in, who see clothing as a form of self-expression.",
+            "From sustainable sourcing to ethical manufacturing, we're committed to creating fashion that looks good and does good.",
+          ],
+          ctaText: "Learn More",
+          ctaLink: "/about",
+          backgroundImage: "/brand/brand-story.jpg",
+        }),
+        displayOrder: 2,
+        isActive: true,
+        version: 1,
+      },
+      {
+        sectionType: "promo_banner",
+        content: JSON.stringify({
+          preHeadline: "Limited Time",
+          headline: "Sale",
+          description: "Selected styles at reduced prices, while stocks last.",
+          ctaText: "Shop Sale",
+          ctaLink: "/collections/sale",
+          backgroundImage: "/brand/promo.jpg",
+        }),
+        displayOrder: 3,
+        isActive: true,
+        version: 1,
+      },
     ]);
-    console.log("  ✅ Hero + announcement");
+    console.log("  ✅ Hero + announcement + brand story + promo banner");
 
     // ------------------------------------------------------- placeholder product
     console.log("\n👕 Placeholder product...");

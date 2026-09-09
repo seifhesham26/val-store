@@ -1,5 +1,8 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { unoptimizedFor } from "@/lib/image-hosts";
+import { safeHref } from "@/lib/safe-url";
 
 interface BrandStoryProps {
   preHeadline?: string;
@@ -7,6 +10,12 @@ interface BrandStoryProps {
   paragraphs?: string[];
   ctaText?: string;
   ctaLink?: string;
+  /**
+   * Optional by design. No art is a legitimate state — the section falls back
+   * to the brand gradient rather than to a stock photograph of clothes this
+   * store does not sell, which is what used to be here.
+   */
+  backgroundImage?: string;
 }
 
 export function BrandStory({
@@ -18,21 +27,42 @@ export function BrandStory({
   ],
   ctaText = "Learn More",
   ctaLink = "/about",
+  backgroundImage,
 }: BrandStoryProps) {
+  // Re-checked at render even though the schema already validated it: rows
+  // written before `brandStoryContentSchema` existed are still in the
+  // database, and this is the same guard the hero applies to its CTA.
+  const href = safeHref(ctaLink) ?? "/about";
+
   return (
     <section className="py-16 md:py-24 bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid md:grid-cols-2 gap-8 md:gap-16 items-center">
           {/* Image Side */}
           <div className="relative aspect-4/5 overflow-hidden">
-            {/*
-             * A brand gradient, not a stock photo. This was a random picsum
-             * image, which reads as real photography of clothes the store does
-             * not sell — worse than showing nothing. Replace with a real
-             * studio shot; see docs/IMAGE-PROMPTS.md for a prompt that matches
-             * the rest of the site.
-             */}
-            <div className="absolute inset-0 bg-linear-to-br from-gray-800 via-gray-900 to-black" />
+            {backgroundImage ? (
+              <Image
+                src={backgroundImage}
+                // Decorative: the headline beside it already carries the
+                // meaning, so announcing this again is noise to a screen
+                // reader.
+                alt=""
+                fill
+                // Half the grid above `md`, full width below it.
+                sizes="(min-width: 768px) 50vw, 100vw"
+                className="object-cover"
+                unoptimized={unoptimizedFor(backgroundImage)}
+              />
+            ) : (
+              /*
+               * A brand gradient, not a stock photo. This was a random picsum
+               * image, which reads as real photography of clothes the store
+               * does not sell — worse than showing nothing. Set an image in
+               * Admin → Settings → Homepage; docs/IMAGE-PROMPTS.md has a
+               * prompt that matches the rest of the site.
+               */
+              <div className="absolute inset-0 bg-linear-to-br from-gray-800 via-gray-900 to-black" />
+            )}
             {/* Decorative accent line */}
             <div className="absolute bottom-0 left-0 w-1/2 h-1 bg-val-accent" />
           </div>
@@ -50,7 +80,7 @@ export function BrandStory({
                 {text}
               </p>
             ))}
-            <Link href={ctaLink} className="inline-block mt-8">
+            <Link href={href} className="inline-block mt-8">
               <Button
                 size="lg"
                 className="bg-white text-black hover:bg-val-silver px-8 py-6 text-base font-medium tracking-wide"

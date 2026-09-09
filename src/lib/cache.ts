@@ -21,6 +21,8 @@ import type { LegalSlug } from "@/domain/legal/legal-slugs";
 import {
   parseHeroContent,
   parseAnnouncementContent,
+  parseBrandStoryContent,
+  parsePromoBannerContent,
 } from "@/domain/site/value-objects/content-schemas";
 
 // Cache tags for easy invalidation
@@ -31,7 +33,14 @@ const CACHE_TAGS = {
   FEATURED_CATEGORIES: "featured-categories",
   CATEGORIES: "categories",
   ANNOUNCEMENT: "announcement",
+  // Named to match `cms-<type>` on the write side, which is what
+  // `revalidateTag` is called with when the admin saves one of these.
+  BRAND_STORY: "cms-brand_story",
+  PROMO_BANNER: "cms-promo_banner",
 } as const;
+
+/** The "any CMS section changed" tag every content-section write also fires. */
+const CMS_SECTIONS_TAG = "cms-sections";
 
 // Default revalidation time (60 seconds)
 const DEFAULT_REVALIDATE = 60;
@@ -124,6 +133,77 @@ export const getCachedAnnouncementSection = unstable_cache(
   },
   [CACHE_TAGS.ANNOUNCEMENT],
   { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.ANNOUNCEMENT] }
+);
+
+/**
+ * Get the brand story section with caching.
+ *
+ * Both tags are deliberate. `content-sections.ts` calls
+ * `revalidateTag("cms-<type>")` and `revalidateTag("cms-sections")` on every
+ * save, so listing both is what makes an admin edit appear immediately rather
+ * than waiting out the TTL.
+ *
+ * Worth knowing while you are here: `getCachedHeroSection` above is tagged
+ * `hero-section`, which matches neither of the tags the write path fires. Its
+ * edits are picked up by the 60-second revalidate, not by invalidation. That
+ * predates this section and is left alone rather than changed as a drive-by.
+ */
+export const getCachedBrandStorySection = unstable_cache(
+  async () => {
+    const repo = container.getSiteConfigRepository();
+    const section = await repo.getContentSection("brand_story");
+    if (!section) return null;
+
+    // Same contract as the hero: a row that fails validation comes back as
+    // `null`, so `ServerBrandStory` renders its hardcoded copy rather than a
+    // section built from `undefined` fields.
+    const parsedContent = parseSectionContent(
+      "brand_story",
+      section.content,
+      parseBrandStoryContent
+    );
+    if (!parsedContent) return null;
+
+    return {
+      isActive: section.isActive,
+      content: section.content,
+      parsedContent,
+    };
+  },
+  [CACHE_TAGS.BRAND_STORY],
+  {
+    revalidate: DEFAULT_REVALIDATE,
+    tags: [CACHE_TAGS.BRAND_STORY, CMS_SECTIONS_TAG],
+  }
+);
+
+/**
+ * Get the promo banner section with caching.
+ */
+export const getCachedPromoBannerSection = unstable_cache(
+  async () => {
+    const repo = container.getSiteConfigRepository();
+    const section = await repo.getContentSection("promo_banner");
+    if (!section) return null;
+
+    const parsedContent = parseSectionContent(
+      "promo_banner",
+      section.content,
+      parsePromoBannerContent
+    );
+    if (!parsedContent) return null;
+
+    return {
+      isActive: section.isActive,
+      content: section.content,
+      parsedContent,
+    };
+  },
+  [CACHE_TAGS.PROMO_BANNER],
+  {
+    revalidate: DEFAULT_REVALIDATE,
+    tags: [CACHE_TAGS.PROMO_BANNER, CMS_SECTIONS_TAG],
+  }
 );
 
 /**
