@@ -6,9 +6,8 @@
  */
 
 import Link from "next/link";
-import Image from "next/image";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { getCachedFeaturedCategories } from "@/lib/cache";
-import { unoptimizedFor } from "@/lib/image-hosts";
 
 interface ServerFeaturedCategoriesProps {
   title?: string;
@@ -32,16 +31,14 @@ function CategoryCard({
       {/* Image container with aspect ratio */}
       <div className="relative aspect-3/4 bg-val-steel overflow-hidden">
         {/* Category image from picsum */}
-        <Image
+        <ProductImage
           // Seeded on the slug, not the grid position: these are curated in
           // Settings → Featured now, and an index seed made every image change
           // places whenever an admin reordered the cards.
           src={`https://picsum.photos/seed/category-${slug}/600/800`}
           alt={name}
-          fill
           sizes="(max-width: 768px) 100vw, 33vw"
-          className="object-cover transition-transform duration-500 group-hover:scale-105"
-          unoptimized={unoptimizedFor(`https://picsum.photos/seed/category-${slug}/600/800`)}
+          className="transition-transform duration-500 group-hover:scale-105"
         />
 
         {/* Gradient overlay */}

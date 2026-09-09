@@ -1,7 +1,9 @@
 "use client";
 
-import Image from "next/image";
+import * as React from "react";
 import { Badge } from "@/components/ui/badge";
+import { ProductImage } from "@/components/shared/ProductImage";
+import { ImageLightbox } from "@/components/products/product-detail/ImageLightbox";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import { Share2 } from "lucide-react";
 
@@ -24,19 +26,29 @@ export function ProductImageGallery({
   isNew,
   isOnSale,
 }: ProductImageGalleryProps) {
+  const [lightboxSrc, setLightboxSrc] = React.useState<string | null>(null);
+
   return (
     <div className="space-y-4">
       {/* Main Image */}
       <div className="relative aspect-3/4 bg-val-steel overflow-hidden border border-white/10 rounded-lg">
         {selectedImage ? (
-          <Image
-            src={selectedImage}
-            alt={productName}
-            fill
-            sizes="(max-width: 768px) 100vw, 50vw"
-            className="object-cover"
-            priority
-          />
+          // The zoom control covers the image area only. Badges, wishlist
+          // and share stay siblings layered above it (z-10) — nesting them
+          // inside would be a <button> inside a <button>.
+          <button
+            type="button"
+            className="absolute inset-0 cursor-zoom-in"
+            aria-label={`Zoom ${productName}`}
+            onClick={() => setLightboxSrc(selectedImage)}
+          >
+            <ProductImage
+              src={selectedImage}
+              alt={productName}
+              sizes="(max-width: 768px) 100vw, 50vw"
+              priority
+            />
+          </button>
         ) : (
           <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
         )}
@@ -75,17 +87,21 @@ export function ProductImageGallery({
                   : "border-transparent opacity-70 hover:opacity-100"
               }`}
             >
-              <Image
+              <ProductImage
                 src={img}
                 alt={`${productName} thumbnail ${i + 1}`}
-                fill
                 sizes="(max-width: 768px) 25vw, 12vw"
-                className="object-cover"
               />
             </button>
           ))}
         </div>
       )}
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt={productName}
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

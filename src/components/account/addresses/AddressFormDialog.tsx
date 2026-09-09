@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { EGYPT_GOVERNORATES } from "@/domain/shipping/egypt-governorates";
 
 interface AddressFormData {
   name: string;
@@ -58,16 +59,12 @@ export function AddressFormDialog({
               defaultValue={editingAddress?.city}
               required
             />
-            <FormField
-              id="state"
-              label="State/Province"
-              defaultValue={editingAddress?.state}
-            />
+            <GovernorateField defaultValue={editingAddress?.state} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <FormField
               id="zipCode"
-              label="ZIP/Postal Code"
+              label="Postal Code"
               defaultValue={editingAddress?.zipCode}
             />
             <FormField
@@ -122,6 +119,61 @@ export function AddressFormDialog({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+const FIELD_CLASS =
+  "w-full px-3 py-2 bg-white/[0.06] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-val-accent/50 focus:border-val-accent/50 transition-colors";
+
+/**
+ * Governorate picker.
+ *
+ * Egypt is divided into governorates, not states — the field was labelled
+ * "State/Province" and free-typed, which is a US shape and made the value
+ * unusable for shipping zones.
+ *
+ * `addresses.state` is still a free-text column, so addresses saved before this
+ * existed can hold anything. An unrecognised stored value is offered as its own
+ * option rather than being dropped: silently blanking it would corrupt a saved
+ * address just by opening the form to edit something else.
+ */
+function GovernorateField({ defaultValue }: { defaultValue?: string }) {
+  const isKnown = EGYPT_GOVERNORATES.some((g) => g.en === defaultValue);
+
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor="state"
+        className="block text-sm font-medium text-gray-300"
+      >
+        Governorate
+      </label>
+      <select
+        id="state"
+        name="state"
+        defaultValue={defaultValue ?? ""}
+        className={FIELD_CLASS}
+      >
+        {/*
+         * Every option carries `bg-zinc-900` like the address-type select
+         * above. A native option inherits the light palette otherwise and
+         * renders white-on-white — the recurring two-themes-one-root trap.
+         */}
+        <option value="" className="bg-zinc-900">
+          Select a governorate
+        </option>
+        {defaultValue && !isKnown && (
+          <option value={defaultValue} className="bg-zinc-900">
+            {defaultValue}
+          </option>
+        )}
+        {EGYPT_GOVERNORATES.map((g) => (
+          <option key={g.code} value={g.en} className="bg-zinc-900">
+            {g.en}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

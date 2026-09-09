@@ -6,6 +6,7 @@ import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
 import { formatCurrency } from "@/lib/currency";
+import { STORE_LOCALE } from "@/lib/store-locale";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type OrdersListType =
@@ -132,11 +133,14 @@ export function OrdersList({
                       {order.orderNumber ?? `#${order.id.slice(-8)}`}
                     </h3>
                     <p className="mt-0.5 text-xs text-gray-500">
-                      {new Date(order.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
+                      {new Date(order.createdAt).toLocaleDateString(
+                        STORE_LOCALE,
+                        {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        }
+                      )}
                     </p>
                   </div>
                   <span
@@ -191,7 +195,10 @@ export function OrdersList({
 
       {/* Infinite scroll sentinel */}
       {hasNextPage && (
-        <div ref={sentinelRef} className="flex items-center justify-center py-4">
+        <div
+          ref={sentinelRef}
+          className="flex items-center justify-center py-4"
+        >
           {isFetchingNextPage ? (
             <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
           ) : (

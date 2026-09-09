@@ -8,6 +8,7 @@ import {
   boolean,
   integer,
   decimal,
+  date,
   index,
   uniqueIndex,
   jsonb,
@@ -874,6 +875,65 @@ export const contentSectionsHistory = pgTable(
 );
 
 // ============================================
+// LEGAL PAGES TABLE
+// ============================================
+
+/**
+ * Legal pages (returns, terms, privacy, shipping, faq).
+ * Slugs come from the closed set in `src/domain/legal/legal-slugs.ts`.
+ */
+export const legalPages = pgTable(
+  "legal_pages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: varchar("slug", { length: 64 }).notNull().unique(),
+    title: varchar("title", { length: 200 }).notNull(),
+    bodyMarkdown: text("body_markdown").notNull(),
+    effectiveDate: date("effective_date").notNull(),
+    version: integer("version").default(1).notNull(),
+    isPublished: boolean("is_published").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedBy: text("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("idx_legal_pages_slug").on(table.slug),
+  })
+);
+
+// ============================================
+// LEGAL PAGES HISTORY TABLE
+// ============================================
+
+/**
+ * Version history for legal pages.
+ * Written in the same transaction as the update.
+ */
+export const legalPagesHistory = pgTable(
+  "legal_pages_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    pageId: uuid("page_id")
+      .notNull()
+      .references(() => legalPages.id, { onDelete: "cascade" }),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    bodyMarkdown: text("body_markdown").notNull(),
+    effectiveDate: date("effective_date").notNull(),
+    version: integer("version").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    pageIdIdx: index("idx_legal_history_page_id").on(table.pageId),
+  })
+);
+
+// ============================================
 // CMS: FEATURED ITEMS TABLE
 // ============================================
 
@@ -974,6 +1034,11 @@ export type NewContentSectionHistory =
 
 export type FeaturedItem = typeof featuredItems.$inferSelect;
 export type NewFeaturedItem = typeof featuredItems.$inferInsert;
+
+export type LegalPage = typeof legalPages.$inferSelect;
+export type NewLegalPage = typeof legalPages.$inferInsert;
+
+export type LegalPageHistory = typeof legalPagesHistory.$inferSelect;
 
 // ============================================
 // NEWSLETTER SUBSCRIBERS TABLE

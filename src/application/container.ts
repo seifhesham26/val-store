@@ -18,6 +18,7 @@ import { createServicesModule } from "./services";
 import { createCouponModule } from "./coupons";
 import { createInventoryModule } from "./inventory";
 import { createNotificationModule } from "./notifications";
+import { createLegalModule } from "./legal";
 import { NextTaskScheduler } from "@/infrastructure/services/next-task-scheduler.service";
 
 function createContainer() {
@@ -68,6 +69,7 @@ function createContainer() {
   const address = createAddressModule();
   const customers = createCustomerModule();
   const services = createServicesModule();
+  const legal = createLegalModule();
 
   return {
     // Products
@@ -96,6 +98,8 @@ function createContainer() {
     ...inventory,
     // Notifications
     ...notifications,
+    // Legal
+    ...legal,
   };
 }
 

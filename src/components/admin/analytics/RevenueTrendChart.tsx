@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
+import { STORE_LOCALE } from "@/lib/store-locale";
 
 interface RevenueTrendChartProps {
   data: Array<{ date: string; revenue: number; orders: number }>;
@@ -25,7 +26,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart
               data={data.map((item) => ({
-                date: new Date(item.date).toLocaleDateString("en-US", {
+                date: new Date(item.date).toLocaleDateString(STORE_LOCALE, {
                   month: "short",
                   day: "numeric",
                 }),

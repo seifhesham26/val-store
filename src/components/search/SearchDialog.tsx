@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Search, Loader2 } from "lucide-react";
-import Image from "next/image";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { formatCurrency } from "@/lib/currency";
 
@@ -113,12 +113,10 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   >
                     <div className="relative h-12 w-12 bg-white/8 rounded-md overflow-hidden shrink-0">
                       {product.primaryImage ? (
-                        <Image
+                        <ProductImage
                           src={product.primaryImage}
                           alt={product.name}
-                          fill
                           sizes="48px"
-                          className="object-cover"
                         />
                       ) : (
                         <div className="h-full w-full flex items-center justify-center text-gray-600 text-xs">

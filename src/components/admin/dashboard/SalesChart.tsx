@@ -21,6 +21,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
+import { STORE_LOCALE } from "@/lib/store-locale";
 
 type Period = "7d" | "30d" | "90d";
 
@@ -42,7 +43,7 @@ export function SalesChart() {
   // slicing is needed and index arithmetic below is calendar arithmetic.
   const filteredData =
     salesData?.map((item) => ({
-      date: new Date(item.date).toLocaleDateString("en-US", {
+      date: new Date(item.date).toLocaleDateString(STORE_LOCALE, {
         month: "short",
         day: "numeric",
       }),

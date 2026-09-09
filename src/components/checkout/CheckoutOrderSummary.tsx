@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +12,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CouponField } from "@/components/cart/CouponField";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { trpc, vanillaTrpc } from "@/lib/trpc";
 import { useCartStore } from "@/lib/stores/cart-store";
 import { formatCurrency } from "@/lib/currency";
-import { unoptimizedFor } from "@/lib/image-hosts";
 
 /**
  * Price the coupon the *cart* is holding.
@@ -121,13 +120,10 @@ export function CheckoutOrderSummary() {
           <div key={item.id} className="flex gap-4">
             <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#1a1a1a]">
               {item.productImage ? (
-                <Image
+                <ProductImage
                   src={item.productImage}
                   alt={item.productName}
-                  fill
                   sizes="80px"
-                  className="object-cover"
-                  unoptimized={unoptimizedFor(item.productImage)}
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-white/[0.06]">

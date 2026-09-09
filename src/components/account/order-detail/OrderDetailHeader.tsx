@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { STORE_LOCALE } from "@/lib/store-locale";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-500/15 text-yellow-400 border border-yellow-500/20",
@@ -49,7 +50,7 @@ export function OrderDetailHeader({
         </h2>
         <p className="text-gray-500">
           Placed on{" "}
-          {new Date(createdAt).toLocaleDateString("en-US", {
+          {new Date(createdAt).toLocaleDateString(STORE_LOCALE, {
             year: "numeric",
             month: "long",
             day: "numeric",

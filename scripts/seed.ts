@@ -28,6 +28,7 @@ import {
   contentSections,
 } from "../src/db/schema";
 import { sql } from "drizzle-orm";
+import { upsertLegalPages } from "./seed-legal";
 
 // Helper functions
 const randomInt = (min: number, max: number) =>
@@ -548,6 +549,9 @@ async function seed() {
     await db.insert(contentSections).values(contentSectionValues);
     console.log(`  ✅ Created ${contentSectionValues.length} content sections`);
 
+    const legalPageCount = await upsertLegalPages();
+    console.log(`  ✅ Upserted ${legalPageCount} legal pages`);
+
     // Summary
     console.log("\n✨ Seed completed successfully!\n");
     console.log("📋 Summary:");
@@ -562,6 +566,7 @@ async function seed() {
     console.log(`  - ${couponValues.length} coupons`);
     console.log(`  - 1 site settings (Valkyrie)`);
     console.log(`  - ${contentSectionValues.length} content sections`);
+    console.log(`  - ${legalPageCount} legal pages`);
     console.log("\n🔑 Admin: admin@valkyrie.com\n");
   } catch (error) {
     console.error("❌ Seed failed:", error);

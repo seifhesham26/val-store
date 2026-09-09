@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import {
   QuickAddSliderBar,
   type QuickAddVariant,
 } from "@/components/products/QuickAddSliderBar";
 import { formatCurrency } from "@/lib/currency";
-import { unoptimizedFor } from "@/lib/image-hosts";
 
 export interface ProductCardProps {
   id: string;
@@ -62,15 +61,12 @@ export function ProductCard({
         <div className="relative aspect-3/4 overflow-hidden bg-val-steel">
           {/* Product Image or gradient fallback */}
           {primaryImage ? (
-            <Image
+            <ProductImage
               src={primaryImage}
               alt={name}
-              fill
               sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
               priority={priority}
-              loading={priority ? "eager" : "lazy"}
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
-              unoptimized={unoptimizedFor(primaryImage)}
+              className="transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
             <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />

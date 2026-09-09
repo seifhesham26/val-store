@@ -6,13 +6,12 @@
 
 "use client";
 
-import Image from "next/image";
 import { AlertTriangle, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import type { CartItem as CartItemType } from "@/lib/stores/cart-store";
 import { formatCurrency } from "@/lib/currency";
-import { unoptimizedFor } from "@/lib/image-hosts";
 
 interface CartItemProps {
   item: CartItemType;
@@ -53,13 +52,10 @@ export function CartItem({ item, onUpdateQuantity, onRemove }: CartItemProps) {
       {/* Product Image */}
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-gray-800">
         {item.productImage ? (
-          <Image
+          <ProductImage
             src={item.productImage}
             alt={item.productName}
-            fill
             sizes="96px"
-            className="object-cover"
-            unoptimized={unoptimizedFor(item.productImage)}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-gray-500">
