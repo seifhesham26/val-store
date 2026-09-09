@@ -10,6 +10,7 @@ import { DrizzleCartRepository } from "@/infrastructure/database/repositories/ca
 import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-coupon.use-case";
 import { CreateCheckoutSessionUseCase } from "./use-cases/create-checkout-session.use-case";
 import { CreateOrderUseCase } from "./use-cases/create-order.use-case";
+import type { ShippingRateRepositoryInterface } from "@/domain/shipping/interfaces/repositories/shipping-rate.repository.interface";
 import { NotificationService } from "@/application/notifications/notification.service";
 import { SendOrderConfirmationUseCase } from "@/application/orders/use-cases/send-order-confirmation.use-case";
 import { AddressRepositoryInterface } from "@/domain/address/interfaces/repositories/address.repository.interface";
@@ -22,6 +23,7 @@ export function createCheckoutModule(deps: {
   getNotificationService: () => NotificationService;
   getSendOrderConfirmationUseCase: () => SendOrderConfirmationUseCase;
   getAddressRepository: () => AddressRepositoryInterface;
+  getShippingRateRepository: () => ShippingRateRepositoryInterface;
   getTaskScheduler: () => TaskSchedulerInterface;
 }) {
   let createCheckoutSession: CreateCheckoutSessionUseCase | undefined;
@@ -35,6 +37,7 @@ export function createCheckoutModule(deps: {
       deps.getNotificationService(),
       deps.getSendOrderConfirmationUseCase(),
       deps.getAddressRepository(),
+      deps.getShippingRateRepository(),
       deps.getTaskScheduler()
     ));
 

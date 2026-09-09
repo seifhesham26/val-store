@@ -802,6 +802,19 @@ export const siteSettings = pgTable("site_settings", {
     .notNull()
     .default("Africa/Cairo"),
 
+  // Shipping
+  //
+  // Order value at or above which delivery is free. Store-wide, so it lives on
+  // the settings singleton rather than earning a table of its own. Zero means
+  // no threshold — never "everything qualifies", which is the reading that
+  // would give away every delivery the moment someone cleared the field.
+  freeShippingThreshold: decimal("free_shipping_threshold", {
+    precision: 10,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
+
   // SEO Defaults
   defaultMetaTitle: varchar("default_meta_title", { length: 255 }),
   defaultMetaDescription: text("default_meta_description"),
@@ -1035,10 +1048,40 @@ export type NewContentSectionHistory =
 export type FeaturedItem = typeof featuredItems.$inferSelect;
 export type NewFeaturedItem = typeof featuredItems.$inferInsert;
 
+// ============================================
+// SHIPPING RATES TABLE
+// ============================================
+
+/**
+ * Delivery fee per governorate.
+ *
+ * One row per Egyptian governorate, keyed on the code from
+ * `@/domain/shipping/egypt-governorates`. Rates were briefly environment
+ * variables, which meant changing a courier price required a deploy and put the
+ * numbers somewhere the person who knows them could not reach.
+ *
+ * `is_deliverable` is separate from a zero fee on purpose: zero means "we
+ * deliver here for free", false means "we do not deliver here at all". Charging
+ * nothing and refusing to go are different answers and the checkout needs to
+ * tell them apart.
+ */
+export const shippingRates = pgTable("shipping_rates", {
+  governorate: varchar("governorate", { length: 64 }).primaryKey(),
+  fee: decimal("fee", { precision: 10, scale: 2 }).notNull().default("0"),
+  isDeliverable: boolean("is_deliverable").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: text("updated_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
+});
+
 export type LegalPage = typeof legalPages.$inferSelect;
 export type NewLegalPage = typeof legalPages.$inferInsert;
 
 export type LegalPageHistory = typeof legalPagesHistory.$inferSelect;
+
+export type ShippingRate = typeof shippingRates.$inferSelect;
+export type NewShippingRate = typeof shippingRates.$inferInsert;
 
 // ============================================
 // NEWSLETTER SUBSCRIBERS TABLE

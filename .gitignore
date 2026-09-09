@@ -43,3 +43,6 @@ next-env.d.ts
 # build artifacts
 *.log
 tmp/
+
+# Local image generation scratch — raw output before upload
+temp/

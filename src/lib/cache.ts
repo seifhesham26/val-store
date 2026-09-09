@@ -139,7 +139,7 @@ export const getCachedFeaturedProducts = unstable_cache(
 
     // Batch-fetch primary images and variants (2 queries instead of 2N)
     const [imageMap, variantMap] = await Promise.all([
-      imageRepo.findPrimaryByProducts(productIds),
+      imageRepo.findFirstTwoByProducts(productIds),
       variantRepo.findByProducts(productIds),
     ]);
 
@@ -150,7 +150,8 @@ export const getCachedFeaturedProducts = unstable_cache(
       basePrice: p.basePrice,
       salePrice: p.salePrice,
       isFeatured: p.isFeatured,
-      primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+      primaryImage: imageMap.get(p.id)?.[0]?.imageUrl ?? null,
+      secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
       // Needed by Quick Add: without these the card cannot record which variant
       // was bought, and the order would skip stock entirely.
       variants: (variantMap.get(p.id) ?? [])
@@ -255,6 +256,11 @@ export const getCachedFeaturedCategories = unstable_cache(
       id: category.id,
       name: category.name,
       slug: category.slug,
+      // Carried through because the card renders it. It used to be dropped
+      // here, so `categories.image_url` was a column an admin could set and
+      // nothing would ever read — the grid showed a random picsum photo keyed
+      // on the slug instead.
+      imageUrl: category.imageUrl ?? null,
       productCount: counts.get(category.id) ?? 0,
     }));
   },
@@ -382,7 +388,7 @@ export const getCachedAllProducts = unstable_cache(
     const products = await repo.findAll({ isActive: true, limit });
 
     // Batch-fetch primary images (1 query instead of N)
-    const imageMap = await imageRepo.findPrimaryByProducts(
+    const imageMap = await imageRepo.findFirstTwoByProducts(
       products.map((p) => p.id)
     );
 
@@ -393,7 +399,8 @@ export const getCachedAllProducts = unstable_cache(
       basePrice: p.basePrice,
       salePrice: p.salePrice,
       isFeatured: p.isFeatured,
-      primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+      primaryImage: imageMap.get(p.id)?.[0]?.imageUrl ?? null,
+      secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
     }));
   },
   ["all-products"],
@@ -417,7 +424,7 @@ export const getCachedRelatedProducts = unstable_cache(
     const productIds = products.map((p) => p.id);
 
     const [imageMap, variantMap] = await Promise.all([
-      imageRepo.findPrimaryByProducts(productIds),
+      imageRepo.findFirstTwoByProducts(productIds),
       variantRepo.findByProducts(productIds),
     ]);
 
@@ -427,7 +434,8 @@ export const getCachedRelatedProducts = unstable_cache(
       slug: p.slug,
       basePrice: p.basePrice,
       salePrice: p.salePrice,
-      primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+      primaryImage: imageMap.get(p.id)?.[0]?.imageUrl ?? null,
+      secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
       variants: (variantMap.get(p.id) ?? [])
         .filter((v) => v.isAvailable)
         .map((v) => ({

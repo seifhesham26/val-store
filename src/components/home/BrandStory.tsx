@@ -1,10 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { unoptimizedFor } from "@/lib/image-hosts";
-
-/** Placeholder art. Hoisted so the tag and the optimise guard read one value. */
-const BRAND_STORY_IMAGE = "https://picsum.photos/seed/brand-story/800/1000";
 
 interface BrandStoryProps {
   preHeadline?: string;
@@ -30,14 +25,14 @@ export function BrandStory({
         <div className="grid md:grid-cols-2 gap-8 md:gap-16 items-center">
           {/* Image Side */}
           <div className="relative aspect-4/5 overflow-hidden">
-            <Image
-              src={BRAND_STORY_IMAGE}
-              alt="Valkyrie brand story"
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover"
-              unoptimized={unoptimizedFor(BRAND_STORY_IMAGE)}
-            />
+            {/*
+             * A brand gradient, not a stock photo. This was a random picsum
+             * image, which reads as real photography of clothes the store does
+             * not sell — worse than showing nothing. Replace with a real
+             * studio shot; see docs/IMAGE-PROMPTS.md for a prompt that matches
+             * the rest of the site.
+             */}
+            <div className="absolute inset-0 bg-linear-to-br from-gray-800 via-gray-900 to-black" />
             {/* Decorative accent line */}
             <div className="absolute bottom-0 left-0 w-1/2 h-1 bg-val-accent" />
           </div>

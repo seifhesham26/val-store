@@ -8,12 +8,13 @@
 
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Home, Store, Palette, Star } from "lucide-react";
+import { Settings, Home, Store, Palette, Star, Truck } from "lucide-react";
 import {
   HomepageSettings,
   StoreSettings,
   AppearanceSettings,
   FeaturedSettings,
+  ShippingSettings,
 } from "@/components/admin/settings";
 
 export default function SettingsPage() {
@@ -38,7 +39,7 @@ export default function SettingsPage() {
         onValueChange={setActiveTab}
         className="space-y-6"
       >
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
           <TabsTrigger value="homepage" className="flex items-center gap-2">
             <Home className="h-4 w-4" />
             <span className="hidden sm:inline">Homepage</span>
@@ -54,6 +55,10 @@ export default function SettingsPage() {
           <TabsTrigger value="featured" className="flex items-center gap-2">
             <Star className="h-4 w-4" />
             <span className="hidden sm:inline">Featured</span>
+          </TabsTrigger>
+          <TabsTrigger value="shipping" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">Shipping</span>
           </TabsTrigger>
         </TabsList>
 
@@ -71,6 +76,10 @@ export default function SettingsPage() {
 
         <TabsContent value="featured" className="space-y-6">
           <FeaturedSettings />
+        </TabsContent>
+
+        <TabsContent value="shipping" className="space-y-6">
+          <ShippingSettings />
         </TabsContent>
       </Tabs>
     </div>

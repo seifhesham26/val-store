@@ -69,8 +69,9 @@ export async function ServerHeroSection() {
   // `AnnouncementBarClient`).
   const ctaLink = safeHref(content.ctaLink) ?? "/collections/all";
   const backgroundImage = content.backgroundImage;
-  const heroImage =
-    backgroundImage || "https://picsum.photos/seed/hero-valkyrie/1920/1080";
+  // No picsum fallback. An unset hero renders a brand gradient rather than a
+  // random stock photograph presented as this store's campaign image.
+  const heroImage = backgroundImage || null;
   const overlayOpacity = content.overlayOpacity ?? 40;
   const textAlignment = content.textAlignment ?? "center";
 
@@ -84,18 +85,22 @@ export async function ServerHeroSection() {
   return (
     <section className="relative h-[calc(100vh-96px)] md:h-[calc(100vh-104px)] flex items-center justify-center overflow-hidden">
       {/* Background Image or Default Image */}
-      <Image
-        src={heroImage}
-        alt=""
-        fill
-        // The LCP element on the homepage: full-bleed, so it needs the whole
-        // viewport width, and it must not wait for anything else.
-        sizes="100vw"
-        priority
-        fetchPriority="high"
-        className="object-cover"
-        unoptimized={unoptimizedFor(heroImage)}
-      />
+      {heroImage ? (
+        <Image
+          src={heroImage}
+          alt=""
+          fill
+          // The LCP element on the homepage: full-bleed, so it needs the whole
+          // viewport width, and it must not wait for anything else.
+          sizes="100vw"
+          priority
+          fetchPriority="high"
+          className="object-cover"
+          unoptimized={unoptimizedFor(heroImage)}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-linear-to-br from-gray-800 via-gray-900 to-black" />
+      )}
 
       {/* Overlay */}
       <div

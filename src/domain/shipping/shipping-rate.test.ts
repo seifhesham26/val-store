@@ -2,9 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   EGYPT_GOVERNORATES,
   isEgyptGovernorate,
+  resolveGovernorateCode,
   resolveShippingZone,
 } from "./egypt-governorates";
-import { calculateShippingCost, chargesForShipping } from "./shipping-rate";
+import { quoteShipping, type GovernorateRate } from "./shipping-rate";
+
+const rates: GovernorateRate[] = [
+  { governorate: "cairo", fee: 60, isDeliverable: true },
+  { governorate: "giza", fee: 60, isDeliverable: true },
+  { governorate: "aswan", fee: 120, isDeliverable: true },
+  { governorate: "new-valley", fee: 0, isDeliverable: false },
+  { governorate: "matrouh", fee: 0, isDeliverable: true },
+];
 
 describe("EGYPT_GOVERNORATES", () => {
   it("lists all 27 governorates", () => {
@@ -23,64 +32,148 @@ describe("EGYPT_GOVERNORATES", () => {
   });
 });
 
+describe("resolveGovernorateCode", () => {
+  it("resolves the English name a saved address stores", () => {
+    expect(resolveGovernorateCode("Cairo")).toBe("cairo");
+    expect(resolveGovernorateCode("Kafr El Sheikh")).toBe("kafr-el-sheikh");
+  });
+
+  it("resolves a code, the Arabic name, and ignores case and spacing", () => {
+    expect(resolveGovernorateCode("aswan")).toBe("aswan");
+    expect(resolveGovernorateCode("  CAIRO ")).toBe("cairo");
+    expect(resolveGovernorateCode("القاهرة")).toBe("cairo");
+  });
+
+  it("returns null for anything it cannot identify", () => {
+    expect(resolveGovernorateCode("California")).toBeNull();
+    expect(resolveGovernorateCode("")).toBeNull();
+    expect(resolveGovernorateCode(null)).toBeNull();
+  });
+});
+
 describe("resolveShippingZone", () => {
-  it("puts Cairo and Giza in their own zone", () => {
+  it("groups Cairo and Giza, the Delta, and everywhere else", () => {
     expect(resolveShippingZone("Cairo")).toBe("cairo_giza");
-    expect(resolveShippingZone("Giza")).toBe("cairo_giza");
-  });
-
-  it("recognises Delta governorates", () => {
     expect(resolveShippingZone("Dakahlia")).toBe("delta");
-    expect(resolveShippingZone("Kafr El Sheikh")).toBe("delta");
+    expect(resolveShippingZone("Aswan")).toBe("other");
   });
 
-  it("matches case-insensitively and ignores surrounding space", () => {
-    expect(resolveShippingZone("  cairo  ")).toBe("cairo_giza");
-  });
-
-  it("matches the Arabic name", () => {
-    expect(resolveShippingZone("القاهرة")).toBe("cairo_giza");
-  });
-
-  it("falls back to `other` for an unknown value rather than throwing", () => {
-    // addresses.state is free text and holds values typed before the dropdown
-    // existed. A checkout must not fail over an unfamiliar spelling.
+  it("falls back to `other` rather than throwing", () => {
     expect(resolveShippingZone("Nowhere")).toBe("other");
-    expect(resolveShippingZone("")).toBe("other");
-    expect(resolveShippingZone(null)).toBe("other");
-    expect(resolveShippingZone(undefined)).toBe("other");
   });
 });
 
 describe("isEgyptGovernorate", () => {
-  it("accepts a real governorate", () => {
+  it("accepts a real governorate and rejects a US state", () => {
     expect(isEgyptGovernorate("Luxor")).toBe(true);
-  });
-
-  it("rejects a US state", () => {
     expect(isEgyptGovernorate("California")).toBe(false);
   });
 });
 
-describe("calculateShippingCost", () => {
-  it("is free while no rates are configured, preserving prior behaviour", () => {
-    // The store shipped free before this module existed. Installing it must not
-    // start charging anyone; that requires setting the env vars deliberately.
-    expect(calculateShippingCost({ subtotal: 500, governorate: "Cairo" })).toBe(
-      0
-    );
-    expect(calculateShippingCost({ subtotal: 0, governorate: "Aswan" })).toBe(
-      0
-    );
+describe("quoteShipping", () => {
+  const base = { rates, freeShippingThreshold: 0 };
+
+  it("charges the configured fee for the destination", () => {
+    const q = quoteShipping({ ...base, subtotal: 500, governorate: "Cairo" });
+    expect(q.fee).toBe(60);
+    expect(q.isDeliverable).toBe(true);
+    expect(q.matched).toBe(true);
   });
 
-  it("never returns a negative charge", () => {
+  it("prices each governorate independently", () => {
     expect(
-      calculateShippingCost({ subtotal: 0, governorate: "Nowhere" })
-    ).toBeGreaterThanOrEqual(0);
+      quoteShipping({ ...base, subtotal: 500, governorate: "Aswan" }).fee
+    ).toBe(120);
   });
 
-  it("reports that the store does not charge for shipping yet", () => {
-    expect(chargesForShipping()).toBe(false);
+  it("waives the fee once the subtotal reaches the threshold", () => {
+    const q = quoteShipping({
+      rates,
+      freeShippingThreshold: 1000,
+      subtotal: 1000,
+      governorate: "Aswan",
+    });
+    expect(q.fee).toBe(0);
+    expect(q.freeReason).toBe("threshold");
+  });
+
+  it("still charges just below the threshold", () => {
+    const q = quoteShipping({
+      rates,
+      freeShippingThreshold: 1000,
+      subtotal: 999.99,
+      governorate: "Aswan",
+    });
+    expect(q.fee).toBe(120);
+    expect(q.freeReason).toBeNull();
+  });
+
+  it("treats a zero threshold as no threshold, not as everything free", () => {
+    // The dangerous reading: clearing the field must not give away every
+    // delivery in the store.
+    const q = quoteShipping({
+      rates,
+      freeShippingThreshold: 0,
+      subtotal: 1_000_000,
+      governorate: "Cairo",
+    });
+    expect(q.fee).toBe(60);
+  });
+
+  it("reports a governorate the store does not deliver to", () => {
+    const q = quoteShipping({
+      ...base,
+      subtotal: 500,
+      governorate: "New Valley",
+    });
+    expect(q.isDeliverable).toBe(false);
+  });
+
+  it("distinguishes a free destination from an undeliverable one", () => {
+    // Both cost nothing; only one of them can be ordered.
+    const free = quoteShipping({
+      ...base,
+      subtotal: 10,
+      governorate: "Matrouh",
+    });
+    expect(free.fee).toBe(0);
+    expect(free.isDeliverable).toBe(true);
+    expect(free.freeReason).toBe("zero_rate");
+  });
+
+  it("does not block or invent a charge for an unrecognised address", () => {
+    // addresses.state is free text and holds values saved before the dropdown
+    // existed. Refusing the order would punish the customer for old data, and
+    // guessing a fee would overcharge them, so it ships free and says it did
+    // not match.
+    const q = quoteShipping({
+      ...base,
+      subtotal: 500,
+      governorate: "Atlantis",
+    });
+    expect(q.fee).toBe(0);
+    expect(q.isDeliverable).toBe(true);
+    expect(q.matched).toBe(false);
+  });
+
+  it("does not blow up when a governorate has no configured row yet", () => {
+    const q = quoteShipping({
+      rates: [],
+      freeShippingThreshold: 0,
+      subtotal: 500,
+      governorate: "Cairo",
+    });
+    expect(q.fee).toBe(0);
+    expect(q.isDeliverable).toBe(true);
+  });
+
+  it("never returns a negative fee", () => {
+    const q = quoteShipping({
+      rates: [{ governorate: "cairo", fee: -50, isDeliverable: true }],
+      freeShippingThreshold: 0,
+      subtotal: 100,
+      governorate: "Cairo",
+    });
+    expect(q.fee).toBe(0);
   });
 });

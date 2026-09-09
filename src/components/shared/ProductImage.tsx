@@ -13,6 +13,12 @@ interface ProductImageProps {
   priority?: boolean;
   /** Extra classes for the foreground layer only, e.g. hover transforms. */
   className?: string;
+  /**
+   * Fires when the foreground image has decoded. The product card waits for
+   * this before starting its crossfade, so a slow connection degrades to a
+   * still card rather than fading to an empty frame.
+   */
+  onLoad?: () => void;
 }
 
 /**
@@ -55,6 +61,7 @@ export function ProductImage({
   sizes,
   priority,
   className,
+  onLoad,
 }: ProductImageProps) {
   const unoptimized = unoptimizedFor(src);
 
@@ -78,6 +85,7 @@ export function ProductImage({
         loading={priority ? "eager" : "lazy"}
         className={cn("object-contain", className)}
         unoptimized={unoptimized}
+        onLoad={onLoad}
       />
     </>
   );

@@ -49,7 +49,7 @@ export async function ServerFeaturedProducts({
         {/* Products Grid - only show if we have products */}
         {products.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {products.map((product) => (
+            {products.map((product, index) => (
               <ProductCard
                 key={product.id}
                 id={product.id}
@@ -58,6 +58,8 @@ export async function ServerFeaturedProducts({
                 price={product.basePrice}
                 salePrice={product.salePrice ?? undefined}
                 primaryImage={product.primaryImage ?? undefined}
+                secondaryImage={product.secondaryImage ?? undefined}
+                index={index}
                 variants={product.variants}
                 isOnSale={
                   product.salePrice !== null &&

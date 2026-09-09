@@ -140,6 +140,8 @@ export function InfiniteProductGrid({
                 price={product.basePrice}
                 salePrice={product.salePrice ?? undefined}
                 primaryImage={product.primaryImage ?? undefined}
+                secondaryImage={product.secondaryImage ?? undefined}
+                index={index}
                 isOnSale={
                   product.salePrice !== null &&
                   product.salePrice < product.basePrice

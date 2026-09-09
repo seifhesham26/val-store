@@ -79,6 +79,27 @@ export function resolveShippingZone(
   return match?.zone ?? "other";
 }
 
+/**
+ * The stable code for a stored `addresses.state` value, or null.
+ *
+ * `state` is free text. New and edited addresses come from the governorate
+ * dropdown and hold the English name, but rows saved before that existed can
+ * hold anything — so this accepts the English name, the code and the Arabic
+ * name, and returns null rather than guessing when none of them match.
+ */
+export function resolveGovernorateCode(
+  state: string | null | undefined
+): string | null {
+  if (!state) return null;
+  const trimmed = state.trim();
+  const needle = trimmed.toLowerCase();
+  const match = EGYPT_GOVERNORATES.find(
+    (g) =>
+      g.en.toLowerCase() === needle || g.code === needle || g.ar === trimmed
+  );
+  return match?.code ?? null;
+}
+
 export function isEgyptGovernorate(value: string): boolean {
   const needle = value.trim().toLowerCase();
   return EGYPT_GOVERNORATES.some(

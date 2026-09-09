@@ -9,7 +9,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ShoppingBag, ArrowRight, Loader2, AlertTriangle } from "lucide-react";
-import { chargesForShipping } from "@/domain/shipping/shipping-rate";
 import { formatCurrency } from "@/lib/currency";
 
 interface CartSummaryProps {
@@ -32,12 +31,11 @@ export function CartSummary({
   stockBlocked = false,
   onReviewStock,
 }: CartSummaryProps) {
-  // The cart does not know the destination yet — a delivery charge depends on
-  // the governorate, which is chosen at checkout. So the cart shows what it can
-  // honestly say: free when the store charges nothing at all, and otherwise
-  // that the charge is calculated once an address is picked. Showing "0" while
-  // a charge was coming would understate the total the customer then pays.
-  const charges = chargesForShipping();
+  // The cart cannot price delivery: the charge depends on the destination
+  // governorate, and no address has been chosen yet. Rather than guess — or
+  // show "0" and then surprise the customer with a larger total at checkout —
+  // it says where the number comes from. Checkout quotes the real figure once
+  // an address is selected, before any payment.
   const tax: number = 0; // Calculate based on location
   const total = subtotal + tax;
 
@@ -53,7 +51,7 @@ export function CartSummary({
 
         <div className="flex justify-between text-gray-400">
           <span>Shipping</span>
-          <span>{charges ? "Calculated at checkout" : "Free"}</span>
+          <span>Calculated at checkout</span>
         </div>
 
         {tax > 0 && (

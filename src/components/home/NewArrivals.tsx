@@ -102,7 +102,7 @@ export function NewArrivals({
                   <Skeleton className="h-4 w-1/2" />
                 </div>
               ))
-            : items.map((product) => (
+            : items.map((product, index) => (
                 <div
                   key={product.id}
                   className="shrink-0 w-64 md:w-72 snap-start"
@@ -114,6 +114,8 @@ export function NewArrivals({
                     price={product.basePrice}
                     salePrice={product.salePrice ?? undefined}
                     primaryImage={product.primaryImage ?? undefined}
+                    secondaryImage={product.secondaryImage ?? undefined}
+                    index={index}
                     isNew
                     isOnSale={
                       product.salePrice !== null &&

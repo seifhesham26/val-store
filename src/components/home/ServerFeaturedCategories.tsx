@@ -17,10 +17,12 @@ interface ServerFeaturedCategoriesProps {
 function CategoryCard({
   name,
   slug,
+  imageUrl,
   productCount,
 }: {
   name: string;
   slug: string;
+  imageUrl: string | null;
   productCount?: number;
 }) {
   return (
@@ -30,16 +32,25 @@ function CategoryCard({
     >
       {/* Image container with aspect ratio */}
       <div className="relative aspect-3/4 bg-val-steel overflow-hidden">
-        {/* Category image from picsum */}
-        <ProductImage
-          // Seeded on the slug, not the grid position: these are curated in
-          // Settings → Featured now, and an index seed made every image change
-          // places whenever an admin reordered the cards.
-          src={`https://picsum.photos/seed/category-${slug}/600/800`}
-          alt={name}
-          sizes="(max-width: 768px) 100vw, 33vw"
-          className="transition-transform duration-500 group-hover:scale-105"
-        />
+        {/*
+         * The category's own image, set in the admin. This used to be a random
+         * picsum photo keyed on the slug — decorative filler that looked like
+         * real photography and quietly ignored `categories.image_url`.
+         *
+         * With no image set, a brand gradient rather than a stock photo: an
+         * honest empty state reads better than someone else's picture of
+         * someone else's clothes.
+         */}
+        {imageUrl ? (
+          <ProductImage
+            src={imageUrl}
+            alt={name}
+            sizes="(max-width: 768px) 100vw, 33vw"
+            className="transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
+        )}
 
         {/* Gradient overlay */}
         <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/20 to-transparent transition-colors duration-300 group-hover:from-black/50" />
@@ -62,12 +73,13 @@ export async function ServerFeaturedCategories({
   title = "Shop by Category",
   subtitle = "Find your perfect style",
 }: ServerFeaturedCategoriesProps) {
-  let featuredCategories: {
-    id: string;
-    name: string;
-    slug: string;
-    productCount: number;
-  }[] = [];
+  // Derived from the fetcher rather than hand-written. This was a duplicated
+  // literal type, and it had already drifted: `imageUrl` was added to the
+  // fetcher and the annotation here silently kept the old shape, so the field
+  // was invisible to the component that needed it.
+  let featuredCategories: Awaited<
+    ReturnType<typeof getCachedFeaturedCategories>
+  > = [];
 
   try {
     // Curated in Settings → Featured when anything has been chosen there, and
@@ -99,6 +111,7 @@ export async function ServerFeaturedCategories({
               key={category.id}
               name={category.name}
               slug={category.slug}
+              imageUrl={category.imageUrl}
               productCount={category.productCount}
             />
           ))}

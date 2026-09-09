@@ -85,13 +85,29 @@ function useHeldCouponDiscount(subtotal: number) {
   return { code, discount };
 }
 
-export function CheckoutOrderSummary() {
+export function CheckoutOrderSummary({
+  governorate,
+}: {
+  governorate: string | null;
+}) {
   const items = useCartStore((state) => state.items);
   const subtotal = useCartStore((state) => state.getSubtotal());
   const itemCount = useCartStore((state) => state.getItemCount());
 
   const { code, discount } = useHeldCouponDiscount(subtotal);
-  const total = Math.max(0, subtotal - discount);
+
+  // Quoted server-side by the same function that prices the order, so the
+  // figure shown here cannot drift from the one charged. Priced against the
+  // discounted subtotal, which is what the customer actually pays and so what
+  // a free-shipping threshold should be measured against.
+  const discountedSubtotal = Math.max(0, subtotal - discount);
+  const { data: shippingQuote } = trpc.public.shipping.quote.useQuery(
+    { governorate, subtotal: discountedSubtotal },
+    { enabled: items.length > 0 }
+  );
+
+  const shippingFee = shippingQuote?.fee ?? 0;
+  const total = discountedSubtotal + shippingFee;
 
   if (items.length === 0) {
     return (
@@ -168,8 +184,28 @@ export function CheckoutOrderSummary() {
           )}
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Shipping</span>
-            <span className="text-green-500 font-medium">Free</span>
+            {!shippingQuote ? (
+              <span className="text-gray-500">Calculating…</span>
+            ) : !shippingQuote.isDeliverable ? (
+              <span className="font-medium text-red-400">
+                Not delivered here
+              </span>
+            ) : shippingFee === 0 ? (
+              <span className="font-medium text-green-500">Free</span>
+            ) : (
+              <span className="text-white">{formatCurrency(shippingFee)}</span>
+            )}
           </div>
+          {shippingQuote?.freeReason === "threshold" && (
+            <p className="text-xs text-green-500">
+              Your order qualifies for free delivery.
+            </p>
+          )}
+          {shippingQuote && !shippingQuote.isDeliverable && (
+            <p className="text-xs text-red-400">
+              Choose a different address to continue.
+            </p>
+          )}
           <div className="flex justify-between font-bold text-xl pt-4 border-t border-white/10 mt-4">
             <span className="text-white">Total</span>
             <span className="text-white">{formatCurrency(total)}</span>

@@ -66,4 +66,15 @@ export interface ProductImageRepositoryInterface {
   findPrimaryByProducts(
     productIds: string[]
   ): Promise<Map<string, ProductImageEntity>>;
+
+  /**
+   * Up to two images per product, primary first.
+   *
+   * The product card crossfades between the first two so a unisex garment can
+   * be shown on two models. Batched like `findPrimaryByProducts` — one query
+   * for the whole grid, not one per card.
+   */
+  findFirstTwoByProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductImageEntity[]>>;
 }

@@ -1,58 +1,102 @@
 /**
- * What delivery costs, by zone.
+ * What delivery costs, given a destination and the store's configured rates.
  *
- * Pure and separate from checkout so it can be tested without a database, and
- * so exactly one place decides a shipping charge. Before this,
- * `CreateOrderUseCase` hardcoded `const shippingCost = 0` while the homepage
- * advertised free delivery and the shipping policy described per-zone fees —
- * three sources of truth, at least two of them wrong at any moment.
+ * Pure by construction: the rates and the threshold are arguments, not module
+ * state. An earlier version read them from `process.env`, which froze them at
+ * module load — untestable across combinations, and it put the numbers
+ * somewhere the person who actually knows the courier prices could not reach.
+ * They now live in `shipping_rates`, edited in the admin.
  *
- * **Rates default to zero.** Delivery stays free until real numbers are set,
- * which is exactly the behaviour that was already live — turning charging on is
- * a deliberate act, not a side effect of adding this module. Set the env vars
- * below to start charging.
+ * One function decides a shipping charge, and both the checkout and the
+ * customer-facing quote go through it, so the price a customer is shown cannot
+ * drift from the price they are charged.
  */
 
-import { resolveShippingZone, type ShippingZone } from "./egypt-governorates";
+import { resolveGovernorateCode } from "./egypt-governorates";
 
-/** A malformed or negative env value is treated as unset rather than trusted. */
-function rate(envValue: string | undefined): number {
-  const parsed = Number(envValue);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+export interface GovernorateRate {
+  /** Code from `EGYPT_GOVERNORATES`, e.g. "cairo". */
+  governorate: string;
+  fee: number;
+  isDeliverable: boolean;
 }
 
-export const SHIPPING_RATES: Record<ShippingZone, number> = {
-  cairo_giza: rate(process.env.NEXT_PUBLIC_SHIPPING_CAIRO_GIZA),
-  delta: rate(process.env.NEXT_PUBLIC_SHIPPING_DELTA),
-  other: rate(process.env.NEXT_PUBLIC_SHIPPING_OTHER),
-};
+export interface ShippingQuote {
+  fee: number;
+  isDeliverable: boolean;
+  /**
+   * Why the fee is zero, when it is. `threshold` means the order qualified for
+   * free delivery; `zero_rate` means this destination is simply free. The UI
+   * says different things about each — "you've earned free delivery" is a
+   * reward, "delivery here is free" is a fact.
+   */
+  freeReason: "threshold" | "zero_rate" | null;
+  /** False when the address's governorate could not be identified. */
+  matched: boolean;
+}
 
-/**
- * Order value at or above which delivery is free.
- *
- * Zero disables the threshold rather than making every order qualify — a
- * threshold of nothing is never what someone means by leaving it unset.
- */
-export const FREE_SHIPPING_THRESHOLD = rate(
-  process.env.NEXT_PUBLIC_FREE_SHIPPING_THRESHOLD
-);
-
-export function calculateShippingCost(input: {
+export function quoteShipping(input: {
   subtotal: number;
   governorate: string | null | undefined;
-}): number {
-  const base = SHIPPING_RATES[resolveShippingZone(input.governorate)];
-  if (base === 0) return 0;
-  if (
-    FREE_SHIPPING_THRESHOLD > 0 &&
-    input.subtotal >= FREE_SHIPPING_THRESHOLD
-  ) {
-    return 0;
-  }
-  return base;
-}
+  rates: readonly GovernorateRate[];
+  freeShippingThreshold: number;
+}): ShippingQuote {
+  const code = resolveGovernorateCode(input.governorate);
 
-/** True when the store charges for delivery at all. Drives customer-facing copy. */
-export function chargesForShipping(): boolean {
-  return Object.values(SHIPPING_RATES).some((r) => r > 0);
+  // An address we cannot place. Refusing the order would punish a customer for
+  // data saved before the dropdown existed, and guessing a fee would overcharge
+  // them — so it ships free and says it did not match, which is a thing the
+  // caller can surface without anyone losing a sale over it.
+  if (!code) {
+    return {
+      fee: 0,
+      isDeliverable: true,
+      freeReason: "zero_rate",
+      matched: false,
+    };
+  }
+
+  const rate = input.rates.find((r) => r.governorate === code);
+
+  // Configured governorate with no row yet — same reasoning as above.
+  if (!rate) {
+    return {
+      fee: 0,
+      isDeliverable: true,
+      freeReason: "zero_rate",
+      matched: true,
+    };
+  }
+
+  if (!rate.isDeliverable) {
+    return { fee: 0, isDeliverable: false, freeReason: null, matched: true };
+  }
+
+  // A negative fee is bad data, not a discount.
+  const base = Math.max(0, rate.fee);
+
+  if (base === 0) {
+    return {
+      fee: 0,
+      isDeliverable: true,
+      freeReason: "zero_rate",
+      matched: true,
+    };
+  }
+
+  // Zero means "no threshold", never "every order qualifies" — the second
+  // reading would give away every delivery the moment someone cleared the field.
+  if (
+    input.freeShippingThreshold > 0 &&
+    input.subtotal >= input.freeShippingThreshold
+  ) {
+    return {
+      fee: 0,
+      isDeliverable: true,
+      freeReason: "threshold",
+      matched: true,
+    };
+  }
+
+  return { fee: base, isDeliverable: true, freeReason: null, matched: true };
 }
