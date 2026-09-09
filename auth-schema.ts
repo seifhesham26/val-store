@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
   index,
+  uniqueIndex,
   date,
 } from "drizzle-orm/pg-core";
 
@@ -46,6 +47,22 @@ export const account = pgTable(
   "account",
   {
     id: text("id").primaryKey(),
+    /**
+     * Who vouched for `accountId`, as Better Auth 1.7 requires.
+     *
+     * `providerId` names the configured provider ("google", "credential");
+     * `issuer` names the authority the id came from, so the same numeric
+     * subject handed out by two different issuers cannot collide. Required
+     * with no default — Better Auth writes it on every account it creates and
+     * looks accounts up by `(issuer, accountId)`.
+     *
+     * Missing here through the 1.4.7 → 1.7.2 upgrade, which broke every write
+     * to this table: email signup threw after the `user` row was already
+     * committed, and social login could then neither create nor link. See
+     * `src/db/auth-schema-parity.test.ts`, which now compares this file
+     * against what Better Auth actually declares.
+     */
+    issuer: text("issuer").notNull(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
@@ -63,7 +80,17 @@ export const account = pgTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("account_userId_idx").on(table.userId)]
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    // Better Auth resolves an identity with `findAccountByKey({ issuer,
+    // accountId })` and declares this pair unique. Without the constraint the
+    // same provider identity can be linked to two users and that lookup picks
+    // between them arbitrarily.
+    uniqueIndex("account_issuer_account_id_idx").on(
+      table.issuer,
+      table.accountId
+    ),
+  ]
 );
 
 export const verification = pgTable(

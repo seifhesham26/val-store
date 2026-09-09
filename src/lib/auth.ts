@@ -11,6 +11,7 @@ import {
 } from "@/server/utils/rate-limiter";
 import { PasswordValueObject } from "@/domain/customers/value-objects/password.value-object";
 import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
+import { runProvisioningSteps } from "./post-signup-provisioning";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -247,45 +248,72 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        /**
+         * None of this is allowed to throw.
+         *
+         * Better Auth queues these to run after the signup transaction has
+         * committed, so a throw here cannot undo the account — it escapes
+         * `/sign-up/email` instead, so the response carries an error and no
+         * session cookie while the account it claims failed is real and
+         * working. The customer is told to try again; the address then reports
+         * itself as taken. See `post-signup-provisioning.ts` for why each step
+         * below is safe to lose.
+         */
         after: async (user) => {
-          // Auto-create user_profiles entry with default "customer" role
-          await db
-            .insert(userProfiles)
-            .values({
-              userId: user.id,
-              role: "customer",
-            })
-            .onConflictDoNothing();
-
-          // Auto-create customer by phone (if phone provided)
           const phone = (user as { phone?: string }).phone;
-          if (phone) {
-            const normalizedPhone = phone.replace(/[\s-]/g, "");
 
-            // Not a read-then-write: two signups sharing a phone number can
-            // both pass a `select` existence check before either has
-            // inserted, and the second's plain `insert` would then throw on
-            // the unique constraint — after its `user` row had already
-            // committed, so the account would exist while signup reported
-            // failure. `onConflictDoNothing` makes the second write a no-op
-            // instead, the same tool `newsletter.subscribe` already uses for
-            // the same race.
-            await db
-              .insert(customers)
-              .values({
-                phone: normalizedPhone,
-                preferredName: user.name || null,
-              })
-              .onConflictDoNothing();
-          }
+          await runProvisioningSteps([
+            {
+              // Auto-create user_profiles entry with default "customer" role.
+              label: "create user profile",
+              run: async () => {
+                await db
+                  .insert(userProfiles)
+                  .values({
+                    userId: user.id,
+                    role: "customer",
+                  })
+                  .onConflictDoNothing();
+              },
+            },
+            {
+              // Auto-create customer by phone (if phone provided)
+              label: "create customer record",
+              run: async () => {
+                if (!phone) return;
 
-          // Last, so a notification failure cannot stop a signup from
-          // completing — the service swallows its own errors either way.
-          await container.getNotificationService().customerRegistered({
-            userId: user.id,
-            name: user.name || null,
-            email: user.email,
-          });
+                const normalizedPhone = phone.replace(/[\s-]/g, "");
+
+                // Not a read-then-write: two signups sharing a phone number
+                // can both pass a `select` existence check before either has
+                // inserted, and the second's plain `insert` would then throw
+                // on the unique constraint — after its `user` row had already
+                // committed, so the account would exist while signup reported
+                // failure. `onConflictDoNothing` makes the second write a
+                // no-op instead, the same tool `newsletter.subscribe` already
+                // uses for the same race.
+                await db
+                  .insert(customers)
+                  .values({
+                    phone: normalizedPhone,
+                    preferredName: user.name || null,
+                  })
+                  .onConflictDoNothing();
+              },
+            },
+            {
+              // Last, so a notification failure cannot stop a signup from
+              // completing — the service swallows its own errors either way.
+              label: "notify admins of registration",
+              run: async () => {
+                await container.getNotificationService().customerRegistered({
+                  userId: user.id,
+                  name: user.name || null,
+                  email: user.email,
+                });
+              },
+            },
+          ]);
         },
       },
     },
