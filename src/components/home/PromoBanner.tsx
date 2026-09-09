@@ -1,10 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { unoptimizedFor } from "@/lib/image-hosts";
-
-/** Placeholder art. Hoisted so the tag and the optimise guard read one value. */
-const PROMO_IMAGE = "https://picsum.photos/seed/promo-winter/800/800";
 
 interface PromoBannerProps {
   preHeadline?: string;
@@ -26,14 +21,8 @@ export function PromoBanner({
       <div className="max-w-7xl mx-auto grid md:grid-cols-2">
         {/* Image Side */}
         <div className="relative aspect-square md:aspect-auto md:min-h-[400px]">
-          <Image
-            src={PROMO_IMAGE}
-            alt={headline}
-            fill
-            sizes="(max-width: 768px) 100vw, 50vw"
-            className="object-cover"
-            unoptimized={unoptimizedFor(PROMO_IMAGE)}
-          />
+          {/* Brand gradient until real promo art exists — see BrandStory. */}
+          <div className="absolute inset-0 bg-linear-to-br from-gray-800 via-gray-900 to-black" />
           {/* Subtle overlay */}
           <div className="absolute inset-0 bg-black/20" />
         </div>

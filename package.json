@@ -19,6 +19,8 @@
     "seed:basic": "tsx scripts/seed-basic.ts",
     "seed": "tsx scripts/seed.ts",
     "seed:legal": "tsx scripts/seed-legal.ts",
+    "seed:shipping": "tsx scripts/seed-shipping.ts",
+    "seed:products": "tsx scripts/seed-products.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {

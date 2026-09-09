@@ -80,7 +80,7 @@ export function CollectionSection({
         </div>
       ) : products.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {products.map((product) => (
+          {products.map((product, index) => (
             <ProductCard
               key={product.id}
               id={product.id}
@@ -89,6 +89,8 @@ export function CollectionSection({
               price={product.basePrice}
               salePrice={product.salePrice ?? undefined}
               primaryImage={product.primaryImage ?? undefined}
+              secondaryImage={product.secondaryImage ?? undefined}
+              index={index}
               isOnSale={
                 product.salePrice !== null &&
                 product.salePrice < product.basePrice

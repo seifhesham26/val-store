@@ -10,7 +10,8 @@ import { NotificationService } from "@/application/notifications/notification.se
 import { SendOrderConfirmationUseCase } from "@/application/orders/use-cases/send-order-confirmation.use-case";
 import { AddressRepositoryInterface } from "@/domain/address/interfaces/repositories/address.repository.interface";
 import type { Address } from "@/db/schema";
-import { calculateShippingCost } from "@/domain/shipping/shipping-rate";
+import { quoteShipping } from "@/domain/shipping/shipping-rate";
+import type { ShippingRateRepositoryInterface } from "@/domain/shipping/interfaces/repositories/shipping-rate.repository.interface";
 import { TaskSchedulerInterface } from "@/application/interfaces/task-scheduler.interface";
 
 export interface CreateOrderInput {
@@ -47,6 +48,7 @@ export class CreateOrderUseCase {
     private readonly notifications: NotificationService,
     private readonly sendOrderConfirmation: SendOrderConfirmationUseCase,
     private readonly addressRepository: AddressRepositoryInterface,
+    private readonly shippingRateRepository: ShippingRateRepositoryInterface,
     private readonly scheduler: TaskSchedulerInterface
   ) {}
 
@@ -124,13 +126,25 @@ export class CreateOrderUseCase {
     const tax = 0;
 
     // Priced from the destination governorate, server-side, against the
-    // subtotal computed above — never from anything the client sent. Rates are
-    // configuration and currently default to zero, so this returns 0 until the
-    // store sets them; that is the behaviour that was already live.
-    const shippingCost = calculateShippingCost({
+    // subtotal computed above — never from anything the client sent. The rates
+    // are whatever the admin has configured; an unconfigured store ships free.
+    const shippingConfig = await this.shippingRateRepository.getConfig();
+    const quote = quoteShipping({
       subtotal,
       governorate: addressesById.get(input.shippingAddressId)?.state,
+      rates: shippingConfig.rates,
+      freeShippingThreshold: shippingConfig.freeShippingThreshold,
     });
+
+    // Refusing here rather than at the door: a governorate switched off in the
+    // admin must not be able to reach a paid order in the first place.
+    if (!quote.isDeliverable) {
+      throw new Error(
+        "We do not currently deliver to that governorate. Please choose another address."
+      );
+    }
+
+    const shippingCost = quote.fee;
 
     // Re-validate the coupon server-side against the subtotal we just computed.
     // The client only ever sends a code; the discount amount is derived here so

@@ -39,7 +39,7 @@ async function withCardData(pageProducts: ProductEntity[]) {
   const productIds = pageProducts.map((p) => p.id);
 
   const [imageMap, variantMap] = await Promise.all([
-    imageRepo.findPrimaryByProducts(productIds),
+    imageRepo.findFirstTwoByProducts(productIds),
     variantRepo.findByProducts(productIds),
   ]);
 
@@ -53,7 +53,10 @@ async function withCardData(pageProducts: ProductEntity[]) {
     categoryId: p.categoryId,
     gender: p.gender,
     isFeatured: p.isFeatured,
-    primaryImage: imageMap.get(p.id)?.imageUrl ?? null,
+    primaryImage: imageMap.get(p.id)?.[0]?.imageUrl ?? null,
+    // The card crossfades to this when a product has a second photo — a
+    // unisex garment shown on a second model. Null leaves the card static.
+    secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
     variants: (variantMap.get(p.id) ?? [])
       .filter((v) => v.isAvailable)
       .map((v) => ({

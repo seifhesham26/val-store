@@ -43,6 +43,11 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
 
   // Billing address. Defaults to "same as shipping" — the checkbox starts
   // checked — so the common case needs no extra input from the customer.
+  // The destination decides the delivery fee, so the summary needs it. Read
+  // from the address the customer actually selected, not from a default.
+  const shippingGovernorate =
+    addresses.find((a) => a.id === effectiveSelectedAddressId)?.state ?? null;
+
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
   const [selectedBillingAddressId, setSelectedBillingAddressId] = useState<
     string | null
@@ -214,7 +219,7 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
           {/* Right Column: Order Summary sticky */}
           <div className="lg:col-span-5 mt-10 lg:mt-0">
             <div className="sticky top-24 lg:top-32 w-full">
-              <CheckoutOrderSummary />
+              <CheckoutOrderSummary governorate={shippingGovernorate} />
             </div>
           </div>
         </div>

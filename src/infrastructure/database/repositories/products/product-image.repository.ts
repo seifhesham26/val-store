@@ -191,6 +191,41 @@ export class DrizzleProductImageRepository implements ProductImageRepositoryInte
     return result;
   }
 
+  async findFirstTwoByProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductImageEntity[]>> {
+    if (productIds.length === 0) return new Map();
+
+    const images = await db.query.productImages.findMany({
+      where: inArray(productImages.productId, productIds),
+      orderBy: [asc(productImages.displayOrder)],
+    });
+
+    const byProduct = new Map<string, typeof images>();
+    for (const img of images) {
+      const list = byProduct.get(img.productId) ?? [];
+      list.push(img);
+      byProduct.set(img.productId, list);
+    }
+
+    const result = new Map<string, ProductImageEntity[]>();
+    for (const [productId, imgs] of byProduct) {
+      // Primary first, then display order. The query already sorts by
+      // displayOrder, so a stable partition is enough — the primary moves to
+      // the front and everything else keeps its relative order.
+      const ordered = [
+        ...imgs.filter((i) => i.isPrimary),
+        ...imgs.filter((i) => !i.isPrimary),
+      ];
+      result.set(
+        productId,
+        ordered.slice(0, 2).map((img) => this.mapToEntity(img))
+      );
+    }
+
+    return result;
+  }
+
   /**
    * Map database result to entity
    */

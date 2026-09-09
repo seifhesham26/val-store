@@ -1,0 +1,162 @@
+{
+  "_comment": "Seed data for the catalogue. Image files are NOT listed here: each product's images live in temp/products/<slug>/ and are uploaded in filename order, so the numeric prefix (1-, 2-, 3-, 4-) decides which image is primary and which the card crossfades to. Keeping the order in the filenames rather than in this file means the two cannot drift. metaTitle/metaDescription are derived by the seed from name and description rather than stored here, so they cannot go stale when the copy changes.",
+  "categories": [
+    {
+      "slug": "hoodies",
+      "name": "Hoodies",
+      "description": "Heavyweight layers built for the cooler months.",
+      "image": "categories/hooded-sweatshirt.jpg",
+      "displayOrder": 1
+    },
+    {
+      "slug": "t-shirts",
+      "name": "T-Shirts",
+      "description": "Boxy cuts in heavy cotton.",
+      "image": "categories/boxy-short-sleeve-t-shirt.jpg",
+      "displayOrder": 2
+    },
+    {
+      "slug": "jackets",
+      "name": "Jackets",
+      "description": "Outerwear for the in-between weather.",
+      "image": "categories/zip-through-jacket.jpg",
+      "displayOrder": 3
+    },
+    {
+      "slug": "trousers",
+      "name": "Trousers",
+      "description": "Relaxed and wide-leg silhouettes.",
+      "image": "categories/pair-of-wide-leg-trousers.jpg",
+      "displayOrder": 4
+    },
+    {
+      "slug": "accessories",
+      "name": "Accessories",
+      "description": "The pieces that finish a fit.",
+      "image": "categories/canvas-crossbody-bag.jpg",
+      "displayOrder": 5
+    }
+  ],
+  "products": [
+    {
+      "slug": "oversized-hooded-sweatshirt",
+      "name": "Oversized Hooded Sweatshirt",
+      "description": "A heavyweight brushed-cotton hoodie cut deliberately oversized, with a double-layer hood and ribbed cuffs that hold their shape. Unisex fit — size down for a closer cut.",
+      "category": "hoodies",
+      "sku": "VLK-HOOD-CHR",
+      "price": 999,
+      "color": "Heather Charcoal",
+      "sizes": ["S", "M", "L", "XL", "XXL"],
+      "stockPerSize": 12,
+      "material": "100% brushed cotton, 400gsm",
+      "careInstructions": "Machine wash cold, inside out. Do not tumble dry. Warm iron on the reverse only.",
+      "featured": true,
+      "gender": "unisex"
+    },
+    {
+      "slug": "boxy-t-shirt",
+      "name": "Boxy Short-Sleeve T-Shirt",
+      "description": "A boxy, square-cut tee in heavy combed cotton that holds its shape through washing. Drop shoulder, wide body, ribbed neck. Unisex.",
+      "category": "t-shirts",
+      "sku": "VLK-TEE-BON",
+      "price": 999,
+      "color": "Bone",
+      "sizes": ["S", "M", "L", "XL", "XXL"],
+      "stockPerSize": 20,
+      "material": "100% combed cotton, 240gsm",
+      "careInstructions": "Machine wash cold with like colours. Tumble dry low. Do not bleach.",
+      "featured": true,
+      "gender": "unisex"
+    },
+    {
+      "slug": "zip-through-track-jacket",
+      "name": "Zip-Through Track Jacket",
+      "description": "A full-zip track jacket with tonal side panels and a stand collar. Light enough for Cairo evenings, structured enough to hold a shape. Unisex.",
+      "category": "jackets",
+      "sku": "VLK-JKT-SLT",
+      "price": 999,
+      "color": "Slate Grey",
+      "sizes": ["S", "M", "L", "XL"],
+      "stockPerSize": 8,
+      "material": "Recycled polyester shell with cotton-blend lining",
+      "careInstructions": "Machine wash cold, zip fastened. Hang to dry. Do not iron the panels.",
+      "featured": true,
+      "gender": "unisex"
+    },
+    {
+      "slug": "wide-leg-cargo-trousers",
+      "name": "Wide-Leg Cargo Trousers",
+      "description": "Wide-leg cargos in washed cotton twill, with deep side pockets and a drawcord waist. They break at the ankle rather than pooling. Unisex.",
+      "category": "trousers",
+      "sku": "VLK-CRG-OLV",
+      "price": 999,
+      "color": "Washed Olive",
+      "sizes": ["S", "M", "L", "XL"],
+      "stockPerSize": 10,
+      "material": "Washed cotton twill, 320gsm",
+      "careInstructions": "Machine wash cold, inside out. Hang to dry. Warm iron if needed.",
+      "featured": false,
+      "gender": "unisex"
+    },
+    {
+      "slug": "ribbed-thermal-top",
+      "name": "Long-Sleeve Ribbed Thermal",
+      "description": "A close-fitting ribbed thermal that works as a base layer or on its own. Fine gauge, high stretch, holds its shape at the cuff. Unisex.",
+      "category": "t-shirts",
+      "sku": "VLK-THM-BLK",
+      "price": 999,
+      "color": "Faded Black",
+      "sizes": ["S", "M", "L", "XL"],
+      "stockPerSize": 14,
+      "material": "95% cotton, 5% elastane rib",
+      "careInstructions": "Machine wash cold. Reshape while damp. Do not tumble dry.",
+      "featured": false,
+      "gender": "unisex"
+    },
+    {
+      "slug": "canvas-crossbody-bag",
+      "name": "Canvas Crossbody Bag",
+      "description": "A compact crossbody in heavy waxed canvas with an adjustable webbing strap and a single zipped compartment. Enough for a phone, a wallet and keys.",
+      "category": "accessories",
+      "sku": "VLK-BAG-SND",
+      "price": 999,
+      "color": "Desert Sand",
+      "sizes": ["One Size"],
+      "stockPerSize": 25,
+      "material": "Waxed cotton canvas with webbing strap",
+      "careInstructions": "Spot clean only. Do not machine wash — washing strips the wax finish.",
+      "featured": true,
+      "gender": "unisex"
+    },
+    {
+      "slug": "ribbed-knit-beanie",
+      "name": "Ribbed Knit Beanie",
+      "description": "A fine-gauge ribbed beanie with a folded cuff. Sits close without gripping.",
+      "category": "accessories",
+      "sku": "VLK-BEA-STL",
+      "price": 999,
+      "color": "Deep Steel Blue",
+      "sizes": ["One Size"],
+      "stockPerSize": 30,
+      "material": "Fine-gauge acrylic and wool blend",
+      "careInstructions": "Hand wash cold. Dry flat. Do not wring.",
+      "featured": false,
+      "gender": "unisex"
+    },
+    {
+      "slug": "relaxed-drawstring-shorts",
+      "name": "Relaxed Drawstring Shorts",
+      "description": "Mid-length shorts in the same heavy cotton twill as the cargos, with a drawcord waist and a relaxed leg. Built for the months that matter here. Unisex.",
+      "category": "trousers",
+      "sku": "VLK-SHT-STN",
+      "price": 999,
+      "color": "Stone Grey",
+      "sizes": ["S", "M", "L", "XL"],
+      "stockPerSize": 16,
+      "material": "Washed cotton twill, 320gsm",
+      "careInstructions": "Machine wash cold, inside out. Hang to dry.",
+      "featured": false,
+      "gender": "unisex"
+    }
+  ]
+}

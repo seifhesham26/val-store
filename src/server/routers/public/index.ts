@@ -21,6 +21,7 @@ import { publicReviewsRouter } from "./reviews";
 import { publicNotificationsRouter } from "./notifications";
 import { newsletterRouter } from "./newsletter";
 import { publicLegalRouter } from "./legal";
+import { publicShippingRouter } from "./shipping";
 
 export const publicRouter = router({
   products: publicProductsRouter,
@@ -37,4 +38,5 @@ export const publicRouter = router({
   notifications: publicNotificationsRouter,
   newsletter: newsletterRouter,
   legal: publicLegalRouter,
+  shipping: publicShippingRouter,
 });

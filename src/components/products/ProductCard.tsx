@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
 import { ProductImage } from "@/components/shared/ProductImage";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import {
+  CAROUSEL_FADE_MS,
+  CAROUSEL_INTERVAL_MS,
+  shouldAnimateCard,
+  staggerDelayMs,
+} from "@/lib/card-carousel";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import {
   QuickAddSliderBar,
@@ -17,7 +25,18 @@ export interface ProductCardProps {
   price: number;
   salePrice?: number;
   primaryImage?: string;
+  /**
+   * Second photo, crossfaded with the first. Typically the same garment on
+   * another model — the range is mostly unisex, so this shows fit rather than
+   * just filling space. Absent means the card never moves.
+   */
   secondaryImage?: string;
+  /**
+   * Position in the grid, used only to stagger this card's start. Without it
+   * every card flips on the same tick and the page pulses in unison, which
+   * reads as a rendering fault rather than as motion.
+   */
+  index?: number;
   isNew?: boolean;
   isOnSale?: boolean;
   isFeatured?: boolean;
@@ -43,6 +62,8 @@ export function ProductCard({
   price,
   salePrice,
   primaryImage,
+  secondaryImage,
+  index = 0,
   isNew = false,
   isOnSale = false,
   priority = false,
@@ -54,20 +75,94 @@ export function ProductCard({
       ? formatCurrency(salePrice)
       : undefined;
 
+  const [showSecond, setShowSecond] = useState(false);
+  const [secondLoaded, setSecondLoaded] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+
+  const animate =
+    shouldAnimateCard({
+      hasSecondImage: Boolean(secondaryImage),
+      secondImageLoaded: secondLoaded,
+      reducedMotion,
+    }) && !paused;
+
+  useEffect(() => {
+    if (!animate) return;
+
+    // Staggered start, then a steady interval. Both are cleaned up together —
+    // a card unmounting mid-stagger would otherwise leave a timer holding a
+    // setter for a component that no longer exists.
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const start = setTimeout(() => {
+      setShowSecond((s) => !s);
+      interval = setInterval(
+        () => setShowSecond((s) => !s),
+        CAROUSEL_INTERVAL_MS
+      );
+    }, staggerDelayMs(index));
+
+    return () => {
+      clearTimeout(start);
+      if (interval) clearInterval(interval);
+    };
+  }, [animate, index]);
+
   return (
-    <div className="group relative">
+    <div
+      className="group relative"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
       {/* Image Container — wrapped in a link */}
       <Link href={`/products/${slug}`} className="block">
         <div className="relative aspect-3/4 overflow-hidden bg-val-steel">
           {/* Product Image or gradient fallback */}
           {primaryImage ? (
-            <ProductImage
-              src={primaryImage}
-              alt={name}
-              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              priority={priority}
-              className="transition-transform duration-300 group-hover:scale-105"
-            />
+            <>
+              <div
+                className="absolute inset-0 transition-opacity"
+                style={{
+                  transitionDuration: `${CAROUSEL_FADE_MS}ms`,
+                  opacity: showSecond ? 0 : 1,
+                }}
+              >
+                <ProductImage
+                  src={primaryImage}
+                  alt={name}
+                  sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                  priority={priority}
+                  className="transition-transform duration-300 group-hover:scale-105"
+                />
+              </div>
+
+              {/*
+               * The second shot — the same garment on another model. Loaded
+               * lazily and never given `priority`: it must not compete with the
+               * LCP image for bandwidth, and until it has decoded the card
+               * simply does not animate.
+               */}
+              {secondaryImage && (
+                <div
+                  aria-hidden
+                  className="absolute inset-0 transition-opacity"
+                  style={{
+                    transitionDuration: `${CAROUSEL_FADE_MS}ms`,
+                    opacity: showSecond ? 1 : 0,
+                  }}
+                >
+                  <ProductImage
+                    src={secondaryImage}
+                    alt=""
+                    sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    className="transition-transform duration-300 group-hover:scale-105"
+                    onLoad={() => setSecondLoaded(true)}
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
           )}

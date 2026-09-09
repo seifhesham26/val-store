@@ -103,12 +103,14 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
             price={product.basePrice}
             salePrice={product.salePrice ?? undefined}
             primaryImage={product.primaryImage ?? undefined}
+            secondaryImage={product.secondaryImage ?? undefined}
+            index={index}
             isOnSale={
               product.salePrice !== null &&
               product.salePrice < product.basePrice
             }
             variants={product.variants}
-                priority={index < 4}
+            priority={index < 4}
           />
         ))}
 

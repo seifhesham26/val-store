@@ -19,6 +19,7 @@ import { createCouponModule } from "./coupons";
 import { createInventoryModule } from "./inventory";
 import { createNotificationModule } from "./notifications";
 import { createLegalModule } from "./legal";
+import { createShippingModule } from "./shipping";
 import { NextTaskScheduler } from "@/infrastructure/services/next-task-scheduler.service";
 
 function createContainer() {
@@ -63,6 +64,7 @@ function createContainer() {
     // reading the property eagerly would hit the temporal dead zone. Same
     // deferral the inventory/notifications cycle uses.
     getAddressRepository: () => address.getAddressRepository(),
+    getShippingRateRepository: () => shipping.getShippingRateRepository(),
     getTaskScheduler: () => taskScheduler,
   });
   const wishlist = createWishlistModule();
@@ -70,6 +72,7 @@ function createContainer() {
   const customers = createCustomerModule();
   const services = createServicesModule();
   const legal = createLegalModule();
+  const shipping = createShippingModule();
 
   return {
     // Products
@@ -100,6 +103,7 @@ function createContainer() {
     ...notifications,
     // Legal
     ...legal,
+    ...shipping,
   };
 }
 
