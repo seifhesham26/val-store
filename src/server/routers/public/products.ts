@@ -24,6 +24,16 @@ import {
   enforceRateLimit,
   getClientIp,
 } from "@/server/utils/rate-limiter";
+import { PRODUCT_SORTS, type ProductSort } from "@/lib/collection-sort";
+
+/**
+ * Mirrors `PRODUCT_SORTS` so the wire format cannot drift from the UI.
+ * The cast preserves the literal union — a bare `string[]` would widen the
+ * schema's output to `string` and force a cast at every consumer instead.
+ */
+const productSortSchema = z.enum(
+  PRODUCT_SORTS.map((option) => option.value) as [ProductSort, ...ProductSort[]]
+);
 
 /**
  * Attach the presentation data a product card needs, in two queries total.
@@ -89,6 +99,7 @@ export const publicProductsRouter = router({
           createdWithinDays: z.number().int().min(1).max(365).optional(),
           limit: z.number().min(1).max(50).optional().default(12),
           cursor: z.number().min(1).optional(), // Page number
+          sort: productSortSchema.optional(),
         })
         .optional()
     )
@@ -107,6 +118,7 @@ export const publicProductsRouter = router({
         gender: input?.gender,
         isOnSale: input?.isOnSale,
         createdWithinDays: input?.createdWithinDays,
+        sort: input?.sort,
       };
 
       const [pageProducts, total] = await Promise.all([

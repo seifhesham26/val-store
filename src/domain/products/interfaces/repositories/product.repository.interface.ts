@@ -6,6 +6,7 @@
  */
 
 import { ProductEntity } from "@/domain/products/entities/product.entity";
+import type { ProductSort } from "@/lib/collection-sort";
 
 /**
  * Images and variants supplied at creation time.
@@ -70,6 +71,13 @@ export interface ProductFilters {
    * be paginated in SQL is a search that loads the whole catalogue.
    */
   search?: string;
+  /**
+   * Result ordering. Every branch appends the primary key as a tiebreaker —
+   * `ORDER BY created_at DESC` alone is not a total order, and the seed writes
+   * 35 products on one timestamp, which duplicated some products across pages
+   * and skipped others.
+   */
+  sort?: ProductSort;
 }
 
 export interface ProductRepositoryInterface {

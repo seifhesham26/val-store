@@ -66,7 +66,11 @@ describe("pagination is done in SQL and covers the set exactly", () => {
   });
 
   it("keeps the same newest-first order as the unpaginated query", async () => {
-    const firstPage = await repo.findAll({ isActive: true, limit: 5, offset: 0 });
+    const firstPage = await repo.findAll({
+      isActive: true,
+      limit: 5,
+      offset: 0,
+    });
     expect(firstPage.map((p) => p.id)).toEqual(
       allActive.slice(0, firstPage.length).map((p) => p.id)
     );
@@ -88,7 +92,10 @@ describe("count agrees with the rows the same filters return", () => {
   // cannot be reached, or hides one that exists.
   const cases: { name: string; filters: Parameters<typeof repo.count>[0] }[] = [
     { name: "active", filters: { isActive: true } },
-    { name: "active + featured", filters: { isActive: true, isFeatured: true } },
+    {
+      name: "active + featured",
+      filters: { isActive: true, isFeatured: true },
+    },
     { name: "active + on sale", filters: { isActive: true, isOnSale: true } },
     { name: "active + gender men", filters: { isActive: true, gender: "men" } },
     { name: "search 'a'", filters: { isActive: true, search: "a" } },
@@ -100,7 +107,9 @@ describe("count agrees with the rows the same filters return", () => {
         repo.findAll(filters),
         repo.count(filters),
       ]);
-      console.log(`[products] count(${name}) = ${total}, rows = ${rows.length}`);
+      console.log(
+        `[products] count(${name}) = ${total}, rows = ${rows.length}`
+      );
       expect(total).toBe(rows.length);
     });
   }
@@ -200,4 +209,47 @@ describe("filters that moved from JavaScript into SQL still mean the same thing"
     expect(first[0].isOnSale()).toBe(true);
     expect(second[0].isOnSale()).toBe(true);
   });
+});
+
+describe("sort", () => {
+  it("orders by effective price ascending, discounts included", async () => {
+    const rows = await repo.findAll({ isActive: true, sort: "price-asc" });
+    const effective = rows.map((p) => p.salePrice ?? p.basePrice);
+
+    console.log(`[sort] price-asc over ${rows.length} products`);
+    for (let i = 1; i < effective.length; i++) {
+      expect(effective[i]).toBeGreaterThanOrEqual(effective[i - 1]);
+    }
+  });
+
+  it("orders by name", async () => {
+    const rows = await repo.findAll({ isActive: true, sort: "name" });
+    const names = rows.map((p) => p.name);
+
+    expect([...names].sort((a, b) => a.localeCompare(b))).toEqual(names);
+  });
+
+  // The tiebreaker's reason for existing: the seed writes 35 products on one
+  // timestamp, so a non-total order duplicates some and skips others.
+  it.each(["newest", "price-asc", "price-desc", "name"] as const)(
+    "pages without duplicates under %s",
+    async (sort) => {
+      const first = await repo.findAll({
+        isActive: true,
+        sort,
+        limit: 12,
+        offset: 0,
+      });
+      const second = await repo.findAll({
+        isActive: true,
+        sort,
+        limit: 12,
+        offset: 12,
+      });
+
+      const ids = [...first, ...second].map((p) => p.id);
+      console.log(`[sort] ${sort}: ${ids.length} rows across 2 pages`);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  );
 });
