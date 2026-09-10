@@ -7,15 +7,22 @@
  * Uses tRPC useInfiniteQuery for pagination.
  */
 
+import { useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductCardSkeletonGrid } from "@/components/products/ProductCardSkeleton";
+import { GRID_CLASSES } from "@/components/products/CollectionGridSkeleton";
+import { CollectionBanner } from "@/components/collections/CollectionBanner";
 import {
-  CollectionGridSkeleton,
-  GRID_CLASSES,
-} from "@/components/products/CollectionGridSkeleton";
+  CollectionToolbar,
+  type ToolbarCategory,
+} from "@/components/collections/CollectionToolbar";
+import { ProductGridItems } from "@/components/products/ProductGridItems";
 import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
+import { useReveal } from "@/hooks/use-reveal";
+import { parseProductSort } from "@/lib/collection-sort";
 import { ChevronDown } from "lucide-react";
 import type { ProductListPage } from "@/lib/cache";
 
@@ -45,9 +52,16 @@ interface InfiniteProductGridProps {
    * still stream in over tRPC exactly as before.
    *
    * Left optional so a caller that genuinely cannot fetch server-side still
-   * works; it just pays the old waterfall.
+   * works; it just pays the old waterfall. Only used for the default view —
+   * see the `initialData` gate below.
    */
   initialPage?: ProductListPage;
+  /** Small label above the banner headline. */
+  bannerEyebrow?: string;
+  /** Banner artwork. Required — every collection route has one. */
+  bannerImage: string;
+  /** Chips for the toolbar. Omit to render the toolbar without filters. */
+  categories?: ToolbarCategory[];
 }
 
 const ITEMS_PER_PAGE = 12;
@@ -65,17 +79,44 @@ export function InfiniteProductGrid({
   title = "All Products",
   description,
   initialPage,
+  bannerEyebrow,
+  bannerImage,
+  categories,
 }: InfiniteProductGridProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const sort = parseProductSort(searchParams.get("sort"));
+  const activeSlug = searchParams.get("category");
+
+  const activeCategory = useMemo(
+    () => categories?.find((c) => c.slug === activeSlug) ?? null,
+    [categories, activeSlug]
+  );
+
+  /** Rewrites one query param, preserving the rest and the scroll position. */
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === null) next.delete(key);
+    else next.set(key, value);
+    const query = next.toString();
+    router.replace(query ? `?${query}` : "?", { scroll: false });
+  };
+
+  const bannerRef = useReveal<HTMLDivElement>();
+  const revealRef = useReveal<HTMLDivElement>();
+
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     trpc.public.products.list.useInfiniteQuery(
       {
         limit: ITEMS_PER_PAGE,
         categoryId,
-        categoryIds,
+        categoryIds: activeCategory?.categoryIds ?? categoryIds,
         gender,
         isFeatured,
         isOnSale,
         createdWithinDays,
+        sort,
       },
       {
         getNextPageParam: (lastPage) => {
@@ -87,9 +128,13 @@ export function InfiniteProductGrid({
         initialCursor: 1,
         // Seeding the cache rather than fetching. `pageParams` must line up
         // with `pages` or `getNextPageParam` asks for the wrong page next.
-        initialData: initialPage
-          ? { pages: [initialPage], pageParams: [1] }
-          : undefined,
+        // Only correct for the default, unfiltered view — the server-seeded
+        // page 1 always reflects `sort: "newest"` with no category filter, so
+        // any other combination must fetch for real.
+        initialData:
+          initialPage && sort === "newest" && activeSlug === null
+            ? { pages: [initialPage], pageParams: [1] }
+            : undefined,
       }
     );
 
@@ -103,88 +148,101 @@ export function InfiniteProductGrid({
     enabled: hasNextPage && !isFetchingNextPage,
   });
 
-  // Only reachable when the caller did not pass `initialPage` — with it, the
-  // query starts resolved. Shares markup with `loading.tsx` so a page that
-  // does hand over between the two does not visibly reflow.
-  if (isLoading) {
-    return <CollectionGridSkeleton title={title} description={description} />;
-  }
-
   return (
     <div className="min-h-screen">
-      {/* Collection Header */}
-      <div className="py-12 md:py-16 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
-            {title}
-          </h1>
-          {description && (
-            <p className="text-gray-400 max-w-2xl mx-auto">{description}</p>
-          )}
-          <p className="text-sm text-gray-500 mt-4">
-            Showing {products.length} of {total} products
-          </p>
-        </div>
+      <div ref={bannerRef}>
+        <CollectionBanner
+          eyebrow={bannerEyebrow}
+          title={title}
+          description={description}
+          image={bannerImage}
+          productCount={total}
+        />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-        {/* Product Grid */}
-        {products.length > 0 ? (
+      <CollectionToolbar
+        categories={categories ?? []}
+        activeSlug={activeSlug}
+        sort={sort}
+        shownCount={products.length}
+        totalCount={total}
+        onCategoryChange={(slug) => setParam("category", slug)}
+        onSortChange={(next) => setParam("sort", next)}
+      />
+
+      {isLoading ? (
+        <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 md:py-12 lg:px-8">
           <div className={GRID_CLASSES}>
-            {products.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                id={product.id}
-                name={product.name}
-                slug={product.slug}
-                price={product.basePrice}
-                salePrice={product.salePrice ?? undefined}
-                primaryImage={product.primaryImage ?? undefined}
-                secondaryImage={product.secondaryImage ?? undefined}
-                index={index}
-                isOnSale={
-                  product.salePrice !== null &&
-                  product.salePrice < product.basePrice
-                }
-                isFeatured={product.isFeatured}
-                variants={product.variants}
-                priority={index < 4}
-              />
-            ))}
-
-            {/* Placeholders grow the grid while the next page loads */}
-            {isFetchingNextPage && (
-              <ProductCardSkeletonGrid count={NEXT_PAGE_PLACEHOLDERS} />
-            )}
+            <ProductCardSkeletonGrid count={10} />
           </div>
-        ) : (
-          <div className="text-center py-16">
-            <p className="text-muted-foreground">No products found</p>
-          </div>
-        )}
+        </div>
+      ) : (
+        <div
+          ref={revealRef}
+          className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 md:py-12 lg:px-8"
+        >
+          {/* Product Grid */}
+          {products.length > 0 ? (
+            <ProductGridItems
+              transitionKey={`${activeSlug ?? "all"}:${sort}`}
+              className={GRID_CLASSES}
+            >
+              {products.map((product, index) => (
+                <div key={product.id} className="val-reveal" data-reveal>
+                  <ProductCard
+                    id={product.id}
+                    name={product.name}
+                    slug={product.slug}
+                    price={product.basePrice}
+                    salePrice={product.salePrice ?? undefined}
+                    primaryImage={product.primaryImage ?? undefined}
+                    secondaryImage={product.secondaryImage ?? undefined}
+                    index={index}
+                    isOnSale={
+                      product.salePrice !== null &&
+                      product.salePrice < product.basePrice
+                    }
+                    isFeatured={product.isFeatured}
+                    variants={product.variants}
+                    priority={index < 5}
+                  />
+                </div>
+              ))}
 
-        {/* Infinite scroll sentinel */}
-        {hasNextPage && (
-          <div
-            ref={sentinelRef}
-            className="flex items-center justify-center py-12"
-          >
-            {isFetchingNextPage ? (
-              <ValkyrieLoader size="md" label="Loading" />
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-gray-600">
-                <ChevronDown className="val-hint h-4 w-4" />
-                <span className="text-[11px] uppercase tracking-[0.28em]">
-                  Scroll for more
-                </span>
-              </div>
-            )}
-          </div>
-        )}
+              {/* Placeholders grow the grid while the next page loads */}
+              {isFetchingNextPage && (
+                <ProductCardSkeletonGrid count={NEXT_PAGE_PLACEHOLDERS} />
+              )}
+            </ProductGridItems>
+          ) : (
+            <div className="text-center py-16">
+              <p className="text-muted-foreground">No products found</p>
+            </div>
+          )}
 
-        {/* End of list */}
-        {!hasNextPage && products.length > 0 && <EndOfCollection />}
-      </div>
+          {/* Infinite scroll sentinel */}
+          {hasNextPage && (
+            <div
+              ref={sentinelRef}
+              className="flex items-center justify-center py-12"
+            >
+              {isFetchingNextPage ? (
+                <ValkyrieLoader size="md" label="Loading" />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-gray-600">
+                  <ChevronDown className="val-hint h-4 w-4" />
+                  <span className="text-[11px] uppercase tracking-[0.28em]">
+                    Scroll for more
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* End of list */}
+          {!hasNextPage && products.length > 0 && <EndOfCollection />}
+        </div>
+      )}
     </div>
   );
 }

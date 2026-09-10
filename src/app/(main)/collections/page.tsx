@@ -21,17 +21,34 @@
  * price".
  */
 
-import { CollectionsHeader } from "@/components/collections/CollectionsHeader";
-import { BrowseAllBanner } from "@/components/collections/BrowseAllBanner";
+import { CollectionBanner } from "@/components/collections/CollectionBanner";
+import {
+  BANNER_CONTENT,
+  FALLBACK_IMAGE,
+  resolveImage,
+} from "@/components/collections/collection-banner-content";
+import {
+  CollectionMosaic,
+  type MosaicTile,
+} from "@/components/collections/CollectionMosaic";
 import {
   CollectionSection,
   PREVIEW_LIMIT,
 } from "@/components/collections/CollectionSection";
+import { RevealRegion } from "@/components/motion/RevealRegion";
 import {
   getCachedCategoryBySlug,
   getCachedFirstProductPage,
 } from "@/lib/cache";
 import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+
+/** Artwork per collection row. Falls back until the campaign shots land. */
+const TILE_IMAGES: Record<string, string> = {
+  "/collections/new": "/brand/tile-new.jpg",
+  "/collections/men": "/brand/tile-men.jpg",
+  "/collections/women": "/brand/tile-women.jpg",
+  "/collections/sale": "/brand/tile-sale.jpg",
+};
 
 interface CollectionRow {
   title: string;
@@ -113,12 +130,31 @@ export default async function CollectionsPage() {
     }))
   );
 
+  const tiles: MosaicTile[] = seeded.map(({ collection, initialPage }, i) => ({
+    title: collection.title,
+    href: collection.href,
+    image: resolveImage(TILE_IMAGES[collection.href] ?? FALLBACK_IMAGE),
+    count: initialPage?.total ?? 0,
+    featured: i === 0,
+  }));
+
+  // Fills the mosaic's fourth free cell and replaces the deleted
+  // `BrowseAllBanner`. No count — the catalogue total is not among the four
+  // reads this page already makes, and it is not worth a fifth.
+  tiles.push({
+    title: "All Products",
+    href: "/collections/all",
+    image: resolveImage(FALLBACK_IMAGE),
+  });
+
   return (
     <div className="min-h-screen">
-      <CollectionsHeader />
-      <BrowseAllBanner />
+      <RevealRegion>
+        <CollectionBanner {...BANNER_CONTENT.index} />
+      </RevealRegion>
+      <CollectionMosaic tiles={tiles} />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-12 md:space-y-16">
+      <div className="mx-auto max-w-[1600px] space-y-10 px-4 py-8 sm:px-6 md:py-12 lg:px-8">
         {seeded.map(({ collection, initialPage }) => (
           <CollectionSection
             key={collection.href}

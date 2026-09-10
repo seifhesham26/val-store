@@ -9,7 +9,32 @@
  * missing file never renders a broken banner.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
 const FALLBACK_IMAGE = "/brand/hero.jpg";
+
+/**
+ * Resolve a banner image, falling back when the campaign shot has not landed.
+ *
+ * The `banner-*.jpg` files are generated separately from the code. Pointing at
+ * one that does not exist yet renders a black void across the banner's image
+ * panel — the precise dead space this banner replaced. Falling back keeps every
+ * collection page looking finished until the real photography arrives, and
+ * dropping the files into `public/brand/` then requires no code change.
+ *
+ * Server-only: this module is imported exclusively by the collection route
+ * server components. Do not import it from a client component.
+ */
+function resolveImage(publicPath: string): string {
+  try {
+    return fs.existsSync(path.join(process.cwd(), "public", publicPath))
+      ? publicPath
+      : FALLBACK_IMAGE;
+  } catch {
+    return FALLBACK_IMAGE;
+  }
+}
 
 export const BANNER_CONTENT = {
   all: {
@@ -17,26 +42,26 @@ export const BANNER_CONTENT = {
     title: "All Products",
     description:
       "Explore the full Valkyrie collection — timeless silhouettes, premium fabrics, and modern streetwear essentials.",
-    image: "/brand/banner-all.jpg",
+    image: resolveImage("/brand/banner-all.jpg"),
   },
   new: {
     eyebrow: "Just landed",
     title: "New Arrivals",
     description: "The latest additions to our premium collection.",
-    image: "/brand/banner-new.jpg",
+    image: resolveImage("/brand/banner-new.jpg"),
   },
   sale: {
     eyebrow: "Limited time",
     title: "Sale",
     description: "Don't miss out on these limited-time offers.",
-    image: "/brand/banner-sale.jpg",
+    image: resolveImage("/brand/banner-sale.jpg"),
   },
   index: {
     eyebrow: "Curated by Valkyrie",
     title: "Collections",
     description: "Explore our curated collections of premium streetwear.",
-    image: "/brand/banner-collections.jpg",
+    image: resolveImage("/brand/banner-collections.jpg"),
   },
-} as const;
+};
 
-export { FALLBACK_IMAGE };
+export { FALLBACK_IMAGE, resolveImage };

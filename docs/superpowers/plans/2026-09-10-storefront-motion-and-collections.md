@@ -1481,7 +1481,7 @@ Expected: PASS, 0 lint problems, 683 tests.
 - [ ] **Step 6: Verify it actually renders**
 
 Run: `pnpm build`
-Expected: build succeeds. Baseline is 98 static pages; the collection routes must
+Expected: build succeeds. Baseline is 49 prerendered routes; the collection routes must
 still prerender. If any became dynamic, a server component is reading
 `searchParams` — find it and move that read into the client component.
 
@@ -1696,7 +1696,7 @@ Expected: no matches. If any remain, remove those imports.
 - [ ] **Step 5: Verify**
 
 Run: `rm -rf .next && pnpm lint && pnpm type-check && pnpm test && pnpm build`
-Expected: all PASS, 98 static pages.
+Expected: all PASS, 49 prerendered routes.
 
 - [ ] **Step 6: Commit**
 
@@ -1845,7 +1845,7 @@ with no movement anywhere.
 - [ ] **Step 4: Verify**
 
 Run: `rm -rf .next && pnpm lint && pnpm type-check && pnpm test && pnpm build`
-Expected: all PASS, 0 lint problems, 683 tests, 98 static pages.
+Expected: all PASS, 0 lint problems, 683 tests, 49 prerendered routes.
 
 - [ ] **Step 5: Commit**
 
@@ -1870,9 +1870,9 @@ artwork. Dropping the files in requires no code change.
 
 ## Verification summary
 
-| After task | `pnpm test` | Notes                                        |
-| ---------- | ----------- | -------------------------------------------- |
-| 2          | 678         | +8 conductor                                 |
-| 4          | 683         | +5 collection-sort                           |
-| 7          | 683         | `pnpm build` must still emit 98 static pages |
-| 10         | 683         | full lint/type-check/test/build clean        |
+| After task | `pnpm test` | Notes                                                                            |
+| ---------- | ----------- | -------------------------------------------------------------------------------- |
+| 2          | 678         | +8 conductor                                                                     |
+| 4          | 683         | +5 collection-sort                                                               |
+| 7          | 683         | `pnpm build` must still emit 49 prerendered routes, 9 of them under /collections |
+| 10         | 683         | full lint/type-check/test/build clean                                            |

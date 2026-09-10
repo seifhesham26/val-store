@@ -7,7 +7,11 @@
 
 import type { Metadata } from "next";
 import { InfiniteProductGrid } from "@/components/products/InfiniteProductGrid";
-import { getCachedFirstProductPage } from "@/lib/cache";
+import {
+  getCachedFirstProductPage,
+  getCachedToolbarCategories,
+} from "@/lib/cache";
+import { BANNER_CONTENT } from "@/components/collections/collection-banner-content";
 
 const TITLE = "All Products";
 const DESCRIPTION =
@@ -19,13 +23,19 @@ export const metadata: Metadata = {
 };
 
 export default async function CollectionsAllPage() {
-  const initialPage = await getCachedFirstProductPage({});
+  const [initialPage, categories] = await Promise.all([
+    getCachedFirstProductPage({}),
+    getCachedToolbarCategories(),
+  ]);
 
   return (
     <InfiniteProductGrid
       title={TITLE}
       description={DESCRIPTION}
       initialPage={initialPage}
+      bannerEyebrow={BANNER_CONTENT.all.eyebrow}
+      bannerImage={BANNER_CONTENT.all.image}
+      categories={categories}
     />
   );
 }
