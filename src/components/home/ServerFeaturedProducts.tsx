@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { getCachedFeaturedProducts } from "@/lib/cache";
+import { RevealRegion } from "@/components/motion/RevealRegion";
 
 interface ServerFeaturedProductsProps {
   title?: string;
@@ -37,58 +38,61 @@ export async function ServerFeaturedProducts({
 
   return (
     <section className="py-16 md:py-24 bg-black">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-            {title}
-          </h2>
-          <p className="text-gray-400">{subtitle}</p>
+      <RevealRegion>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Section Header */}
+          <div className="val-reveal text-center mb-12" data-reveal>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
+              {title}
+            </h2>
+            <p className="text-gray-400">{subtitle}</p>
+          </div>
+
+          {/* Products Grid - only show if we have products */}
+          {products.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {products.map((product, index) => (
+                <div key={product.id} className="val-reveal" data-reveal>
+                  <ProductCard
+                    id={product.id}
+                    name={product.name}
+                    slug={product.slug}
+                    price={product.basePrice}
+                    salePrice={product.salePrice ?? undefined}
+                    primaryImage={product.primaryImage ?? undefined}
+                    secondaryImage={product.secondaryImage ?? undefined}
+                    index={index}
+                    variants={product.variants}
+                    isOnSale={
+                      product.salePrice !== null &&
+                      product.salePrice < product.basePrice
+                    }
+                    isFeatured={product.isFeatured}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500">
+              No featured products yet. Check back soon!
+            </p>
+          )}
+
+          {/* View All Button */}
+          {showViewAll && (
+            <div className="val-reveal text-center mt-12" data-reveal>
+              <Link href="/collections/all">
+                <Button
+                  size="lg"
+                  className="bg-white text-black hover:bg-val-silver px-8 py-6 text-base font-medium tracking-wide"
+                >
+                  View All Products
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
-
-        {/* Products Grid - only show if we have products */}
-        {products.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {products.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                id={product.id}
-                name={product.name}
-                slug={product.slug}
-                price={product.basePrice}
-                salePrice={product.salePrice ?? undefined}
-                primaryImage={product.primaryImage ?? undefined}
-                secondaryImage={product.secondaryImage ?? undefined}
-                index={index}
-                variants={product.variants}
-                isOnSale={
-                  product.salePrice !== null &&
-                  product.salePrice < product.basePrice
-                }
-                isFeatured={product.isFeatured}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="text-center text-gray-500">
-            No featured products yet. Check back soon!
-          </p>
-        )}
-
-        {/* View All Button */}
-        {showViewAll && (
-          <div className="text-center mt-12">
-            <Link href="/collections/all">
-              <Button
-                size="lg"
-                className="bg-white text-black hover:bg-val-silver px-8 py-6 text-base font-medium tracking-wide"
-              >
-                View All Products
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+      </RevealRegion>
     </section>
   );
 }

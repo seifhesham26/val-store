@@ -12,6 +12,7 @@ import { ProductVariantSelector } from "@/components/products/product-detail/Pro
 import { ProductActions } from "@/components/products/product-detail/ProductActions";
 import { quantityInCart, remainingCapacity } from "@/lib/cart-stock-limit";
 import { useVariantStock } from "@/hooks/use-variant-stock";
+import { useReveal } from "@/hooks/use-reveal";
 
 interface ProductDetailProps {
   product: {
@@ -49,6 +50,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
   );
 
   const { addItem, openCart, isAuthenticated, items } = useCart();
+
+  const revealRef = useReveal<HTMLDivElement>();
 
   // One shared, self-refreshing stock source. The server-rendered numbers below
   // are a 60s-cached snapshot; this keeps the ceiling current without a reload.
@@ -154,21 +157,26 @@ export function ProductDetail({ product }: ProductDetailProps) {
         </Link>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+      <div
+        ref={revealRef}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16"
+      >
         <div className="grid md:grid-cols-2 gap-8 lg:gap-16">
           {/* Image Gallery */}
-          <ProductImageGallery
-            productId={product.id}
-            productName={product.name}
-            images={product.images}
-            selectedImage={selectedImage}
-            onSelectImage={setSelectedImage}
-            isNew={product.isNew}
-            isOnSale={product.isOnSale}
-          />
+          <div className="val-reveal" data-reveal>
+            <ProductImageGallery
+              productId={product.id}
+              productName={product.name}
+              images={product.images}
+              selectedImage={selectedImage}
+              onSelectImage={setSelectedImage}
+              isNew={product.isNew}
+              isOnSale={product.isOnSale}
+            />
+          </div>
 
           {/* Product Info */}
-          <div className="py-4">
+          <div className="val-reveal py-4" data-reveal>
             <ProductInfo
               name={product.name}
               price={product.price}

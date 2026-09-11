@@ -6,10 +6,14 @@ import { useEffect, useState } from "react";
 import { ProductImage } from "@/components/shared/ProductImage";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import {
-  CAROUSEL_FADE_MS,
+  CAROUSEL_EASING,
   CAROUSEL_INTERVAL_MS,
+  CAROUSEL_SLIDE_MS,
+  SNAP_RESET_MS,
+  nextCarouselStep,
   shouldAnimateCard,
   staggerDelayMs,
+  trackOffsetPercent,
 } from "@/lib/card-carousel";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import {
@@ -26,7 +30,7 @@ export interface ProductCardProps {
   salePrice?: number;
   primaryImage?: string;
   /**
-   * Second photo, crossfaded with the first. Typically the same garment on
+   * Second photo, slid in from the right. Typically the same garment on
    * another model — the range is mostly unisex, so this shows fit rather than
    * just filling space. Absent means the card never moves.
    */
@@ -75,7 +79,14 @@ export function ProductCard({
       ? formatCurrency(salePrice)
       : undefined;
 
-  const [showSecond, setShowSecond] = useState(false);
+  /** Which panel of the three-panel track is showing. */
+  const [panel, setPanel] = useState(0);
+  /**
+   * Transitions off for exactly one frame, for the snap from the duplicated
+   * third panel back to the first. Both hold the same photograph, so with the
+   * transition suppressed the reset cannot be seen.
+   */
+  const [snapping, setSnapping] = useState(false);
   const [secondLoaded, setSecondLoaded] = useState(false);
   const [paused, setPaused] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
@@ -90,27 +101,53 @@ export function ProductCard({
   useEffect(() => {
     if (!animate) return;
 
-    // Staggered start, then a steady interval. Both are cleaned up together —
-    // a card unmounting mid-stagger would otherwise leave a timer holding a
-    // setter for a component that no longer exists.
+    // Staggered start, then a steady interval. Every timer is cleaned up
+    // together — a card unmounting mid-stagger would otherwise leave one
+    // holding a setter for a component that no longer exists.
     let interval: ReturnType<typeof setInterval> | undefined;
+    let snapBack: ReturnType<typeof setTimeout> | undefined;
+    let snapClear: ReturnType<typeof setTimeout> | undefined;
+
+    const advance = () => {
+      setPanel((current) => {
+        const step = nextCarouselStep(current);
+
+        if (step.wrapAfter) {
+          // Let the slide onto the duplicated panel finish, then jump home
+          // with transitions suppressed. Doing it on the next tick instead
+          // would hold the primary photo for two intervals.
+          snapBack = setTimeout(() => {
+            setSnapping(true);
+            setPanel(0);
+            // Re-enable on a timer rather than requestAnimationFrame. rAF does
+            // not run in a backgrounded tab, and a card that wrapped while the
+            // tab was hidden would come back with transitions permanently off
+            // — jumping between photographs instead of sliding. The gap is
+            // imperceptible because both panels hold the same image.
+            snapClear = setTimeout(() => setSnapping(false), SNAP_RESET_MS);
+          }, CAROUSEL_SLIDE_MS);
+        }
+
+        return step.panel;
+      });
+    };
+
     const start = setTimeout(() => {
-      setShowSecond((s) => !s);
-      interval = setInterval(
-        () => setShowSecond((s) => !s),
-        CAROUSEL_INTERVAL_MS
-      );
+      advance();
+      interval = setInterval(advance, CAROUSEL_INTERVAL_MS);
     }, staggerDelayMs(index));
 
     return () => {
       clearTimeout(start);
+      if (snapBack) clearTimeout(snapBack);
+      if (snapClear) clearTimeout(snapClear);
       if (interval) clearInterval(interval);
     };
   }, [animate, index]);
 
   return (
     <div
-      className="group relative"
+      className="group relative border border-white/10 transition-[transform,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-white/25"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -121,14 +158,28 @@ export function ProductCard({
         <div className="relative aspect-3/4 overflow-hidden bg-val-steel">
           {/* Product Image or gradient fallback */}
           {primaryImage ? (
-            <>
-              <div
-                className="absolute inset-0 transition-opacity"
-                style={{
-                  transitionDuration: `${CAROUSEL_FADE_MS}ms`,
-                  opacity: showSecond ? 0 : 1,
-                }}
-              >
+            /*
+             * A sliding track rather than a crossfade.
+             *
+             * Three panels — primary, secondary, primary — at three times the
+             * card's width, translated one panel per step. The repeated third
+             * panel is what lets the travel always run the same way: on
+             * reaching it the track snaps home with transitions off, and since
+             * both panels hold the same photograph the snap is invisible. Two
+             * panels would have to slide back the way they came, which reads as
+             * a correction rather than a carousel.
+             */
+            <div
+              className="absolute inset-0 flex w-[300%]"
+              style={{
+                transform: `translate3d(${trackOffsetPercent(panel)}%, 0, 0)`,
+                transition: snapping
+                  ? "none"
+                  : `transform ${CAROUSEL_SLIDE_MS}ms ${CAROUSEL_EASING}`,
+                willChange: "transform",
+              }}
+            >
+              <div className="relative h-full w-1/3 shrink-0">
                 <ProductImage
                   src={primaryImage}
                   alt={name}
@@ -145,14 +196,7 @@ export function ProductCard({
                * simply does not animate.
                */}
               {secondaryImage && (
-                <div
-                  aria-hidden
-                  className="absolute inset-0 transition-opacity"
-                  style={{
-                    transitionDuration: `${CAROUSEL_FADE_MS}ms`,
-                    opacity: showSecond ? 1 : 0,
-                  }}
-                >
+                <div aria-hidden className="relative h-full w-1/3 shrink-0">
                   <ProductImage
                     src={secondaryImage}
                     alt=""
@@ -162,7 +206,19 @@ export function ProductCard({
                   />
                 </div>
               )}
-            </>
+
+              {/* The repeat that makes the loop one-directional. */}
+              {secondaryImage && (
+                <div aria-hidden className="relative h-full w-1/3 shrink-0">
+                  <ProductImage
+                    src={primaryImage}
+                    alt=""
+                    sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    className="transition-transform duration-300 group-hover:scale-105"
+                  />
+                </div>
+              )}
+            </div>
           ) : (
             <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
           )}

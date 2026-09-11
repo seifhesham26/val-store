@@ -20,7 +20,7 @@
  * directly is safe because this callback only ever runs client-side.
  */
 
-import { useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { enqueue } from "@/lib/motion/conductor";
@@ -35,24 +35,54 @@ function showNow(elements: Element[]) {
 export function useReveal<T extends HTMLElement>() {
   const containerRef = useRef<T | null>(null);
   const playedRef = useRef(false);
+  /**
+   * The attached node, tracked as state so the effect re-runs when it arrives.
+   *
+   * A plain ref is not enough. A component that early-returns a skeleton while
+   * its query resolves does not render the ref'd element at all on first pass,
+   * so the effect sees `null`; with a fixed dependency list it would never run
+   * again once the real tree mounted, and every target inside it would sit at
+   * `opacity: 0` forever. That is exactly what hid the product reviews panel.
+   */
+  const [node, setNode] = useState<T | null>(null);
+  /**
+   * Survives across effect runs on purpose.
+   *
+   * React runs effects twice in development (mount, clean up, mount again). A
+   * set scoped to the effect body would be empty on the second run and every
+   * element would be granted a second slot.
+   */
+  const claimedRef = useRef<WeakSet<Element>>(new WeakSet());
 
   useGSAP(
     () => {
       const container = containerRef.current;
-      if (!container || playedRef.current) return;
+      if (!container) return;
 
       const reducedMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)"
       ).matches;
 
-      const play = () => {
-        if (playedRef.current) return;
-        playedRef.current = true;
+      /**
+       * Elements already granted a slot.
+       *
+       * A section whose content arrives from a query renders a skeleton first,
+       * so the targets present when the region is first revealed are not the
+       * targets that end up on screen. Without tracking this, the late arrivals
+       * are never claimed by anything and sit at `opacity: 0` permanently —
+       * which is what hid the homepage's New Arrivals carousel and part of the
+       * product reviews panel.
+       */
+      const claimed = claimedRef.current;
 
-        const targets = Array.from(
+      const unclaimed = () =>
+        Array.from(
           container.querySelectorAll<HTMLElement>("[data-reveal]")
-        );
+        ).filter((el) => !claimed.has(el));
+
+      const reveal = (targets: HTMLElement[]) => {
         if (targets.length === 0) return;
+        for (const el of targets) claimed.add(el);
 
         const { slots, drainedCount } = enqueue(
           targets.length,
@@ -82,9 +112,34 @@ export function useReveal<T extends HTMLElement>() {
         });
       };
 
-      if (reducedMotion) {
+      /**
+       * Watch for targets that mount after the region has been revealed.
+       *
+       * Only started once the region has played, so below-the-fold content
+       * still waits for the viewport rather than animating unseen.
+       */
+      let mutations: MutationObserver | null = null;
+
+      const watchForLateArrivals = () => {
+        mutations = new MutationObserver(() => reveal(unclaimed()));
+        mutations.observe(container, { childList: true, subtree: true });
+      };
+
+      const play = () => {
+        playedRef.current = true;
+        reveal(unclaimed());
+        watchForLateArrivals();
+      };
+
+      // `playedRef` in the condition, not inside `play`: React's second
+      // development effect run tears the watcher down, and an early return
+      // here would never rebuild it — leaving every late-arriving target
+      // stranded at `opacity: 0`. Guarding entry instead means a re-run
+      // re-establishes the watcher, while `claimed` stops anything being
+      // animated twice.
+      if (reducedMotion || playedRef.current) {
         play();
-        return;
+        return () => mutations?.disconnect();
       }
 
       const observer = new IntersectionObserver(
@@ -98,10 +153,24 @@ export function useReveal<T extends HTMLElement>() {
       );
 
       observer.observe(container);
-      return () => observer.disconnect();
+
+      return () => {
+        observer.disconnect();
+        mutations?.disconnect();
+      };
     },
-    { scope: containerRef, dependencies: [] }
+    { scope: containerRef, dependencies: [node] }
   );
 
-  return containerRef;
+  /**
+   * A callback ref, not the ref object — this is what lets the hook notice a
+   * container that mounts later. Assigning `containerRef` keeps `useGSAP`'s
+   * scope working; the state update is what re-runs the effect.
+   */
+  const setContainer = useCallback((el: T | null) => {
+    containerRef.current = el;
+    setNode(el);
+  }, []);
+
+  return setContainer;
 }

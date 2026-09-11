@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useReveal } from "@/hooks/use-reveal";
 
 /** Shared by both inputs so the form matches the rest of the storefront. */
 const FIELD_CLASSES =
@@ -104,6 +105,8 @@ export function ProductReviews({ productId }: { productId: string }) {
     { enabled: !!session?.user }
   );
 
+  const revealRef = useReveal<HTMLDivElement>();
+
   const utils = trpc.useUtils();
 
   const createMutation = trpc.public.reviews.create.useMutation({
@@ -141,8 +144,11 @@ export function ProductReviews({ productId }: { productId: string }) {
   const { reviews = [], average = 0, count = 0 } = data ?? {};
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+    <div ref={revealRef} className="space-y-6">
+      <div
+        className="val-reveal flex items-center justify-between gap-4"
+        data-reveal
+      >
         <div>
           <h2 className="text-2xl font-semibold text-white">
             Customer Reviews
@@ -224,57 +230,66 @@ export function ProductReviews({ productId }: { productId: string }) {
         </form>
       )}
 
-      {/* Reviews List */}
-      {reviews.length === 0 ? (
-        <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-12 text-center">
-          <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.06]">
-            <Star className="h-7 w-7 text-gray-500 stroke-[1.5]" />
+      {/*
+       * Reviews List — one persistent wrapper carries the reveal mark rather
+       * than the two branches below it. `submit` invalidates and refetches,
+       * which can flip this from the empty state to the list (or grow the
+       * list) well after the initial reveal has already played; marking the
+       * branches themselves would mean a newly-mounted node inherits
+       * `val-reveal`'s opacity: 0 with no observer left to ever clear it.
+       */}
+      <div className="val-reveal" data-reveal>
+        {reviews.length === 0 ? (
+          <div className="flex flex-col items-center justify-center space-y-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-12 text-center">
+            <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.06]">
+              <Star className="h-7 w-7 text-gray-500 stroke-[1.5]" />
+            </div>
+            <h3 className="text-lg font-medium text-white">No reviews yet</h3>
+            <p className="max-w-sm text-sm text-gray-400">
+              Be the first to review this product and share your thoughts with
+              other customers!
+            </p>
           </div>
-          <h3 className="text-lg font-medium text-white">No reviews yet</h3>
-          <p className="max-w-sm text-sm text-gray-400">
-            Be the first to review this product and share your thoughts with
-            other customers!
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {reviews.map((review) => (
-            <div
-              key={review.id}
-              className="rounded-lg border border-white/10 bg-zinc-900 p-5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <StarRating rating={review.rating} size="sm" />
-                    {review.isVerifiedPurchase && (
-                      <span className="text-xs font-medium text-green-400">
-                        Verified Purchase
-                      </span>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((review) => (
+              <div
+                key={review.id}
+                className="rounded-lg border border-white/10 bg-zinc-900 p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <StarRating rating={review.rating} size="sm" />
+                      {review.isVerifiedPurchase && (
+                        <span className="text-xs font-medium text-green-400">
+                          Verified Purchase
+                        </span>
+                      )}
+                    </div>
+                    {review.title && (
+                      <h3 className="mt-1 font-medium text-white">
+                        {review.title}
+                      </h3>
                     )}
                   </div>
-                  {review.title && (
-                    <h3 className="mt-1 font-medium text-white">
-                      {review.title}
-                    </h3>
-                  )}
+                  <span className="shrink-0 text-xs text-gray-500">
+                    {formatDistanceToNow(new Date(review.createdAt), {
+                      addSuffix: true,
+                    })}
+                  </span>
                 </div>
-                <span className="shrink-0 text-xs text-gray-500">
-                  {formatDistanceToNow(new Date(review.createdAt), {
-                    addSuffix: true,
-                  })}
-                </span>
+                {review.comment && (
+                  <p className="mt-2 text-sm text-gray-300">{review.comment}</p>
+                )}
+                <p className="mt-2 text-xs text-gray-500">
+                  — {review.userName ?? "Anonymous"}
+                </p>
               </div>
-              {review.comment && (
-                <p className="mt-2 text-sm text-gray-300">{review.comment}</p>
-              )}
-              <p className="mt-2 text-xs text-gray-500">
-                — {review.userName ?? "Anonymous"}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
