@@ -7,6 +7,7 @@ import {
   requireAuth,
   requireAdmin,
   requireAdminArea,
+  requireSuperAdmin,
 } from "./utils/auth-helpers";
 
 /**
@@ -176,6 +177,21 @@ const isAdminWriter = t.middleware(async ({ ctx, next }) => {
 });
 
 /**
+ * Middleware for super-admin-only mutations (role changes).
+ */
+const isAdminSuper = t.middleware(async ({ ctx, next }) => {
+  const user = await ctx.getUser();
+  requireAuth(user);
+  requireSuperAdmin(user);
+  return next({
+    ctx: {
+      ...ctx,
+      user,
+    },
+  });
+});
+
+/**
  * Export reusable router and procedure helpers
  */
 export const router = t.router;
@@ -211,3 +227,11 @@ export const adminProcedure = t.procedure.use(isAdminArea);
  * the `trpc.test.ts` case asserting every admin mutation is write-gated.
  */
 export const adminWriteProcedure = t.procedure.use(isAdminWriter);
+
+/**
+ * Write access one tier stricter than `adminWriteProcedure` — `super_admin`
+ * only. Reserved for mutations that change *who* holds admin access, where
+ * a plain `admin` acting on it would be a privilege escalation rather than
+ * an ordinary write. Currently just `admin.customers.updateRole`.
+ */
+export const adminSuperProcedure = t.procedure.use(isAdminSuper);

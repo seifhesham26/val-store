@@ -12,6 +12,7 @@ import { CustomersHeader } from "@/components/admin/customers/CustomersHeader";
 import { CustomersSearch } from "@/components/admin/customers/CustomersSearch";
 import { CustomersTable } from "@/components/admin/customers/CustomersTable";
 import { CustomerDetailDialog } from "@/components/admin/customers/CustomerDetailDialog";
+import { useAdminWriteAccess } from "@/hooks/use-admin-write-access";
 
 export default function AdminCustomersPage() {
   const [search, setSearch] = useState("");
@@ -23,6 +24,8 @@ export default function AdminCustomersPage() {
     search: search || undefined,
     limit: 100,
   });
+  const { data: session } = trpc.public.user.getSession.useQuery();
+  const { role } = useAdminWriteAccess();
 
   if (isLoading) {
     return (
@@ -45,6 +48,8 @@ export default function AdminCustomersPage() {
       <CustomersTable
         customers={customers}
         onViewCustomer={setSelectedCustomerId}
+        canEditRoles={role === "super_admin"}
+        currentUserId={session?.id ?? null}
       />
       <CustomerDetailDialog
         customerId={selectedCustomerId}

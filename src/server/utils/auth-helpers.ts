@@ -162,3 +162,20 @@ export function requireAdminArea(user: AuthUser): void {
     });
   }
 }
+
+/**
+ * Require `super_admin`, the only role allowed to change anyone's role.
+ *
+ * `adminWriteProcedure` is not strict enough here: an `admin` is already a
+ * writer, so gating a role change on it would let any admin promote
+ * themselves (or anyone else) to `super_admin`. This is the one mutation
+ * tier stricter than the write tier.
+ */
+export function requireSuperAdmin(user: AuthUser): void {
+  if (user.role !== "super_admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only a super admin can change account roles",
+    });
+  }
+}
