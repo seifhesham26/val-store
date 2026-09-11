@@ -8,7 +8,7 @@
  * Four cart findings turned out to be one design problem: `updateQuantity`
  * used to keep its debounce timers in a `useRef` *inside* `useCart()`, so
  * every component calling the hook (`CartDrawer`, `CartPopulated`,
- * `ProductDetail`, `QuickAddSliderBar` — several of them co-mounted on any
+ * `ProductDetail`, `QuickAddBar` — several of them co-mounted on any
  * given page) got its own timer map instead of sharing one per cart line.
  * That let two surfaces editing the same line within a second arm two
  * timers that never cleared each other, and it meant `removeItem`/

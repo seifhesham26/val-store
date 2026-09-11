@@ -31,32 +31,77 @@ export function ProductVariantSelector({
       {/* Color Selection */}
       {colors && colors.length > 0 && (
         <div className="mb-6">
-          <label className="block text-sm font-medium text-white mb-3">
-            Color: {selectedColor}
-          </label>
+          {/*
+           * The label is just "Colour" now, with the selected name on the
+           * right of the same row rather than appended to it.
+           *
+           * `Color: {selectedColor}` put a variable-length value inside a
+           * heading, so a real catalogue name — "Heather Charcoal", "Deep
+           * Steel Blue" — wrapped onto a second line and pushed the swatches
+           * down. Splitting the row means the label never moves however long
+           * the colour is called, and `truncate` caps the pathological case.
+           */}
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <span className="text-sm font-medium text-white">Colour</span>
+            {selectedColor && (
+              <span className="truncate text-sm text-white/60">
+                {selectedColor}
+              </span>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-3">
             {colors.map((color) => {
               const isSelected = selectedColor === color.name;
               return (
-                <button
-                  key={color.name}
-                  onClick={() => onSelectColor(color.name)}
-                  title={color.name}
-                  aria-label={color.name}
-                  aria-pressed={isSelected}
-                  className={`relative h-10 w-10 rounded-full transition-all ${
-                    isSelected
-                      ? "ring-2 ring-white ring-offset-2 ring-offset-black"
-                      : "ring-1 ring-white/25 hover:ring-white/60"
-                  }`}
-                >
-                  {/* Inner disc keeps light swatches legible against the
-                      black page while the ring shows selection state. */}
+                /*
+                 * `group` + a CSS-only tooltip rather than the Radix primitive.
+                 *
+                 * This needs one label on hover. Radix Tooltip would add a
+                 * dependency and a portal, and a portalled surface here has to
+                 * set both halves of a colour pair or it inherits the
+                 * storefront's white text into the light-themed admin — the
+                 * bug family `globals.css` documents. A sibling span costs
+                 * neither.
+                 *
+                 * The accessible name lives on the button, so the tooltip is
+                 * `aria-hidden` — a screen reader announces the colour once,
+                 * not twice.
+                 */
+                <div key={color.name} className="group relative">
+                  <button
+                    onClick={() => onSelectColor(color.name)}
+                    aria-label={color.name}
+                    aria-pressed={isSelected}
+                    className={`relative block h-9 w-14 overflow-hidden rounded-full transition-all ${
+                      isSelected
+                        ? "ring-2 ring-white ring-offset-2 ring-offset-black"
+                        : "ring-1 ring-white/25 hover:ring-white/60 focus-visible:ring-white/60"
+                    }`}
+                  >
+                    <span
+                      className="absolute inset-0"
+                      style={{ backgroundColor: color.hex }}
+                    />
+                    {/*
+                     * A soft highlight across the top third, so the pill reads
+                     * as a cylinder rather than a flat lozenge — and so a very
+                     * dark colour still has visible form against the black
+                     * page instead of disappearing into it.
+                     */}
+                    <span className="absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/25 to-transparent" />
+                  </button>
+
+                  {/* Purely visual: no `role="tooltip"`, because the button's
+                      `aria-label` already carries the name and a role on
+                      `aria-hidden` content contradicts itself. */}
                   <span
-                    className="absolute inset-0 rounded-full"
-                    style={{ backgroundColor: color.hex }}
-                  />
-                </button>
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 translate-y-1 rounded-sm bg-white px-2 py-1 text-xs font-medium whitespace-nowrap text-black opacity-0 transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+                  >
+                    {color.name}
+                  </span>
+                </div>
               );
             })}
           </div>
@@ -65,13 +110,18 @@ export function ProductVariantSelector({
 
       {/* Size Selection */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <label className="text-sm font-medium text-white">
-            Size: {selectedSize || "Select a size"}
-          </label>
-          <button className="text-sm text-val-accent hover:underline">
-            Size Guide
-          </button>
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          {/* Same split as the colour row above, for the same reason and so
+              the two read as one system. */}
+          <span className="text-sm font-medium text-white">Size</span>
+          <div className="flex items-baseline gap-4">
+            <span className="text-sm text-white/60">
+              {selectedSize || "Select a size"}
+            </span>
+            <button className="text-sm text-val-accent-light hover:underline">
+              Size Guide
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {sizes.map((size) => (

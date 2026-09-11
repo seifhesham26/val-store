@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { getCachedSiteSettings } from "@/lib/cache";
+import { SITE_ORIGIN } from "@/lib/site-url";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -44,6 +45,51 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    // Required for every relative URL in metadata below this point to resolve.
+    // Without it, the `openGraph.images` on `/products/[slug]` resolve against
+    // whatever origin Next infers — localhost in development, and a build
+    // error if a relative field is used at all. See `site-url.ts` for why the
+    // fallback is the production domain rather than localhost.
+    metadataBase: SITE_ORIGIN,
+    applicationName: storeName,
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      siteName: storeName,
+      title,
+      description,
+      url: "/",
+      // Egypt, English. This is the store's locale, not the visitor's — the
+      // site is not translated, so claiming otherwise would be a lie to a
+      // crawler. It matches the `en-EG` that `currency.ts` formats prices in.
+      locale: "en_EG",
+    },
+    twitter: {
+      // The large card. `opengraph-image.png`/`twitter-image.png` are 1200x630
+      // and wired automatically by Next's file convention, so no image needs
+      // naming here — but the card type does, or X renders the small square.
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        // Uncapped rich results. The defaults truncate the snippet and forbid
+        // large image previews, which for a clothing store means product
+        // images do not appear in Google Images or Discover at usable size.
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    },
+    // A favicon set in the admin wins over the generated `favicon.ico` /
+    // `icon.png` / `apple-icon.png` file conventions. Left last so it is
+    // obvious that it is an override, and left optional so the generated set
+    // is what ships when the field is empty — which it is by default.
     ...(settings?.faviconUrl ? { icons: { icon: settings.faviconUrl } } : {}),
   };
 }

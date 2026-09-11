@@ -17,9 +17,9 @@ import {
 } from "@/lib/card-carousel";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import {
-  QuickAddSliderBar,
+  QuickAddBar,
   type QuickAddVariant,
-} from "@/components/products/QuickAddSliderBar";
+} from "@/components/products/QuickAddBar";
 import { formatCurrency } from "@/lib/currency";
 
 export interface ProductCardProps {
@@ -146,16 +146,36 @@ export function ProductCard({
   }, [animate, index]);
 
   return (
+    /*
+     * No frame.
+     *
+     * This was a bordered box wrapping image *and* text, which produced two
+     * problems at once: the info block had no horizontal padding, so the name
+     * sat flush against the left border, and the border drew a hard rectangle
+     * around a photograph that already has its own edges. Card chrome reads as
+     * cheap on a black page — the photograph is the card.
+     *
+     * The lift on hover is the only affordance kept, and it moves the whole
+     * unit rather than outlining it.
+     */
     <div
-      className="group relative border border-white/10 transition-[transform,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-white/25"
+      className="group relative transition-transform duration-300 ease-out hover:-translate-y-1"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      {/* Image Container — wrapped in a link */}
-      <Link href={`/products/${slug}`} className="block">
-        <div className="relative aspect-3/4 overflow-hidden bg-val-steel">
+      {/*
+       * The positioned ancestor for everything that overlays the photograph.
+       *
+       * This matters more than it looks: the Quick Add bar is `absolute
+       * bottom-0`, and it used to resolve against the card root — which
+       * contained the info block too, so on hover it slid up over the product
+       * name and price instead of sitting on the bottom edge of the photo.
+       * Anchoring it here is what fixes that.
+       */}
+      <div className="relative aspect-3/4 overflow-hidden bg-val-steel">
+        <Link href={`/products/${slug}`} className="absolute inset-0 block">
           {/* Product Image or gradient fallback */}
           {primaryImage ? (
             /*
@@ -222,61 +242,73 @@ export function ProductCard({
           ) : (
             <div className="absolute inset-0 bg-linear-to-br from-gray-700 via-gray-800 to-gray-900" />
           )}
+        </Link>
 
-          {/* Badges */}
-          <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-            {isNew && (
-              <Badge className="bg-val-accent text-white text-xs px-2 py-0.5">
-                New
-              </Badge>
-            )}
-            {isOnSale && (
-              <Badge variant="destructive" className="text-xs px-2 py-0.5">
-                Sale
-              </Badge>
-            )}
-          </div>
-
-          {/* Wishlist Button */}
-          <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-all duration-300">
-            <WishlistButton
-              productId={id}
-              className="bg-black/50 hover:bg-val-accent text-white"
-            />
-          </div>
+        {/*
+         * Badges and overlays are siblings of the link rather than children of
+         * it, so the anchor stays a plain rectangle with nothing interactive
+         * nested inside it. `pointer-events-none` on the badges keeps them from
+         * punching a hole in the link they sit on top of.
+         */}
+        <div className="pointer-events-none absolute top-3 left-3 z-10 flex flex-col gap-1.5">
+          {isNew && (
+            <Badge className="rounded-none bg-white px-2 py-0.5 text-[10px] font-medium tracking-[0.12em] text-black uppercase">
+              New
+            </Badge>
+          )}
+          {isOnSale && (
+            <Badge
+              variant="destructive"
+              className="rounded-none px-2 py-0.5 text-[10px] font-medium tracking-[0.12em] uppercase"
+            >
+              Sale
+            </Badge>
+          )}
         </div>
-      </Link>
 
-      {/* Quick Add Slider — outside the link to avoid nested interactive elements */}
-      <div className="absolute bottom-0 inset-x-0 p-2 pt-8 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 z-10 bg-linear-to-t from-black/90 via-black/60 to-transparent">
-        <QuickAddSliderBar
-          productId={id}
-          productName={name}
-          productImage={primaryImage}
-          productPrice={salePrice ?? price}
-          variants={variants}
-        />
+        <div className="absolute top-3 right-3 z-10 opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus-within:opacity-100">
+          <WishlistButton
+            productId={id}
+            className="bg-black/50 text-white hover:bg-val-accent hover:text-black"
+          />
+        </div>
+
+        {/* Quick Add — outside the link to avoid nested interactive elements,
+            and inside the image box so it lands on the photo's bottom edge. */}
+        <div className="absolute inset-x-0 bottom-0 z-10 translate-y-2 bg-linear-to-t from-black/95 via-black/70 to-transparent p-3 pt-12 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100">
+          <QuickAddBar
+            productId={id}
+            productName={name}
+            productImage={primaryImage}
+            productPrice={salePrice ?? price}
+            variants={variants}
+          />
+        </div>
       </div>
 
-      {/* Product Info */}
-      <div className="mt-3">
+      {/*
+       * Set in small caps with wide tracking, which is what carries the
+       * editorial register now that the frame is gone. `truncate` keeps every
+       * card exactly one line tall so the grid rows stay aligned.
+       */}
+      <div className="mt-4">
         <Link href={`/products/${slug}`}>
-          <h3 className="text-sm font-medium text-white truncate hover:text-val-accent transition-colors">
+          <h3 className="truncate text-[11px] font-medium tracking-[0.14em] text-white uppercase transition-colors hover:text-val-accent-light">
             {name}
           </h3>
         </Link>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="mt-1.5 flex items-baseline gap-2">
           {salePrice ? (
             <>
-              <span className="text-red-400 font-medium">
+              <span className="text-[13px] text-white">
                 {formattedSalePrice}
               </span>
-              <span className="text-gray-500 line-through text-sm">
+              <span className="text-[11px] text-white/40 line-through">
                 {formattedPrice}
               </span>
             </>
           ) : (
-            <span className="text-gray-300">{formattedPrice}</span>
+            <span className="text-[13px] text-white/60">{formattedPrice}</span>
           )}
         </div>
       </div>

@@ -244,9 +244,11 @@ These are working. They are listed because each is easy to break again — the f
 
 `docs/PERFORMANCE.md` is the performance record — measured numbers, what changed, what is still outstanding.
 
+`docs/GO-LIVE.md` is the domain cutover: everything that has to change **outside the repo** now that the site serves from `https://www.valkyrie-eg.com` — the three URL env vars, Google/Facebook OAuth redirect URIs, Stripe live keys and webhook, Resend domain verification, DNS and Search Console. It is the companion to `POST-LAUNCH.md`, which owns the application-side cutover checks; neither duplicates the other.
+
 `docs/REFUNDS.md`, `docs/LOYALTY-POINTS.md` and `docs/PHONE-VERIFICATION.md` are **planned work, not defects**. Refunds record a return correctly but move no money — deliberate, pending the payment gateway decision, with the interim exposure stated (the admin button says "Refund", so refunds must be issued by hand in the provider's dashboard until then). Loyalty and phone verification are designed and agreed but entirely unbuilt: no table, no column, no code.
 
-**That is the whole of `docs/` now.** Fifteen files were deleted on 2026-09-03: eight pre-implementation domain roadmaps, `connections.md`, a merged branch’s UI checklist, the P0/P1/P3 test plans, and the plan and spec for a pass that had shipped. All of them described intent or a finished branch rather than current state, which is the specific way documentation becomes actively misleading — this catalogue had already been caught listing 23 fixed items as open. `git log --diff-filter=D -- docs/` recovers any of them.
+**That was the whole of `docs/` as of 2026-09-03**, plus `GO-LIVE.md` added 2026-09-11 with the domain. Fifteen files were deleted on 2026-09-03: eight pre-implementation domain roadmaps, `connections.md`, a merged branch’s UI checklist, the P0/P1/P3 test plans, and the plan and spec for a pass that had shipped. All of them described intent or a finished branch rather than current state, which is the specific way documentation becomes actively misleading — this catalogue had already been caught listing 23 fixed items as open. `git log --diff-filter=D -- docs/` recovers any of them.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

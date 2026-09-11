@@ -14,6 +14,7 @@ import {
   SendEmailResult,
 } from "@/application/interfaces/email.interface";
 import { formatCurrency } from "@/lib/currency";
+import { SITE_URL } from "@/lib/site-url";
 
 export class ResendEmailService implements EmailServiceInterface {
   private readonly resend: Resend;
@@ -30,7 +31,11 @@ export class ResendEmailService implements EmailServiceInterface {
     this.fromEmail =
       process.env.EMAIL_FROM || "Valkyrie <noreply@valstore.com>";
     this.appName = process.env.NEXT_PUBLIC_APP_NAME || "Valkyrie";
-    this.baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // `SITE_URL` rather than a local fallback to localhost: this is the
+    // origin of every link in every transactional email — order confirmation,
+    // password reset, email verification — and those are read on a phone,
+    // hours later, on a different network. A localhost link is dead there.
+    this.baseUrl = SITE_URL;
   }
 
   async sendEmail(input: SendEmailInput): Promise<SendEmailResult> {

@@ -26,7 +26,7 @@ import { showRetryToast } from "@/lib/optimistic-toast";
 import { toast } from "sonner";
 
 // Module scope, not inside `useCart()` — every component that calls the
-// hook (CartDrawer, CartPopulated, ProductDetail, QuickAddSliderBar, ...)
+// hook (CartDrawer, CartPopulated, ProductDetail, QuickAddBar, ...)
 // must share one debounce timer and one "is this line mid-write" flag per
 // cart item id, the same way every caller already shares one
 // `useCartStore()`. A registry scoped to the hook instead produced a

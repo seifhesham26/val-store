@@ -28,8 +28,15 @@ export function ProductActions({
       {/* Add to Cart */}
       <div className="flex gap-4 mb-8">
         {!isAuthenticated ? (
+          /*
+           * `text-black`, not `text-white`. `--val-accent` is #94a3b8, so
+           * white on it measures 2.58:1 — below the 3:1 WCAG AA floor even at
+           * this size, which is why the button read as washed out. Black on
+           * the same background is 8.14:1. This is the rule already recorded
+           * in CLAUDE.md under the storefront button trap.
+           */
           <Button
-            className="flex-1 bg-val-accent hover:bg-val-accent/90 text-white py-6 text-lg font-medium"
+            className="flex-1 bg-val-accent py-6 text-lg font-medium text-black hover:bg-val-accent-light"
             asChild
           >
             <Link

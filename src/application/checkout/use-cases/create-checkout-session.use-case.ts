@@ -12,6 +12,7 @@ import { CreateOrderUseCase } from "./create-order.use-case";
 import { db } from "@/db";
 import { payments } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { SITE_URL } from "@/lib/site-url";
 
 export interface CreateCheckoutSessionInput {
   userId: string;
@@ -55,10 +56,15 @@ export class CreateCheckoutSessionUseCase {
       couponCode,
     });
 
-    // Build success/cancel URLs
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const successUrl = `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${baseUrl}/cart`;
+    // Build success/cancel URLs.
+    //
+    // `SITE_URL` rather than a local `process.env.NEXT_PUBLIC_APP_URL ||
+    // "http://localhost:3000"`: these two strings are handed to Stripe, and a
+    // deployment missing that variable used to send a customer who had just
+    // paid to `http://localhost:3000/checkout/success`. Nothing throws — the
+    // charge succeeds and the customer lands on a dead page.
+    const successUrl = `${SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${SITE_URL}/cart`;
 
     // Create Stripe Checkout Session
     let session;

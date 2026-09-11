@@ -7,7 +7,7 @@
  * card.
  *
  * `useVariantStock` keys its query on the variant ids it is given, and every
- * `ProductCard` renders a `QuickAddSliderBar` that calls it with *that card's*
+ * `ProductCard` renders a `QuickAddBar` that calls it with *that card's*
  * variants. So each card produced its own query key, its own request, and its
  * own `refetchInterval` — a twelve-card grid hit `getStock` twelve times on
  * load and twelve more every fifteen seconds, forever, growing as the customer
