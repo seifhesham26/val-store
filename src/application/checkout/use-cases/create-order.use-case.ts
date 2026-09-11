@@ -24,15 +24,14 @@ export interface CreateOrderInput {
    * decision for a caller that means to bill elsewhere.
    */
   billingAddressId: string;
-  paymentMethod: "stripe" | "cash_on_delivery";
+  /**
+   * Cash on delivery is the only method — Stripe was removed and no
+   * replacement gateway (OPay) is wired in yet.
+   */
+  paymentMethod: "cash_on_delivery";
   /** Optional coupon code. Always re-validated here — never trusted from the client. */
   couponCode?: string;
-  /**
-   * Where to send the confirmation for a cash-on-delivery order.
-   *
-   * The card path is confirmed by the Stripe webhook instead, which has the
-   * customer's email from the session.
-   */
+  /** Where to send the order confirmation. */
   customerEmail?: string;
 }
 
@@ -187,7 +186,7 @@ export class CreateOrderUseCase {
       input.shippingAddressId,
       input.billingAddressId,
       input.paymentMethod,
-      "pending", // paymentStatus — nothing captured until Stripe confirms / COD delivers
+      "pending", // paymentStatus — nothing captured until the courier delivers
       null, // paidAt
       null, // shippedAt
       null, // deliveredAt
@@ -201,43 +200,33 @@ export class CreateOrderUseCase {
 
     const created = await this.orderRepository.create(order);
 
-    // Cash on delivery is complete at this point, so empty the cart server-side
-    // rather than relying on the browser to do it. The card flow keeps its cart
-    // until Stripe confirms payment, so an abandoned checkout does not lose it.
-    if (input.paymentMethod === "cash_on_delivery") {
-      try {
-        await this.cartRepository.clearCart(input.userId);
-      } catch (error) {
-        // The order is already committed — never fail the checkout over this.
-        // The cart re-syncs from the server on the next read.
-        console.error(
-          "[CreateOrder] Failed to clear cart after COD order",
-          error
-        );
-      }
+    // Cash on delivery is complete at this point, so empty the cart
+    // server-side rather than relying on the browser to do it.
+    try {
+      await this.cartRepository.clearCart(input.userId);
+    } catch (error) {
+      // The order is already committed — never fail the checkout over this.
+      // The cart re-syncs from the server on the next read.
+      console.error(
+        "[CreateOrder] Failed to clear cart after COD order",
+        error
+      );
+    }
 
-      // COD used to receive no confirmation at all, while the success page
-      // promised one on both payment methods. The use case absorbs its own
-      // failures (see its own docblock), so awaiting it bought nothing but a
-      // live Resend round trip on the checkout response for an order that had
-      // already committed.
-      //
-      // Deferred through the scheduler rather than a bare `void`. The
-      // expired-checkout sweep gets away with `void` because it is
-      // best-effort and re-runs on the next request that touches orders; a
-      // confirmation email is one-shot, with no retry anywhere, so a
-      // serverless instance frozen at response time would simply lose it —
-      // reintroducing exactly the gap this block exists to close.
-      if (input.customerEmail) {
-        const email = input.customerEmail;
+    // Deferred through the scheduler rather than awaited or a bare `void`: a
+    // confirmation email is one-shot, with no retry anywhere, so a serverless
+    // instance frozen at response time would simply lose it, and awaiting it
+    // would put a live Resend round trip on the checkout response for an
+    // order that had already committed.
+    if (input.customerEmail) {
+      const email = input.customerEmail;
 
-        this.scheduler.runAfterResponse("order confirmation email", () =>
-          this.sendOrderConfirmation.execute({
-            orderId: created.id,
-            email,
-          })
-        );
-      }
+      this.scheduler.runAfterResponse("order confirmation email", () =>
+        this.sendOrderConfirmation.execute({
+          orderId: created.id,
+          email,
+        })
+      );
     }
 
     // After the order has committed, and never in a way that can fail it: the

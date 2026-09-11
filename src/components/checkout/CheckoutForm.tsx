@@ -10,10 +10,6 @@ import { toast } from "sonner";
 import { useCartStock } from "@/components/providers/cart-stock-provider";
 import { CheckoutOrderSummary } from "@/components/checkout/CheckoutOrderSummary";
 import { CheckoutAddressSelection } from "@/components/checkout/CheckoutAddressSelection";
-import {
-  CheckoutPaymentMethod,
-  PaymentMethod,
-} from "@/components/checkout/CheckoutPaymentMethod";
 
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
@@ -23,9 +19,6 @@ type AddressList = RouterOutputs["public"]["address"]["list"];
 
 export function CheckoutForm({ addresses }: { addresses: AddressList }) {
   const router = useRouter();
-
-  const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>("cash_on_delivery");
 
   const { hasProblems, revalidate, openDialog } = useCartStock();
   const [isVerifyingStock, setIsVerifyingStock] = useState(false);
@@ -64,25 +57,13 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
     ? effectiveSelectedAddressId
     : (selectedBillingAddressId ?? defaultBillingAddressId);
 
-  // Checkout mutations
-  const createStripeSession = trpc.public.checkout.createSession.useMutation({
-    onError: (err) => {
-      toast.error("Failed to start Stripe checkout", {
-        description: err.message,
-      });
-    },
-  });
-
   const createCodOrder = trpc.public.checkout.createCodOrder.useMutation({
     onError: (err) => {
       toast.error("Failed to place order", { description: err.message });
     },
   });
 
-  const isPlacingOrder =
-    createStripeSession.isPending ||
-    createCodOrder.isPending ||
-    isVerifyingStock;
+  const isPlacingOrder = createCodOrder.isPending || isVerifyingStock;
 
   const placeOrder = async () => {
     if (!effectiveSelectedAddressId) {
@@ -114,17 +95,6 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
 
     // No coupon is sent. The cart holds the applied code and the server reads
     // it from there, so there is one source of truth and the client is not it.
-    if (paymentMethod === "stripe") {
-      const res = await createStripeSession.mutateAsync({
-        shippingAddressId: effectiveSelectedAddressId,
-        billingAddressId: effectiveBillingAddressId,
-      });
-      if (res?.url) {
-        window.location.href = res.url;
-      }
-      return;
-    }
-
     const res = await createCodOrder.mutateAsync({
       shippingAddressId: effectiveSelectedAddressId,
       billingAddressId: effectiveBillingAddressId,
@@ -180,10 +150,13 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
               />
             )}
 
-            <CheckoutPaymentMethod
-              paymentMethod={paymentMethod}
-              onPaymentMethodChange={setPaymentMethod}
-            />
+            <div className="rounded-xl border border-white/10 bg-[#111] p-4 text-sm text-gray-400">
+              <p className="font-medium text-white">Payment</p>
+              <p className="mt-1">
+                Cash on Delivery — pay the delivery person when your order
+                arrives.
+              </p>
+            </div>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-6 mt-8 border-t border-white/10">
               <Button

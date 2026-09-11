@@ -6,16 +6,17 @@
  * `process.env.X || "http://localhost:3000"` fallback, and each of them silently
  * correct in development and wrong in production.
  *
- * It matters more than it looks. This value ends up in Stripe's `success_url`,
- * in every link in every transactional email, in `sitemap.xml`, in the
+ * It matters more than it looks. This value ends up in the payment gateway's
+ * `success_url`, in every link in every transactional email, in `sitemap.xml`, in the
  * `<link rel="canonical">` of every page and in the `og:image` of every shared
  * link. A wrong value does not throw — it sends a paying customer to a domain
  * that is not yours, or tells Google to index one.
  *
  * ## Why the fallback is the real domain and not localhost
  *
- * A missing `NEXT_PUBLIC_APP_URL` in production used to mean Stripe redirected
- * the customer to `http://localhost:3000` after payment. That is a broken
+ * A missing `NEXT_PUBLIC_APP_URL` in production used to mean the payment
+ * gateway redirected the customer to `http://localhost:3000` after payment.
+ * That is a broken
  * checkout caused by an unset environment variable, with no error anywhere.
  * Falling back to the production domain makes the failure mode "a dev machine
  * generates links pointing at production" — visible, harmless, and impossible

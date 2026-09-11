@@ -8,7 +8,6 @@
 import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/orders/order.repository";
 import { DrizzleCartRepository } from "@/infrastructure/database/repositories/cart/cart.repository";
 import { ValidateCouponUseCase } from "@/application/coupons/use-cases/validate-coupon.use-case";
-import { CreateCheckoutSessionUseCase } from "./use-cases/create-checkout-session.use-case";
 import { CreateOrderUseCase } from "./use-cases/create-order.use-case";
 import type { ShippingRateRepositoryInterface } from "@/domain/shipping/interfaces/repositories/shipping-rate.repository.interface";
 import { NotificationService } from "@/application/notifications/notification.service";
@@ -26,7 +25,6 @@ export function createCheckoutModule(deps: {
   getShippingRateRepository: () => ShippingRateRepositoryInterface;
   getTaskScheduler: () => TaskSchedulerInterface;
 }) {
-  let createCheckoutSession: CreateCheckoutSessionUseCase | undefined;
   let createOrder: CreateOrderUseCase | undefined;
 
   const getCreateOrderUseCase = () =>
@@ -42,12 +40,6 @@ export function createCheckoutModule(deps: {
     ));
 
   return {
-    getCreateCheckoutSessionUseCase: () =>
-      (createCheckoutSession ??= new CreateCheckoutSessionUseCase(
-        deps.getCartRepository(),
-        getCreateOrderUseCase(),
-        deps.getOrderRepository()
-      )),
     getCreateOrderUseCase,
   };
 }

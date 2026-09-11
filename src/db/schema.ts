@@ -44,11 +44,14 @@ export const orderStatusEnum = pgEnum("order_status", [
 ]);
 
 // Payment method enum
+//
+// Stripe was removed (no orders were ever recorded against it — verified
+// before the migration that dropped it). Cash on delivery is the only method
+// until a replacement gateway (OPay) is wired in.
 export const paymentMethodEnum = pgEnum("payment_method", [
   "credit_card",
   "debit_card",
   "paypal",
-  "stripe",
   "cash_on_delivery",
 ]);
 
@@ -792,10 +795,10 @@ export const siteSettings = pgTable("site_settings", {
   // Store Settings
   //
   // Read by nothing: currency is deployment config in `src/lib/currency.ts`,
-  // because a Stripe account is bound to the currency it charges in and every
-  // stored price is denominated in it — switching is a migration, not a
-  // dropdown. The defaults are corrected anyway so this row stops contradicting
-  // what the store actually does.
+  // because a payment gateway account is bound to the currency it charges in
+  // and every stored price is denominated in it — switching is a migration,
+  // not a dropdown. The defaults are corrected anyway so this row stops
+  // contradicting what the store actually does.
   currency: varchar("currency", { length: 3 }).notNull().default("EGP"),
   locale: varchar("locale", { length: 10 }).notNull().default("en-EG"),
   timezone: varchar("timezone", { length: 50 })

@@ -1,6 +1,4 @@
 import { OrderData } from "./types";
-import { PaymentWindowNotice } from "./PaymentWindowNotice";
-import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { Loader2 } from "lucide-react";
 import {
   Card,
@@ -34,11 +32,6 @@ export function UpdateStatusCard({
   isPending,
   onStatusChange,
 }: UpdateStatusCardProps) {
-  // Derived from the clock, not from the flag in the response: otherwise the
-  // deadline passes on screen while the buttons stay disabled until a reload.
-  const paymentWindow = usePaymentWindow(order.paymentDeadline);
-  const heldForPayment = order.awaitingPayment && paymentWindow.open;
-
   return (
     <Card>
       <CardHeader>
@@ -46,10 +39,6 @@ export function UpdateStatusCard({
         <CardDescription>Change the order status</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {order.awaitingPayment && order.paymentDeadline && (
-          <PaymentWindowNotice deadline={order.paymentDeadline} />
-        )}
-
         <div className="flex items-center gap-4">
           <Select
             value={order.status}
@@ -71,11 +60,9 @@ export function UpdateStatusCard({
                     value={status}
                     disabled={
                       !isCurrent &&
-                      (!OrderStatus.canTransition(order.status, status, {
+                      !OrderStatus.canTransition(order.status, status, {
                         paymentCaptured: order.hasCapturedPayment,
-                      }) ||
-                        // Held while the customer may still be paying.
-                        (status === "cancelled" && heldForPayment))
+                      })
                     }
                   >
                     {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -92,7 +79,7 @@ export function UpdateStatusCard({
               variant="destructive"
               size="sm"
               onClick={() => onStatusChange("cancelled")}
-              disabled={isPending || heldForPayment}
+              disabled={isPending}
             >
               Cancel Order
             </Button>

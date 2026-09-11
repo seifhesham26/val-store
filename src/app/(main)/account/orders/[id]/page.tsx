@@ -11,8 +11,7 @@ import Link from "next/link";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 
-import { Clock, MapPin } from "lucide-react";
-import { usePaymentWindow } from "@/hooks/use-payment-window";
+import { MapPin } from "lucide-react";
 import { OrderDetailHeader } from "@/components/account/order-detail/OrderDetailHeader";
 import { OrderTimeline } from "@/components/account/order-detail/OrderTimeline";
 import { OrderItems } from "@/components/account/order-detail/OrderItems";
@@ -23,31 +22,6 @@ import type { inferRouterOutputs } from "@trpc/server";
 type OrderDetail = NonNullable<
   inferRouterOutputs<AppRouter>["public"]["orders"]["getOrderById"]
 >;
-
-/**
- * The same countdown the orders list shows.
- *
- * This is the screen a customer would actually sit on while paying, and it
- * was the one place the payment window never reached.
- */
-function PaymentCountdown({
-  deadline,
-}: {
-  deadline: string | Date | null | undefined;
-}) {
-  const { open, label } = usePaymentWindow(deadline);
-  if (!open) return null;
-
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-      <Clock className="h-4 w-4 shrink-0" />
-      <span>
-        Waiting for payment — <span className="tabular-nums">{label}</span> left
-        before this order is released.
-      </span>
-    </div>
-  );
-}
 
 /**
  * The shipping address was already in this payload and simply never rendered.
@@ -127,8 +101,6 @@ export default function OrderDetailPage() {
         status={order.status}
         createdAt={new Date(order.createdAt)}
       />
-
-      <PaymentCountdown deadline={order.paymentDeadline} />
 
       <OrderTimeline
         createdAt={new Date(order.createdAt)}

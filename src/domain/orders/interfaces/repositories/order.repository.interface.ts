@@ -25,14 +25,6 @@ export interface UpdateOrderStatusOptions {
    * part of the order, e.g. when a returned item comes back damaged.
    */
   restock?: RestockLine[];
-  /**
-   * Bypass the payment-window guard.
-   *
-   * Only for the system unwinding its own failure — a Stripe hand-off that
-   * never got off the ground. An admin must not be able to cancel an order
-   * while the customer may still be entering their card.
-   */
-  force?: boolean;
 }
 
 export interface OrderFilters {
@@ -113,49 +105,6 @@ export interface OrderRepositoryInterface {
     orderId: string,
     input: { lines: RefundLine[]; reason?: string }
   ): Promise<OrderEntity>;
-
-  /**
-   * Card orders past their payment window that were never marked paid.
-   *
-   * Only finds them — deciding whether to cancel needs the payment provider,
-   * since a missing confirmation is not the same as a missing payment.
-   */
-  findExpiredCheckouts(
-    olderThan: Date,
-    limit?: number
-  ): Promise<{ orderId: string; sessionId: string | null }[]>;
-
-  /** Mark an order's payment as failed, e.g. after an expired checkout. */
-  markPaymentFailed(orderId: string): Promise<void>;
-
-  /**
-   * Recognise payment for an order: advance it to `paid`, complete its payment
-   * row and redeem any coupon. Idempotent — safe to call from both the webhook
-   * and the success page.
-   */
-  /**
-   * Advance a still-unpaid order to `paid`.
-   *
-   * `transitioned` is false when the order had already moved on — a redelivered
-   * webhook, or the success page racing it — so callers can tell a real payment
-   * from a duplicate and avoid notifying twice.
-   */
-  markAsPaid(
-    orderId: string,
-    options?: { transactionId?: string; gatewayResponse?: unknown }
-  ): Promise<{
-    transitioned: boolean;
-    /**
-     * The coupon on this order was redeemed past its usage or per-customer
-     * limit. Only the card path can report this: it recognises payment after
-     * the customer has already been charged, so refusing the redemption is not
-     * available — the discount stands, the redemption is counted anyway so the
-     * limit self-corrects, and the order carries an admin note saying so.
-     * Cash on delivery redeems at creation, where losing the race aborts the
-     * order outright, so it never reports this.
-     */
-    couponLimitExceeded: boolean;
-  }>;
 
   // `delete(orderId)` was removed — no caller, and declaring it here was the
   // risk: an interface method is a standing invitation. Deleting an order

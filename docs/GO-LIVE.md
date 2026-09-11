@@ -38,11 +38,11 @@ to index the old host.
 They are three variables rather than one because three different systems read
 them, and they are read in different places:
 
-| Variable               | Read by                                                                                   | What breaks if it is wrong                                                             |
-| ---------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_APP_URL`  | `src/lib/site-url.ts` → sitemap, robots, canonical, OG, Stripe redirects, all email links | Google indexes the wrong host; a paying customer is redirected off-site after checkout |
-| `NEXT_PUBLIC_BASE_URL` | `src/lib/auth-client.ts`                                                                  | Browser-side auth calls go to the old origin and fail CORS                             |
-| `BETTER_AUTH_URL`      | Better Auth server                                                                        | OAuth state mismatch — Google/Facebook sign-in fails                                   |
+| Variable               | Read by                                                                                                                               | What breaks if it is wrong                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_URL`  | `src/lib/site-url.ts` → sitemap, robots, canonical, OG, all email links, and the payment gateway's redirect URLs once one is wired in | Google indexes the wrong host; a paying customer is redirected off-site after checkout |
+| `NEXT_PUBLIC_BASE_URL` | `src/lib/auth-client.ts`                                                                                                              | Browser-side auth calls go to the old origin and fail CORS                             |
+| `BETTER_AUTH_URL`      | Better Auth server                                                                                                                    | OAuth state mismatch — Google/Facebook sign-in fails                                   |
 
 Set all three to `https://www.valkyrie-eg.com` **in your hosting provider's
 environment settings**, not only in the local `.env`. The local file is
@@ -147,64 +147,18 @@ and while it is in Development mode only app admins/testers can sign in.
 
 ---
 
-## 3. Stripe — live keys and the webhook
+## 3. Payment gateway
 
-This is the one where a mistake costs money rather than traffic.
-
-### 3a. Switch to live keys
-
-Stripe Dashboard → toggle **Test mode off** → **Developers → API keys**:
-
-| Variable                 | Value                                              |
-| ------------------------ | -------------------------------------------------- |
-| `STRIPE_SECRET_KEY`      | `sk_live_…`                                        |
-| `STRIPE_PUBLISHABLE_KEY` | `pk_live_…`                                        |
-| `STRIPE_WEBHOOK_SECRET`  | `whsec_…` from the **live** endpoint created below |
-
-Test-mode keys are `sk_test_`/`pk_test_`. If the site is live on test keys,
-checkout appears to work and no money ever moves.
-
-### 3b. Create the live webhook endpoint
-
-**Developers → Webhooks → Add endpoint**, in **live** mode.
-
-**Endpoint URL:**
-
-```
-https://www.valkyrie-eg.com/api/webhook/stripe
-```
-
-**Events to send** — exactly the four the handler switches on
-(`src/app/api/webhook/stripe/route.ts`):
-
-- `checkout.session.completed`
-- `checkout.session.expired`
-- `payment_intent.succeeded`
-- `payment_intent.payment_failed`
-
-Then copy the endpoint's **Signing secret** into `STRIPE_WEBHOOK_SECRET`.
-
-**Why this matters more than it looks.** `checkout.session.completed` is what
-marks the order `paid`, sets the payment `completed`, sends the confirmation
-email and clears the cart. Without a working webhook the customer is charged,
-lands on the success page, and the order sits at `pending` forever with no
-email — and you find out from the customer.
-
-**The secret is per-endpoint.** A test-mode secret against a live endpoint
-fails signature verification on every event, and Stripe records them as
-delivery failures rather than surfacing them in the app.
-
-### 3c. Confirm the currency
-
-The Stripe account must be able to charge **EGP** — `STORE_CURRENCY` defaults
-to `EGP` and a Stripe account is bound to the currency it settles in. See the
-note in `src/lib/currency.ts`.
-
-### 3d. Verify
-
-Stripe's webhook page has **Send test webhook**. Send a
-`checkout.session.completed` and confirm a `200`. A `400` means the signing
-secret is wrong.
+**Stripe was removed from the codebase** (no orders were ever taken through it
+in production — verified against the database before it came out). Cash on
+delivery is the only payment method until a replacement gateway (OPay) is
+wired in. There is nothing to configure here yet — this section is a
+placeholder for whenever that integration lands, at which point it needs the
+same live-keys-plus-webhook treatment Stripe used to get here: switch to live
+credentials, register the production webhook/callback URL, confirm it can
+settle in **EGP** (`STORE_CURRENCY` defaults to `EGP`, and a gateway account is
+bound to the currency it settles in — see `src/lib/currency.ts`), and send a
+test event before trusting it with a real order.
 
 ---
 
@@ -354,11 +308,10 @@ fails silently if skipped, which is the whole reason for the list.
 | 5   | Browser tab                                             | Silver winged mark, not a triangle                        |
 | 6   | Sign in with Google                                     | Returns to the site signed in, no `redirect_uri_mismatch` |
 | 7   | Sign in with email **and** with phone                   | Both work — see `docs/POST-LAUNCH.md` §4                  |
-| 8   | A real order, card and COD                              | Order reaches `paid`, confirmation email arrives          |
+| 8   | A real cash-on-delivery order                           | Order reaches the admin, confirmation email arrives       |
 | 9   | That email's links                                      | Point at `valkyrie-eg.com`, not localhost or Vercel       |
-| 10  | Stripe → Webhooks → your endpoint                       | Recent deliveries all `200`                               |
-| 11  | `UPSTASH_*` set in production                           | Rate limits active — `docs/POST-LAUNCH.md` §1             |
+| 10  | `UPSTASH_*` set in production                           | Rate limits active — `docs/POST-LAUNCH.md` §1             |
 
-Items 8 and 9 are the ones worth doing with a real card for a real amount you
-then refund. Everything upstream of payment can look perfectly healthy while
-the webhook is misconfigured.
+Item 9 is worth doing with a real order. Once a payment gateway is wired back
+in, add its webhook-delivery check back to this list — everything upstream of
+payment can look perfectly healthy while the webhook is misconfigured.

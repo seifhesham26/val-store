@@ -8,7 +8,6 @@ import { DrizzleOrderRepository } from "@/infrastructure/database/repositories/o
 import { ListOrdersUseCase } from "./use-cases/list-orders.use-case";
 import { GetOrderUseCase } from "./use-cases/get-order.use-case";
 import { UpdateOrderStatusUseCase } from "./use-cases/update-order-status.use-case";
-import { CancelExpiredCheckoutsUseCase } from "./use-cases/cancel-expired-checkouts.use-case";
 import { RefundOrderUseCase } from "./use-cases/refund-order.use-case";
 import { SendOrderConfirmationUseCase } from "./use-cases/send-order-confirmation.use-case";
 import { NotificationService } from "@/application/notifications/notification.service";
@@ -24,7 +23,6 @@ export function createOrderModule(deps: {
   let listOrders: ListOrdersUseCase | undefined;
   let getOrder: GetOrderUseCase | undefined;
   let updateOrderStatus: UpdateOrderStatusUseCase | undefined;
-  let cancelExpiredCheckouts: CancelExpiredCheckoutsUseCase | undefined;
   let refundOrder: RefundOrderUseCase | undefined;
   let sendOrderConfirmation: SendOrderConfirmationUseCase | undefined;
 
@@ -43,10 +41,6 @@ export function createOrderModule(deps: {
       (refundOrder ??= new RefundOrderUseCase(
         getOrderRepository(),
         deps.getNotificationService()
-      )),
-    getCancelExpiredCheckoutsUseCase: () =>
-      (cancelExpiredCheckouts ??= new CancelExpiredCheckoutsUseCase(
-        getOrderRepository()
       )),
     getSendOrderConfirmationUseCase: () =>
       (sendOrderConfirmation ??= new SendOrderConfirmationUseCase(

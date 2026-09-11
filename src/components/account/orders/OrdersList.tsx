@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Clock, RotateCcw } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
-import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
 import { formatCurrency } from "@/lib/currency";
@@ -23,28 +22,6 @@ const statusColors: Record<string, string> = {
   cancelled: "bg-red-500/15 text-red-400 border border-red-500/20",
   refunded: "bg-orange-500/15 text-orange-400 border border-orange-500/20",
 };
-
-/**
- * An unpaid card order is held for a short window and then released. Saying so
- * — with the time left — is kinder than letting it turn into "cancelled" with
- * no explanation.
- */
-function PaymentCountdown({
-  deadline,
-}: {
-  deadline: string | Date | null | undefined;
-}) {
-  const { open, label } = usePaymentWindow(deadline);
-  if (!open) return null;
-
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-amber-400">
-      <Clock className="h-3 w-3 shrink-0" />
-      Waiting for payment — <span className="tabular-nums">{label}</span> left
-      before this order is released.
-    </p>
-  );
-}
 
 /**
  * What the order actually contains, in one line.
@@ -157,9 +134,6 @@ export function OrdersList({
                 <div className="mt-4 flex items-end justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-2">
                     <ItemSummary order={order} />
-                    {order.awaitingPayment && (
-                      <PaymentCountdown deadline={order.paymentDeadline} />
-                    )}
                   </div>
 
                   <div className="flex shrink-0 items-center gap-3">

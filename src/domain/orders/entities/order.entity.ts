@@ -61,15 +61,16 @@ export type OrderPaymentStatus =
   | "refunded";
 
 /**
- * How long an unpaid card order is held before it is cancelled automatically.
+ * How long a `pending` order counts as "in flight" for coupon usage limits —
+ * see `ValidateCouponUseCase.countPendingOrders`, the only remaining
+ * consumer.
  *
- * The order reserves its stock the moment it is created, before the customer
- * is handed to Stripe — so an abandoned checkout takes inventory out of
- * circulation. This is the window we are willing to hold it for.
- *
- * Set to match the Stripe Checkout session's own expiry exactly, so there is
- * one deadline rather than two that disagree. 30 minutes is Stripe's minimum,
- * which is what pins the number.
+ * Dates from when a card checkout reserved stock and a coupon claim before
+ * payment was confirmed, so an unpaid session could not silently exhaust a
+ * limited code. Left at its original 30 minutes now that cash on delivery is
+ * the only path; a COD order redeems its coupon at creation rather than on
+ * confirmation, so re-checking whether this window still earns its keep is
+ * worth doing before it is relied on for anything new.
  */
 export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 
@@ -159,13 +160,8 @@ export class OrderEntity {
 
   /**
    * Check if order can be cancelled.
-   *
-   * An unpaid card order inside its payment window is excluded: the customer
-   * may be on Stripe's page entering a card, and it will release itself if
-   * they do not.
    */
   canCancel(): boolean {
-    if (this.isAwaitingPayment()) return false;
     return this.status === "pending" || this.status === "processing";
   }
 
@@ -234,9 +230,8 @@ export class OrderEntity {
   /**
    * Has money actually changed hands?
    *
-   * Card payments are captured when Stripe confirms them. Cash on delivery is
-   * captured when the courier hands the order over, which is the point the order
-   * is marked delivered.
+   * Cash on delivery is captured when the courier hands the order over, which
+   * is the point the order is marked delivered.
    *
    * This is deliberately independent of `status`: an order that was paid and
    * then cancelled still had money taken, and must remain refundable.
@@ -250,29 +245,6 @@ export class OrderEntity {
       return true;
     }
     return false;
-  }
-
-  /**
-   * When this order stops being held for an unpaid card payment, or null if it
-   * is not waiting on one.
-   */
-  paymentDeadline(): Date | null {
-    if (this.paymentMethod !== "stripe") return null;
-    if (this.status !== "pending") return null;
-    if (this.hasCapturedPayment()) return null;
-    return new Date(this.createdAt.getTime() + PAYMENT_WINDOW_MS);
-  }
-
-  /**
-   * Is this order still inside its payment window?
-   *
-   * While it is, the order is genuinely in flight — the customer may be on
-   * Stripe's page entering a card — so it must not be cancelled out from under
-   * them.
-   */
-  isAwaitingPayment(at: Date = new Date()): boolean {
-    const deadline = this.paymentDeadline();
-    return deadline !== null && deadline.getTime() > at.getTime();
   }
 
   /** Units of a line that have not yet been returned. */

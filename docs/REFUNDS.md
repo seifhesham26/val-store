@@ -1,8 +1,9 @@
 # Refunds — recorded now, paid later
 
 **Status** Deliberate and deferred, **not a defect**. Waiting on the payment
-gateway decision — Stripe is not settled, so the code that moves money has no
-provider to move it through yet.
+gateway decision — Stripe was removed (2026-09-11, no orders were ever taken
+through it) and its replacement (OPay) is not wired in yet, so the code that
+moves money has no provider to move it through.
 **Decided** 2026-09-03
 
 ## What works today

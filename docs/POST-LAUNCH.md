@@ -166,14 +166,13 @@ it rejected everyone.
 
 ### 5. A real order, end to end
 
-Both payment paths, because they diverge after the order row is written.
+Cash on delivery is the only payment path — Stripe was removed and no
+replacement gateway (OPay) is wired in yet.
 
-| Step                              | Expected                                                                                      |
-| --------------------------------- | --------------------------------------------------------------------------------------------- |
-| Cash on delivery checkout         | Order created; cart cleared; confirmation email quotes a real `VLK-YYYYMMDD-XXXXXX` number    |
-| Stripe checkout, completed        | Order becomes `paid`; cart cleared; email quotes the **same** number, not a Stripe session id |
-| Stripe checkout, abandoned        | Order stays `pending`, then cancels itself and **returns the stock**                          |
-| Add more than the available stock | Refused before the order is written                                                           |
+| Step                              | Expected                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| Cash on delivery checkout         | Order created; cart cleared; confirmation email quotes a real `VLK-YYYYMMDD-XXXXXX` number |
+| Add more than the available stock | Refused before the order is written                                                        |
 
 ### 6. The read-only `worker` tier
 
@@ -219,7 +218,6 @@ Nothing here is provable until a domain is verified in Resend.
 | Step                                                  | Expected                                                       |
 | ----------------------------------------------------- | -------------------------------------------------------------- |
 | Place a COD order                                     | Confirmation arrives, real order number, real shipping address |
-| Complete a Stripe order                               | Same                                                           |
 | Request a password reset for a **registered** address | Email arrives                                                  |
 | Request one for an **unregistered** address           | Same on-screen response, no email                              |
 

@@ -41,15 +41,11 @@ export interface GetOrderOutput {
   isDelivered: boolean;
   canCancel: boolean;
   canRefund: boolean;
-  /** Still inside the card-payment window, so held rather than cancellable. */
-  awaitingPayment: boolean;
   /** Money already returned to the customer across all returns. */
   refundedAmount: number;
   /** Some units returned, but not all. */
   partiallyRefunded: boolean;
   fullyRefunded: boolean;
-  /** When that window closes and the order releases itself. */
-  paymentDeadline: Date | null;
   paidAt: Date | null;
   shippedAt: Date | null;
   deliveredAt: Date | null;
@@ -95,11 +91,9 @@ export class GetOrderUseCase {
       isDelivered: order.isDelivered(),
       canCancel: order.canCancel(),
       canRefund: order.canRefund(),
-      awaitingPayment: order.isAwaitingPayment(),
       refundedAmount: order.refundedAmount(),
       partiallyRefunded: order.isPartiallyRefunded(),
       fullyRefunded: order.isFullyRefunded(),
-      paymentDeadline: order.paymentDeadline(),
       paidAt: order.paidAt,
       shippedAt: order.shippedAt,
       deliveredAt: order.deliveredAt,

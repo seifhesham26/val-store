@@ -2,23 +2,22 @@
  * Store currency
  *
  * One declaration of what money means here, used by everything that charges,
- * stores or displays it. Before this there were four answers: Stripe charged
- * `egp`, the order repository wrote `EGP`, `site_settings.currency` defaulted to
- * `USD`, and every price in the UI was rendered with a hardcoded `$`. Customers
- * in Egypt were billed in pounds and shown dollars.
+ * stores or displays it. Before this there were four answers: the payment
+ * gateway charged `egp`, the order repository wrote `EGP`,
+ * `site_settings.currency` defaulted to `USD`, and every price in the UI was
+ * rendered with a hardcoded `$`. Customers in Egypt were billed in pounds and
+ * shown dollars.
  *
  * It is deployment configuration rather than a database setting on purpose: a
- * Stripe account is bound to the currency it charges in, and every price already
- * stored is denominated in it, so switching is a migration — not a dropdown.
+ * payment gateway account is bound to the currency it charges in, and every
+ * price already stored is denominated in it, so switching is a migration —
+ * not a dropdown.
  */
 
 /** ISO 4217 code. Override per-deployment with `NEXT_PUBLIC_STORE_CURRENCY`. */
 export const STORE_CURRENCY = (
   process.env.NEXT_PUBLIC_STORE_CURRENCY || "EGP"
 ).toUpperCase();
-
-/** Stripe wants the code lowercased. */
-export const STRIPE_CURRENCY = STORE_CURRENCY.toLowerCase();
 
 /**
  * The locale prices are formatted in.

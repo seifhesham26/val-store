@@ -27,9 +27,7 @@ export function PaymentCard({ order }: { order: OrderData }) {
           <span className="text-sm font-medium">
             {order.paymentMethod === "cash_on_delivery"
               ? "Cash on Delivery"
-              : order.paymentMethod === "stripe"
-                ? "Card (Stripe)"
-                : "N/A"}
+              : (order.paymentMethod ?? "N/A")}
           </span>
         </div>
         <div className="flex items-center justify-between">

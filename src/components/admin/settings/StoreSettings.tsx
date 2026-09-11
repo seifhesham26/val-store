@@ -171,18 +171,19 @@ export function StoreSettings() {
             <div className="rounded-md border bg-muted/40 px-3 py-2 font-medium">
               {STORE_CURRENCY} — {formatCurrency(1234.5)}
             </div>
-            {/* This was a dropdown that changed nothing: Stripe charged EGP, the
-                order rows recorded EGP, and every price rendered a dollar sign
-                regardless of what was picked. It is one value now, and it is
-                deployment configuration rather than a setting, because a Stripe
-                account is bound to the currency it charges in and every stored
-                price is already denominated in it. */}
+            {/* This was a dropdown that changed nothing: the payment gateway
+                charged EGP, the order rows recorded EGP, and every price
+                rendered a dollar sign regardless of what was picked. It is one
+                value now, and it is deployment configuration rather than a
+                setting, because a payment gateway account is bound to the
+                currency it charges in and every stored price is already
+                denominated in it. */}
             <p className="text-xs text-muted-foreground">
               Set at deploy time with{" "}
               <code className="font-mono">NEXT_PUBLIC_STORE_CURRENCY</code>.
               Changing it is a migration, not a setting: existing prices and
-              orders are stored in this currency, and your Stripe account
-              charges in it.
+              orders are stored in this currency, and your payment gateway
+              account charges in it.
             </p>
           </div>
         </CardContent>

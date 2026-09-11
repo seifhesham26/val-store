@@ -72,8 +72,9 @@ export class DrizzleSiteConfigRepository implements ISiteConfigRepository {
       .values({
         storeName: "Valkyrie",
         // Seeded from the deployment's currency rather than the column default,
-        // which still says USD. Nothing reads this column — prices, Stripe and
-        // the order rows all go through `@/lib/currency` — but a settings row
+        // which still says USD. Nothing reads this column — prices, the
+        // payment gateway and the order rows all go through `@/lib/currency`
+        // — but a settings row
         // that disagrees with what customers are charged is how the four
         // conflicting currencies started in the first place.
         currency: STORE_CURRENCY,

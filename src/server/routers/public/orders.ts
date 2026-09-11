@@ -10,7 +10,7 @@ import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { TRPCError } from "@trpc/server";
 import { db } from "@/db";
-import { orders, payments } from "@/db/schema";
+import { orders } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
 
@@ -28,15 +28,6 @@ export const ordersRouter = router({
         .optional()
     )
     .query(async ({ ctx, input }) => {
-      // Release abandoned checkouts, but never make the customer wait for it.
-      // The sweep asks Stripe about other people's orders over the network, and
-      // it was awaited here — so opening "My orders" blocked on third-party
-      // round trips before a single row was read. Deliberately not awaited, the
-      // same call the cart's stock check already makes: the use case throttles
-      // itself to once a minute per process and swallows its own errors, so at
-      // worst a just-expired order shows as pending until the next load.
-      void container.getCancelExpiredCheckoutsUseCase().execute();
-
       const orderRepository = container.getOrderRepository();
       const page = input?.cursor ?? 1;
       const { limit, offset } = pageWindow(page, input?.limit ?? 10);
@@ -61,10 +52,6 @@ export const ordersRouter = router({
         itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
         lineCount: order.items.length,
         createdAt: order.createdAt,
-        // An unpaid card order is held briefly and then released. The customer
-        // should see that rather than watch it silently turn into "cancelled".
-        awaitingPayment: order.isAwaitingPayment(),
-        paymentDeadline: order.paymentDeadline(),
         // Returns are partial and derived, so a bare amount is not the whole
         // story: how many units came back, and whether anything is left.
         refundedAmount: order.refundedAmount(),
@@ -128,8 +115,6 @@ export const ordersRouter = router({
         createdAt: order.createdAt,
         shippedAt: order.shippedAt,
         deliveredAt: order.deliveredAt,
-        awaitingPayment: order.isAwaitingPayment(),
-        paymentDeadline: order.paymentDeadline(),
         refundedAmount: order.refundedAmount(),
         refundedItems: order.getRefundedItems(),
         fullyRefunded: order.isFullyRefunded(),
@@ -164,37 +149,5 @@ export const ordersRouter = router({
         orderId: row.id,
         orderNumber: row.orderNumber,
       };
-    }),
-
-  /**
-   * Get order number for the current user by Stripe checkout session id.
-   * We store the Stripe session id in payments.transactionId at session creation time.
-   */
-  getOrderNumberByStripeSession: protectedProcedure
-    .input(z.object({ sessionId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const row = await db
-        .select({
-          orderId: orders.id,
-          orderNumber: orders.orderNumber,
-        })
-        .from(payments)
-        .innerJoin(orders, eq(payments.orderId, orders.id))
-        .where(
-          and(
-            eq(payments.transactionId, input.sessionId),
-            eq(orders.userId, ctx.user.id)
-          )
-        )
-        .limit(1);
-
-      if (!row[0]) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Order not found",
-        });
-      }
-
-      return row[0];
     }),
 });

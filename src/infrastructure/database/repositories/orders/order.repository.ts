@@ -286,10 +286,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
         await tx.insert(payments).values({
           orderId: order.id,
-          paymentMethod:
-            order.paymentMethod === "cash_on_delivery"
-              ? "cash_on_delivery"
-              : "stripe",
+          // Cash on delivery is the only method an order can be created with.
+          paymentMethod: "cash_on_delivery",
           paymentStatus: "pending",
           amount: order.totalAmount.toFixed(2),
           currency: STORE_CURRENCY,
@@ -358,14 +356,10 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           });
         }
 
-        // Redeem the coupon only when the order is already a real commitment.
-        //
-        // Cash on delivery is: the customer has ordered, and the courier collects
-        // later. A card order is not — it is a session the customer may never
-        // pay for, and counting that as a redemption burned a one-per-customer
-        // code on an attempt that never charged anyone. Card orders redeem in
-        // `markAsPaid` instead.
-        if (order.couponId && order.paymentMethod === "cash_on_delivery") {
+        // Redeem the coupon now — cash on delivery is a real commitment the
+        // moment the order is placed, not a session the customer may never
+        // complete.
+        if (order.couponId) {
           // Guarded increment, not a plain one. `ValidateCouponUseCase` checks
           // usageLimit/perUserLimit with an unlocked SELECT in a separate,
           // earlier transaction — nothing stops several concurrent checkouts
@@ -518,21 +512,6 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       );
     }
 
-    // An unpaid card order inside its payment window is genuinely in flight —
-    // the customer may be on Stripe's page entering a card right now. Pulling
-    // it out from under them would take the stock back mid-payment and leave
-    // Stripe to charge for an order that no longer exists.
-    if (
-      target === "cancelled" &&
-      !options?.force &&
-      existing.isAwaitingPayment()
-    ) {
-      const deadline = existing.paymentDeadline();
-      throw new Error(
-        `This order is still within its payment window and cannot be cancelled yet. ` +
-          `It will be cancelled automatically at ${deadline?.toISOString()} if it is not paid.`
-      );
-    }
     // `cancelled` is a final state, so an order can only reach it once — no
     // risk of restoring the same stock twice.
     const isClosing = target === "cancelled";
@@ -563,17 +542,13 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
       await tx.update(orders).set(updates).where(eq(orders.id, orderId));
 
-      // Cash on delivery collects at the door, and nothing recorded it.
-      //
-      // `markAsPaid` is the only other writer of `payment_status = 'completed'`
-      // and all of its callers are Stripe paths, so a COD order's payment row
-      // stayed `pending` forever no matter what an admin did to it — which
-      // made every revenue figure blind to the payment method this store most
-      // likely depends on.
+      // Cash on delivery collects at the door, and nothing recorded it — a
+      // COD order's payment row stayed `pending` forever no matter what an
+      // admin did to it, which made every revenue figure blind to the store's
+      // only payment method.
       //
       // Conditional on the row still being pending, so redelivering the same
-      // transition cannot double-write, and scoped to COD so it can never
-      // mark a card order paid that Stripe has not confirmed.
+      // transition cannot double-write.
       if (target === "delivered") {
         await tx
           .update(payments)
@@ -837,242 +812,6 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       throw new OrderNotFoundException(orderId);
     }
     return updated;
-  }
-
-  /**
-   * Card orders whose payment window has elapsed without being marked paid.
-   *
-   * Deliberately only *finds* them. Whether such an order should be cancelled
-   * cannot be answered from this database alone: the payment may have gone
-   * through with the confirmation never arriving, and cancelling then would
-   * destroy an order the customer has already been charged for. The caller
-   * asks the payment provider before deciding.
-   */
-  async findExpiredCheckouts(
-    olderThan: Date,
-    limit = 20
-  ): Promise<{ orderId: string; sessionId: string | null }[]> {
-    const rows = await db
-      .select({
-        orderId: orders.id,
-        sessionId: payments.transactionId,
-      })
-      .from(orders)
-      .innerJoin(payments, eq(payments.orderId, orders.id))
-      .where(
-        and(
-          eq(orders.status, "pending"),
-          eq(payments.paymentMethod, "stripe"),
-          eq(payments.paymentStatus, "pending"),
-          lte(orders.createdAt, olderThan)
-        )
-      )
-      .limit(limit);
-
-    return rows;
-  }
-
-  /** Mark an order's payment as failed, e.g. after an expired checkout. */
-  async markPaymentFailed(orderId: string): Promise<void> {
-    await db
-      .update(payments)
-      .set({ paymentStatus: "failed", updatedAt: new Date() })
-      .where(eq(payments.orderId, orderId));
-  }
-
-  /**
-   * Move an order to `paid` — the single place a payment is recognised.
-   *
-   * Both the Stripe webhook and the success page call this, either may arrive
-   * first, and either may arrive twice, so the conditional order update is the
-   * gate: only the caller that actually moves the row out of `pending` does the
-   * rest. Everything runs in one transaction.
-   */
-  async markAsPaid(
-    orderId: string,
-    options?: { transactionId?: string; gatewayResponse?: unknown }
-  ): Promise<{
-    transitioned: boolean;
-    orderNumber: string | null;
-    userId: string | null;
-    /**
-     * The coupon on this order was redeemed past its usage or per-customer
-     * limit. The payment is still recognised and the discount still stands —
-     * see the redemption block below for why refusing is not an option once
-     * the customer has been charged. Surfaced so a caller can log it as the
-     * anomaly it is rather than letting it pass as an ordinary payment.
-     */
-    couponLimitExceeded: boolean;
-  }> {
-    return db.transaction(async (tx) => {
-      const now = new Date();
-      let couponLimitExceeded = false;
-
-      // Only advance an order still awaiting payment. Without this a late
-      // webhook could resurrect an order an admin had already cancelled — and
-      // cancelling returns the reserved stock, so it would end up "paid" with
-      // nothing held for it.
-      const [updated] = await tx
-        .update(orders)
-        .set({ status: "paid", updatedAt: now })
-        .where(
-          and(
-            eq(orders.id, orderId),
-            inArray(orders.status, ["pending", "processing"])
-          )
-        )
-        .returning({
-          id: orders.id,
-          orderNumber: orders.orderNumber,
-          userId: orders.userId,
-          couponId: orders.couponId,
-          adminNotes: orders.adminNotes,
-        });
-
-      // Nothing matched: the order had already moved on. Callers use this to
-      // avoid notifying twice when a webhook is redelivered.
-      if (!updated) {
-        return {
-          transitioned: false,
-          orderNumber: null,
-          userId: null,
-          couponLimitExceeded: false,
-        };
-      }
-
-      await tx
-        .update(payments)
-        .set({
-          paymentStatus: "completed",
-          ...(options?.transactionId
-            ? { transactionId: options.transactionId }
-            : {}),
-          ...(options?.gatewayResponse
-            ? {
-                paymentGatewayResponse: JSON.stringify(options.gatewayResponse),
-              }
-            : {}),
-          updatedAt: now,
-        })
-        .where(eq(payments.orderId, orderId));
-
-      // Redeem the coupon now that money has actually changed hands. Guarded on
-      // the usage row not already existing, so a cash-on-delivery order — which
-      // redeems at creation — can never be counted twice.
-      if (updated.couponId && updated.userId) {
-        const [alreadyRecorded] = await tx
-          .select({ id: couponUsages.id })
-          .from(couponUsages)
-          .where(eq(couponUsages.orderId, orderId))
-          .limit(1);
-
-        if (!alreadyRecorded) {
-          // Same guarded increment `create()` uses for the cash-on-delivery
-          // redemption, closing the same race for the card path. This runs
-          // from the Stripe webhook (or the success page racing it), after
-          // the customer has already been charged — unlike the COD path,
-          // there is no "abort and let them retry" option here. Throwing
-          // would roll back this whole transaction, including the order's
-          // move to `paid`, and Stripe would have taken the customer's money
-          // for an order stuck `pending` forever: a worse outcome than the
-          // coupon's usage count reading one over its limit. So a lost race
-          // here is logged, not thrown — the payment is still recognised, the
-          // coupon simply is not recorded as used for it. This coupon has no
-          // variant lock to stay ordered against: markAsPaid never locks a
-          // variant row, so there is nothing for this lock to deadlock with.
-          const [redeemed] = await tx
-            .update(coupons)
-            .set({
-              usageCount: sql`${coupons.usageCount} + 1`,
-              updatedAt: now,
-            })
-            .where(
-              and(
-                eq(coupons.id, updated.couponId),
-                sql`(${coupons.usageLimit} IS NULL OR ${coupons.usageCount} < ${coupons.usageLimit})`,
-                sql`(
-                  ${coupons.perUserLimit} IS NULL OR (
-                    SELECT COUNT(*)::int FROM coupon_usages
-                    WHERE coupon_id = ${updated.couponId} AND user_id = ${updated.userId}
-                  ) < ${coupons.perUserLimit}
-                )`
-              )
-            )
-            .returning({ id: coupons.id });
-
-          if (!redeemed) {
-            // The guard lost, but the customer has already been charged the
-            // discounted total — the redemption is a fact whether or not the
-            // limit allowed it. Two things follow from that.
-            //
-            // First, increment anyway. Declining to count a redemption that
-            // really happened leaves `usage_count` *under*-reporting, so the
-            // next validation still sees room and lets the overrun grow. An
-            // unguarded increment makes the counter tell the truth, which also
-            // makes the limit self-correcting: at 101/100 every subsequent
-            // checkout is refused by the ordinary pre-check.
-            await tx
-              .update(coupons)
-              .set({
-                usageCount: sql`${coupons.usageCount} + 1`,
-                updatedAt: now,
-              })
-              .where(eq(coupons.id, updated.couponId));
-
-            // Second, leave a record a person will actually find. This used to
-            // be a `console.error` and nothing else, which meant the only trace
-            // of a discount given beyond its limit lived in a log nobody reads
-            // until they already suspect something. The note is attached to the
-            // order the discrepancy is on, and renders on the order detail page
-            // alongside the refund notes.
-            //
-            // Deliberately not an admin notification: `notification_type` has
-            // no value for this, and adding one without applying the enum
-            // migration would throw at insert.
-            couponLimitExceeded = true;
-
-            await tx
-              .update(orders)
-              .set({
-                adminNotes: appendAdminNote(
-                  updated.adminNotes,
-                  `Coupon redeemed past its limit. The code was already at its ` +
-                    `usage or per-customer cap when this payment was ` +
-                    `recognised, but the customer had already been charged the ` +
-                    `discounted total, so the discount stands and the ` +
-                    `redemption has been counted. Review the coupon if this ` +
-                    `repeats.`
-                ),
-                updatedAt: now,
-              })
-              .where(eq(orders.id, orderId));
-
-            console.error(
-              `[Orders] Coupon ${updated.couponId} was redeemed past its limit by order ${orderId} — payment recognised, redemption counted, order annotated.`
-            );
-          }
-
-          // Recorded on both paths, because both are a real redemption.
-          // `idx_coupon_usages_unique` covers (coupon, user, order), so a
-          // redelivered webhook cannot double-write this row.
-          await tx
-            .insert(couponUsages)
-            .values({
-              couponId: updated.couponId,
-              userId: updated.userId,
-              orderId,
-            })
-            .onConflictDoNothing();
-        }
-      }
-
-      return {
-        transitioned: true,
-        orderNumber: updated.orderNumber,
-        userId: updated.userId,
-        couponLimitExceeded,
-      };
-    });
   }
 
   /**
