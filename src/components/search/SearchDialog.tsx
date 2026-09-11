@@ -11,7 +11,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Search, Loader2 } from "lucide-react";
+import { Search } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { ProductImage } from "@/components/shared/ProductImage";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { formatCurrency } from "@/lib/currency";
@@ -84,7 +85,11 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             }}
           />
           {isLoading && (
-            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            <ValkyrieLoader
+              inline
+              size="xs"
+              className="h-4 w-4 text-gray-400"
+            />
           )}
         </div>
 

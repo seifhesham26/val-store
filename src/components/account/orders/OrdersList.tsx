@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Clock, Loader2, RotateCcw } from "lucide-react";
+import { ChevronRight, Clock, RotateCcw } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { usePaymentWindow } from "@/hooks/use-payment-window";
 import { AppRouter } from "@/server";
 import { inferRouterOutputs } from "@trpc/server";
@@ -200,7 +201,7 @@ export function OrdersList({
           className="flex items-center justify-center py-4"
         >
           {isFetchingNextPage ? (
-            <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+            <ValkyrieLoader size="md" label="Loading" />
           ) : (
             <span className="text-sm text-gray-500">Scroll for more...</span>
           )}

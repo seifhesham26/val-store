@@ -7,11 +7,11 @@ import {
   CheckCircle,
   Package,
   ArrowRight,
-  Loader2,
   AlertTriangle,
   Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { trpc } from "@/lib/trpc";
 import { useCartStore } from "@/lib/stores/cart-store";
 import {
@@ -99,8 +99,11 @@ function CheckoutSuccessContent() {
     return (
       <div className="container mx-auto px-4 py-16">
         <div className="mx-auto flex max-w-md flex-col items-center text-center">
-          <Loader2 className="mb-6 h-10 w-10 animate-spin text-val-accent" />
-          <h1 className="mb-2 text-2xl font-bold">Confirming your payment</h1>
+          <ValkyrieLoader
+            size="md"
+            label="Confirming your payment"
+            className="mb-6"
+          />
           <p className="text-muted-foreground">
             This only takes a moment. Please don&apos;t close this page.
           </p>
@@ -237,7 +240,7 @@ export default function CheckoutSuccessPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <ValkyrieLoader size="md" label="Loading" />
         </div>
       }
     >

@@ -7,7 +7,7 @@ import type { Gender } from "@/types/product";
 import type { ProductListPage } from "@/lib/cache";
 import { ProductCard } from "@/components/products/ProductCard";
 
-export const PREVIEW_LIMIT = 4;
+export const PREVIEW_LIMIT = 5;
 
 export function CollectionSection({
   title,
@@ -69,7 +69,7 @@ export function CollectionSection({
 
       {/* Products Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-6">
           {[...Array(PREVIEW_LIMIT)].map((_, i) => (
             <div key={i} className="space-y-3">
               <div className="aspect-3/4 bg-white/8 rounded-lg animate-pulse" />
@@ -79,7 +79,7 @@ export function CollectionSection({
           ))}
         </div>
       ) : products.length > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-6">
           {products.map((product, index) => (
             <ProductCard
               key={product.id}

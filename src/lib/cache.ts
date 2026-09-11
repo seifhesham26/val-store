@@ -15,6 +15,7 @@ import { unstable_cache } from "next/cache";
 import { container } from "@/application/container";
 import { createAnonymousCaller } from "@/server/caller";
 import { isReservedCollectionSlug } from "@/domain/categories/reserved-slugs";
+import { collectCategoryTree } from "@/domain/categories/category-tree";
 import { parseSectionContent } from "@/lib/cms-content-parser";
 import { parseLegalDocument } from "@/lib/legal-frontmatter";
 import type { LegalSlug } from "@/domain/legal/legal-slugs";
@@ -662,6 +663,42 @@ export const getCachedNavCategories = unstable_cache(
 /** One nav entry: what the three link lists consume. */
 export type NavCategory = Awaited<
   ReturnType<typeof getCachedNavCategories>
+>[number];
+
+/**
+ * Top-level categories for the collection toolbar, each carrying its whole
+ * subtree.
+ *
+ * The subtree is the point. Every product is filed against a *leaf* category
+ * while the navigation links to parents, so `eq(products.categoryId, parentId)`
+ * matched nothing — that is what rendered "No products found" on
+ * `/collections/women` for a store with thirteen women's products.
+ *
+ * Separate from `getCachedNavCategories`, which deliberately returns only what
+ * a link list needs.
+ */
+export const getCachedToolbarCategories = unstable_cache(
+  async () => {
+    const caller = createAnonymousCaller();
+    const categories = await caller.public.categories.list();
+
+    return categories
+      .filter((category) => category.parentId === null)
+      .filter((category) => !isReservedCollectionSlug(category.slug))
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map((category) => ({
+        slug: category.slug,
+        name: category.name,
+        categoryIds: collectCategoryTree(categories, category.id),
+      }));
+  },
+  ["toolbar-categories"],
+  { revalidate: CATALOGUE_REVALIDATE, tags: [CACHE_TAGS.CATEGORIES] }
+);
+
+/** One toolbar chip. Matches `ToolbarCategory` in `CollectionToolbar`. */
+export type ToolbarCategoryData = Awaited<
+  ReturnType<typeof getCachedToolbarCategories>
 >[number];
 
 /**

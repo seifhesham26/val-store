@@ -4,9 +4,10 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mail, RefreshCw, Loader2 } from "lucide-react";
+import { Mail, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { toast } from "sonner";
 
 function CheckEmailContent() {
@@ -85,7 +86,7 @@ function CheckEmailContent() {
             >
               {isResending ? (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  <ValkyrieLoader inline size="xs" className="mr-2 h-4 w-4" />
                   Sending...
                 </>
               ) : resendCooldown > 0 ? (
@@ -117,7 +118,7 @@ export default function CheckEmailPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <ValkyrieLoader size="md" label="Loading" />
         </div>
       }
     >

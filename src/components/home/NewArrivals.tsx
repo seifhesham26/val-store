@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import type { ProductListPage } from "@/lib/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+import { useReveal } from "@/hooks/use-reveal";
 
 export const NEW_ARRIVALS_LIMIT = 8;
 
@@ -32,6 +33,7 @@ export function NewArrivals({
   initialPage,
 }: NewArrivalsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const revealRef = useReveal<HTMLDivElement>();
 
   const { data: products, isLoading } = trpc.public.products.list.useQuery(
     // The same window `/collections/new` uses, so "View all" cannot show a
@@ -55,10 +57,13 @@ export function NewArrivals({
   };
 
   return (
-    <section className="py-16 md:py-24 bg-black">
+    <section ref={revealRef} className="py-16 md:py-24 bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="flex items-end justify-between mb-10">
+        <div
+          className="val-reveal flex items-end justify-between mb-10"
+          data-reveal
+        >
           <div>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">
               {title}
@@ -105,7 +110,8 @@ export function NewArrivals({
             : items.map((product, index) => (
                 <div
                   key={product.id}
-                  className="shrink-0 w-64 md:w-72 snap-start"
+                  className="val-reveal shrink-0 w-64 md:w-72 snap-start"
+                  data-reveal
                 >
                   <ProductCard
                     id={product.id}
@@ -128,7 +134,7 @@ export function NewArrivals({
         </div>
 
         {/* View All Button */}
-        <div className="text-center mt-10">
+        <div className="val-reveal text-center mt-10" data-reveal>
           <Link href="/collections/new">
             <Button
               size="lg"

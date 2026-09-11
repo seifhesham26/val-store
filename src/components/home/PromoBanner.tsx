@@ -28,7 +28,10 @@ export function PromoBanner({
     <section className="bg-val-steel">
       <div className="max-w-7xl mx-auto grid md:grid-cols-2">
         {/* Image Side */}
-        <div className="relative aspect-square md:aspect-auto md:min-h-[400px]">
+        <div
+          className="val-reveal relative aspect-square md:aspect-auto md:min-h-[400px]"
+          data-reveal
+        >
           {backgroundImage ? (
             <Image
               src={backgroundImage}
@@ -52,7 +55,10 @@ export function PromoBanner({
         </div>
 
         {/* Content Side */}
-        <div className="flex flex-col justify-center p-8 md:p-12 lg:p-16">
+        <div
+          className="val-reveal flex flex-col justify-center p-8 md:p-12 lg:p-16"
+          data-reveal
+        >
           <span className="text-val-accent text-sm uppercase tracking-wider font-medium">
             {preHeadline}
           </span>

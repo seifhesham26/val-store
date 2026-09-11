@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { InfiniteProductGrid } from "@/components/products/InfiniteProductGrid";
-import { getCachedFirstProductPage } from "@/lib/cache";
+import {
+  getCachedFirstProductPage,
+  getCachedToolbarCategories,
+} from "@/lib/cache";
 import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+import { BANNER_CONTENT } from "@/components/collections/collection-banner-content";
 
 /**
  * New Arrivals — products added within `NEW_ARRIVAL_WINDOW_DAYS`.
@@ -26,9 +30,12 @@ export const metadata: Metadata = {
 };
 
 export default async function CollectionsNewPage() {
-  const initialPage = await getCachedFirstProductPage({
-    createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS,
-  });
+  const [initialPage, categories] = await Promise.all([
+    getCachedFirstProductPage({
+      createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS,
+    }),
+    getCachedToolbarCategories(),
+  ]);
 
   return (
     <InfiniteProductGrid
@@ -36,6 +43,9 @@ export default async function CollectionsNewPage() {
       title={TITLE}
       description={DESCRIPTION}
       initialPage={initialPage}
+      bannerEyebrow={BANNER_CONTENT.new.eyebrow}
+      bannerImage={BANNER_CONTENT.new.image}
+      categories={categories}
     />
   );
 }

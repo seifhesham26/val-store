@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { ProductImage } from "@/components/shared/ProductImage";
 import { getCachedFeaturedCategories } from "@/lib/cache";
+import { RevealRegion } from "@/components/motion/RevealRegion";
 
 interface ServerFeaturedCategoriesProps {
   title?: string;
@@ -28,7 +29,8 @@ function CategoryCard({
   return (
     <Link
       href={`/collections/${slug}`}
-      className="group relative block overflow-hidden"
+      className="val-reveal group relative block overflow-hidden"
+      data-reveal
     >
       {/* Image container with aspect ratio */}
       <div className="relative aspect-3/4 bg-val-steel overflow-hidden">
@@ -95,28 +97,30 @@ export async function ServerFeaturedCategories({
 
   return (
     <section className="py-16 md:py-24 bg-black">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-            {title}
-          </h2>
-          <p className="text-gray-400">{subtitle}</p>
-        </div>
+      <RevealRegion>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Section Header */}
+          <div className="val-reveal text-center mb-12" data-reveal>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
+              {title}
+            </h2>
+            <p className="text-gray-400">{subtitle}</p>
+          </div>
 
-        {/* Categories Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-          {featuredCategories.map((category) => (
-            <CategoryCard
-              key={category.id}
-              name={category.name}
-              slug={category.slug}
-              imageUrl={category.imageUrl}
-              productCount={category.productCount}
-            />
-          ))}
+          {/* Categories Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+            {featuredCategories.map((category) => (
+              <CategoryCard
+                key={category.id}
+                name={category.name}
+                slug={category.slug}
+                imageUrl={category.imageUrl}
+                productCount={category.productCount}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      </RevealRegion>
     </section>
   );
 }

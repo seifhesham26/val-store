@@ -39,7 +39,10 @@ export function BrandStory({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid md:grid-cols-2 gap-8 md:gap-16 items-center">
           {/* Image Side */}
-          <div className="relative aspect-4/5 overflow-hidden">
+          <div
+            className="val-reveal relative aspect-4/5 overflow-hidden"
+            data-reveal
+          >
             {backgroundImage ? (
               <Image
                 src={backgroundImage}
@@ -68,7 +71,7 @@ export function BrandStory({
           </div>
 
           {/* Content Side */}
-          <div className="py-8 md:py-0">
+          <div className="val-reveal py-8 md:py-0" data-reveal>
             <span className="text-val-accent uppercase tracking-widest text-sm font-medium">
               {preHeadline}
             </span>

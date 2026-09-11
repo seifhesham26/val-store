@@ -5,7 +5,7 @@ import {
   productVariants,
   genderEnum,
 } from "@/db/schema";
-import { eq, and, gte, lte, ne, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, ne, asc, desc, sql, inArray } from "drizzle-orm";
 import {
   ProductRepositoryInterface,
   ProductFilters,
@@ -17,6 +17,34 @@ import {
   containsPattern,
   LIKE_ESCAPE_CHAR,
 } from "@/domain/shared/like-pattern";
+import type { ProductSort } from "@/lib/collection-sort";
+
+/**
+ * `ORDER BY` for a sort option.
+ *
+ * Two things are load-bearing. Every branch ends with `desc(products.id)`,
+ * because a non-total order duplicates and skips rows across pages. And price
+ * sorts on `COALESCE(sale_price, base_price)` rather than `base_price`, or a
+ * discounted item sorts by a price nobody pays.
+ *
+ * Both columns belong to the query's root table, so Drizzle's relational-query
+ * column rewriting is a no-op here.
+ */
+function orderForSort(sort: ProductSort | undefined) {
+  const effectivePrice = sql`coalesce(${products.salePrice}, ${products.basePrice})`;
+
+  switch (sort) {
+    case "price-asc":
+      return [asc(effectivePrice), desc(products.id)];
+    case "price-desc":
+      return [desc(effectivePrice), desc(products.id)];
+    case "name":
+      return [asc(products.name), desc(products.id)];
+    case "newest":
+    default:
+      return [desc(products.createdAt), desc(products.id)];
+  }
+}
 
 /**
  * Product Repository Implementation using Drizzle ORM
@@ -74,7 +102,7 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
         variants: true,
         images: true,
       },
-      orderBy: [desc(products.createdAt), desc(products.id)],
+      orderBy: orderForSort(filters?.sort),
       limit: filters?.limit,
       offset: filters?.offset,
     });

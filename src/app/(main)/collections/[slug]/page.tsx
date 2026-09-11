@@ -20,7 +20,9 @@ import {
   getCachedCategoryBySlug,
   getCachedCategorySlugs,
   getCachedFirstProductPage,
+  getCachedToolbarCategories,
 } from "@/lib/cache";
+import { FALLBACK_IMAGE } from "@/components/collections/collection-banner-content";
 
 interface CollectionPageProps {
   params: Promise<{ slug: string }>;
@@ -72,9 +74,12 @@ export default async function DynamicCollectionPage({
   // against leaf categories and the navigation links to their parents, so
   // matching a single id rendered "No products found" on every parent
   // collection — `/collections/women` among them.
-  const initialPage = await getCachedFirstProductPage({
-    categoryIds: category.categoryIds,
-  });
+  const [initialPage, categories] = await Promise.all([
+    getCachedFirstProductPage({
+      categoryIds: category.categoryIds,
+    }),
+    getCachedToolbarCategories(),
+  ]);
 
   return (
     <InfiniteProductGrid
@@ -82,6 +87,8 @@ export default async function DynamicCollectionPage({
       title={category.name}
       description={category.description ?? undefined}
       initialPage={initialPage}
+      bannerImage={FALLBACK_IMAGE}
+      categories={categories}
     />
   );
 }

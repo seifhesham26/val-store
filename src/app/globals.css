@@ -338,3 +338,36 @@
     @apply font-semibold text-white;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Valkyrie motion system
+ *
+ * Entrance choreography is granted by the conductor (`src/lib/motion/conductor.ts`)
+ * and played by GSAP, which sets inline styles. These classes only establish the
+ * pre-animation state so an element is not visible before its slot arrives, and
+ * the post-animation state for elements the conductor drains rather than plays.
+ *
+ * `.val-reveal` must never animate on its own. If it did, two elements could be
+ * in motion at once, which is the one thing the whole system exists to prevent.
+ * ------------------------------------------------------------------------- */
+
+@layer components {
+  .val-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    will-change: opacity, transform;
+  }
+
+  .val-reveal--shown {
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .val-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}

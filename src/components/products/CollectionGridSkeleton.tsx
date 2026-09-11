@@ -12,9 +12,15 @@
 
 import { ProductCardSkeletonGrid } from "@/components/products/ProductCardSkeleton";
 
-/** Grid geometry, shared with `InfiniteProductGrid` so columns never shift. */
+/**
+ * Grid geometry, shared with `InfiniteProductGrid` so columns never shift
+ * between the skeleton and the real grid.
+ *
+ * Five columns at `2xl`: the previous `max-w-7xl` / four-column ceiling left
+ * roughly 640px of dead margin on a 1920px viewport with no way to use it.
+ */
 export const GRID_CLASSES =
-  "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6";
+  "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-6";
 
 interface CollectionGridSkeletonProps {
   /**
@@ -31,12 +37,12 @@ interface CollectionGridSkeletonProps {
 export function CollectionGridSkeleton({
   title,
   description,
-  count = 8,
+  count = 10,
 }: CollectionGridSkeletonProps) {
   return (
     <div className="min-h-screen">
       <div className="py-12 md:py-16 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center text-center">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center text-center">
           {title ? (
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
               {title}
@@ -55,7 +61,7 @@ export function CollectionGridSkeleton({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         <div className={GRID_CLASSES}>
           <ProductCardSkeletonGrid count={count} />
         </div>

@@ -21,7 +21,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, Mail } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -113,7 +114,9 @@ export default function ForgotPasswordPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && (
+              <ValkyrieLoader inline size="xs" className="mr-2 h-4 w-4" />
+            )}
             Send reset link
           </Button>
 

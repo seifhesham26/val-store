@@ -9,6 +9,7 @@
 
 import { BrandStory } from "./BrandStory";
 import { getCachedBrandStorySection } from "@/lib/cache";
+import { RevealRegion } from "@/components/motion/RevealRegion";
 
 export async function ServerBrandStory() {
   try {
@@ -21,20 +22,22 @@ export async function ServerBrandStory() {
       const content = section.parsedContent;
 
       return (
-        <BrandStory
-          preHeadline={content.preHeadline}
-          headline={content.headline}
-          // Only override the component's own copy when the CMS actually has
-          // some. The schema drops blank entries, so an empty array means "no
-          // body copy was set" — passing it through would render a headline
-          // with nothing under it.
-          paragraphs={
-            content.paragraphs.length > 0 ? content.paragraphs : undefined
-          }
-          ctaText={content.ctaText}
-          ctaLink={content.ctaLink}
-          backgroundImage={content.backgroundImage}
-        />
+        <RevealRegion>
+          <BrandStory
+            preHeadline={content.preHeadline}
+            headline={content.headline}
+            // Only override the component's own copy when the CMS actually has
+            // some. The schema drops blank entries, so an empty array means "no
+            // body copy was set" — passing it through would render a headline
+            // with nothing under it.
+            paragraphs={
+              content.paragraphs.length > 0 ? content.paragraphs : undefined
+            }
+            ctaText={content.ctaText}
+            ctaLink={content.ctaLink}
+            backgroundImage={content.backgroundImage}
+          />
+        </RevealRegion>
       );
     }
   } catch (error) {
@@ -44,5 +47,9 @@ export async function ServerBrandStory() {
 
   // No row, inactive, or unreadable: the component's own defaults, which
   // include the brand gradient in place of art.
-  return <BrandStory />;
+  return (
+    <RevealRegion>
+      <BrandStory />
+    </RevealRegion>
+  );
 }

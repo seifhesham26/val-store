@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useReveal } from "@/hooks/use-reveal";
 
 interface NewsletterSectionProps {
   title?: string;
@@ -16,6 +17,7 @@ export function NewsletterSection({
 }: NewsletterSectionProps) {
   const [email, setEmail] = useState("");
   const subscribeMutation = trpc.public.newsletter.subscribe.useMutation();
+  const revealRef = useReveal<HTMLDivElement>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,11 +37,20 @@ export function NewsletterSection({
 
   return (
     <section className="bg-val-steel text-white py-16 md:py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
+      <div
+        ref={revealRef}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center"
+      >
+        <h2
+          className="val-reveal text-3xl md:text-4xl lg:text-5xl font-bold mb-4"
+          data-reveal
+        >
           {title}
         </h2>
-        <p className="text-lg text-gray-300 mb-8 max-w-xl mx-auto">
+        <p
+          className="val-reveal text-lg text-gray-300 mb-8 max-w-xl mx-auto"
+          data-reveal
+        >
           {subtitle}
         </p>
 
@@ -50,7 +61,8 @@ export function NewsletterSection({
         ) : (
           <form
             onSubmit={handleSubmit}
-            className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto"
+            className="val-reveal flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto"
+            data-reveal
           >
             <input
               type="email"

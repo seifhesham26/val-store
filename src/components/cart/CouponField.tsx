@@ -24,7 +24,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Tag, X } from "lucide-react";
+import { Tag, X } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,7 +122,7 @@ export function CouponField() {
           className="h-8 shrink-0 bg-transparent text-gray-400 hover:bg-white/10 hover:text-white"
         >
           {removeCoupon.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <ValkyrieLoader inline size="xs" className="h-4 w-4" />
           ) : (
             <X className="h-4 w-4" />
           )}
@@ -157,7 +158,7 @@ export function CouponField() {
           className="h-9 shrink-0 bg-val-accent font-medium text-black hover:bg-val-accent/90"
         >
           {applyCoupon.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <ValkyrieLoader inline size="xs" className="h-4 w-4" />
           ) : (
             "Apply"
           )}

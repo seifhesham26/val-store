@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   CAROUSEL_INTERVAL_MS,
+  CAROUSEL_PANELS,
+  CAROUSEL_SLIDE_MS,
   STAGGER_CYCLE,
   STAGGER_STEP_MS,
+  nextCarouselStep,
   shouldAnimateCard,
   staggerDelayMs,
+  trackOffsetPercent,
 } from "./card-carousel";
 
 describe("shouldAnimateCard", () => {
@@ -79,5 +83,44 @@ describe("staggerDelayMs", () => {
     expect(staggerDelayMs(-1)).toBe(0);
     expect(staggerDelayMs(Number.NaN)).toBe(0);
     expect(staggerDelayMs(1.7)).toBe(STAGGER_STEP_MS);
+  });
+});
+
+describe("sliding track", () => {
+  it("advances forward from the resting panel", () => {
+    expect(nextCarouselStep(0)).toEqual({ panel: 1, wrapAfter: false });
+  });
+
+  it("marks the move onto the duplicated panel for a snap back", () => {
+    expect(nextCarouselStep(1)).toEqual({ panel: 2, wrapAfter: true });
+  });
+
+  it("treats the transient and any out-of-range panel as the resting one", () => {
+    // Panel 2 is only held for the length of one slide, so a tick should never
+    // start there — but if it does, loop sanely rather than stall.
+    for (const panel of [2, -1, 99, Number.NaN]) {
+      expect(nextCarouselStep(panel)).toEqual({ panel: 1, wrapAfter: false });
+    }
+  });
+
+  it("offsets the track by exactly one panel width per step", () => {
+    expect(trackOffsetPercent(0)).toBe(0);
+    expect(trackOffsetPercent(1)).toBeCloseTo(-100 / CAROUSEL_PANELS, 5);
+    expect(trackOffsetPercent(2)).toBeCloseTo(-200 / CAROUSEL_PANELS, 5);
+  });
+
+  it("never offsets past the last panel", () => {
+    expect(trackOffsetPercent(99)).toBeCloseTo(-200 / CAROUSEL_PANELS, 5);
+    expect(trackOffsetPercent(-5)).toBe(0);
+  });
+
+  it("finishes each slide well inside the hold, so motion never overlaps itself", () => {
+    expect(CAROUSEL_SLIDE_MS).toBeLessThan(CAROUSEL_INTERVAL_MS);
+  });
+
+  it("keeps the stagger cycle inside one interval", () => {
+    // Same invariant the crossfade had: a card's first move must not land
+    // after its second.
+    expect(STAGGER_CYCLE * STAGGER_STEP_MS).toBeLessThan(CAROUSEL_INTERVAL_MS);
   });
 });

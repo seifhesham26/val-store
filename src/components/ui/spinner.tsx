@@ -1,16 +1,17 @@
-import { Loader2Icon } from "lucide-react"
+import { cn } from "@/lib/utils";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 
-import { cn } from "@/lib/utils"
-
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+/**
+ * The shared inline spinner.
+ *
+ * Renders the branded mark rather than lucide's `Loader2`. The props signature
+ * is unchanged so existing call sites keep working, including the ones that
+ * pass `className` to resize it.
+ */
+function Spinner({ className }: { className?: string }) {
   return (
-    <Loader2Icon
-      role="status"
-      aria-label="Loading"
-      className={cn("size-4 animate-spin", className)}
-      {...props}
-    />
-  )
+    <ValkyrieLoader inline size="xs" className={cn("size-4", className)} />
+  );
 }
 
-export { Spinner }
+export { Spinner };
