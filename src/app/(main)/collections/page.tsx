@@ -48,6 +48,10 @@ const TILE_IMAGES: Record<string, string> = {
   "/collections/men": "/brand/tile-men.jpg",
   "/collections/women": "/brand/tile-women.jpg",
   "/collections/sale": "/brand/tile-sale.jpg",
+  // Listed before the art exists: `resolveImage` falls back to the hero until
+  // the file lands, which is the whole point of that helper — every other tile
+  // was wired the same way and needed no code change when its shot arrived.
+  "/collections/all": "/brand/tile-all.jpg",
 };
 
 interface CollectionRow {
@@ -148,7 +152,7 @@ export default async function CollectionsPage() {
   tiles.push({
     title: "All Products",
     href: "/collections/all",
-    image: resolveImage(FALLBACK_IMAGE),
+    image: resolveImage(TILE_IMAGES["/collections/all"] ?? FALLBACK_IMAGE),
   });
 
   return (

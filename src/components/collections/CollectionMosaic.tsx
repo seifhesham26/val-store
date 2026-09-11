@@ -62,13 +62,28 @@ export function CollectionMosaic({ tiles }: { tiles: MosaicTile[] }) {
           href={tile.href}
           className={cn(
             "val-reveal group relative overflow-hidden rounded-xl border border-white/10 transition-colors duration-300 hover:border-white/25",
+            // Aspect ratios, not fixed heights. `min-h` is a floor that does
+            // not move when the column does, so on a wide screen every extra
+            // pixel of viewport width went into cropping the tile rather than
+            // into showing it: a 4:5 portrait at 2xl was a 3:1 letterbox
+            // through the model's chest. A ratio scales the box with the
+            // column, and `max-w-[1600px]` above stops it growing past that,
+            // so the crop is identical on a 1440 and on a 4K display.
+            //
+            // At `lg` the non-featured tiles set the row height, so the
+            // featured tile spanning 2 columns x 2 rows lands on the same
+            // ratio they do — which is why it can be `aspect-auto` there.
             tile.featured
-              ? "sm:col-span-2 lg:row-span-2 min-h-[280px] lg:min-h-[520px]"
-              : "min-h-[200px] lg:min-h-[254px]",
+              ? "aspect-[5/4] sm:col-span-2 sm:aspect-video lg:row-span-2 lg:aspect-auto lg:min-h-[420px]"
+              : "aspect-[5/4] sm:aspect-[4/5] lg:aspect-square",
+            // The widened tile is two columns across but still one row tall,
+            // so it cannot keep the square: `aspect-auto` hands its height
+            // back to the row. `cn` is tailwind-merge, so this beats the
+            // `lg:aspect-square` above rather than fighting it.
             lastFillsRow &&
               !tile.featured &&
               index === tiles.length - 1 &&
-              "lg:col-span-2"
+              "lg:col-span-2 lg:aspect-auto"
           )}
           data-reveal
         >
@@ -76,12 +91,20 @@ export function CollectionMosaic({ tiles }: { tiles: MosaicTile[] }) {
             src={tile.image}
             alt=""
             fill
+            // The featured tile is the LCP element on `/collections` — it is
+            // the largest thing above the fold and it got larger when these
+            // boxes stopped being fixed-height. Next's dev overlay flags it by
+            // name; the rest of the mosaic stays lazy.
+            priority={tile.featured}
             sizes={
               tile.featured
                 ? "(min-width: 1024px) 50vw, 100vw"
                 : "(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
             }
-            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+            // The sources are 4:5 portraits; only the `sm` box matches them,
+            // so everywhere else this crops vertically. Biased upward —
+            // centred, the wide boxes decapitated every model.
+            className="object-cover object-[50%_30%] transition-transform duration-500 ease-out group-hover:scale-[1.04]"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
 

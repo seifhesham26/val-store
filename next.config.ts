@@ -15,6 +15,13 @@ const nextConfig: NextConfig = {
     // AVIF first; it is materially smaller than WebP for photographic product
     // shots, which is nearly everything on this site.
     formats: ["image/avif", "image/webp"],
+    // 75 is the default and what everything but the hero uses. 90 exists for
+    // the hero alone: it is a large, dark, smooth-gradient photograph rendered
+    // full-bleed, which is the worst case for AVIF banding, and it is the LCP
+    // element so its artefacts are the first thing a visitor sees. Next 16
+    // requires the allowlist — an unlisted `quality` is coerced to the nearest
+    // listed one rather than honoured, silently.
+    qualities: [75, 90],
     // A product image is immutable once uploaded — the URL changes when the
     // image does — so there is no reason to re-optimise it every 60 seconds.
     minimumCacheTTL: 60 * 60 * 24 * 30,
