@@ -8,7 +8,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, ArrowRight, Loader2, AlertTriangle } from "lucide-react";
+import { ShoppingBag, ArrowRight, AlertTriangle } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { formatCurrency } from "@/lib/currency";
 
 interface CartSummaryProps {
@@ -91,7 +92,7 @@ export function CartSummary({
           {onCheckout ? (
             <>
               {isLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <ValkyrieLoader inline size="xs" className="mr-2 h-4 w-4" />
               ) : (
                 <ShoppingBag className="mr-2 h-4 w-4" />
               )}

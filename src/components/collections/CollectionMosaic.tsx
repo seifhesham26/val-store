@@ -27,20 +27,36 @@ export interface MosaicTile {
 }
 
 /**
- * Four columns, two rows — eight cells. The featured tile occupies four of
- * them, leaving exactly four for the remaining collections (Men, Women, Sale,
- * All Products). A three-column grid leaves only two cells free and silently
- * pushes the fourth tile onto a third row.
+ * Two rows, with the featured tile spanning two columns and both rows.
+ *
+ * The column count has to follow the tile count, because the tile count is
+ * data: a category an admin has not created resolves to null and its tile
+ * simply does not exist. The featured tile eats four cells, so a three-column
+ * grid (six cells) holds exactly three tiles and a four-column grid (eight)
+ * holds exactly five.
+ *
+ * Hard-coding four columns left two cells empty whenever a category was
+ * missing — a black quadrant roughly a quarter of the viewport wide, which is
+ * the same dead space this mosaic replaced. At exactly four tiles one cell
+ * would still be spare, so the last tile widens to close the row.
  */
 export function CollectionMosaic({ tiles }: { tiles: MosaicTile[] }) {
   const revealRef = useReveal<HTMLDivElement>();
 
+  // Literal class strings, not interpolation — Tailwind scans source text and
+  // cannot see a class name assembled at runtime.
+  const columns = tiles.length <= 3 ? "lg:grid-cols-3" : "lg:grid-cols-4";
+  const lastFillsRow = tiles.length === 4;
+
   return (
     <div
       ref={revealRef}
-      className="mx-auto grid max-w-[1600px] gap-4 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:grid-rows-2 lg:px-8"
+      className={cn(
+        "mx-auto grid max-w-[1600px] gap-4 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-rows-2 lg:px-8",
+        columns
+      )}
     >
-      {tiles.map((tile) => (
+      {tiles.map((tile, index) => (
         <Link
           key={tile.href}
           href={tile.href}
@@ -48,7 +64,11 @@ export function CollectionMosaic({ tiles }: { tiles: MosaicTile[] }) {
             "val-reveal group relative overflow-hidden rounded-xl border border-white/10 transition-colors duration-300 hover:border-white/25",
             tile.featured
               ? "sm:col-span-2 lg:row-span-2 min-h-[280px] lg:min-h-[520px]"
-              : "min-h-[200px] lg:min-h-[254px]"
+              : "min-h-[200px] lg:min-h-[254px]",
+            lastFillsRow &&
+              !tile.featured &&
+              index === tiles.length - 1 &&
+              "lg:col-span-2"
           )}
           data-reveal
         >

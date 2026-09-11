@@ -15,8 +15,8 @@ import {
   ArrowRight,
   ShoppingCart,
   AlertTriangle,
-  Loader2,
 } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import {
   Sheet,
   SheetContent,
@@ -160,7 +160,11 @@ export function CartDrawer() {
                     disabled={isLeaving}
                   >
                     {isLeaving ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <ValkyrieLoader
+                        inline
+                        size="xs"
+                        className="mr-2 h-4 w-4"
+                      />
                     ) : (
                       <ShoppingBag className="mr-2 h-4 w-4" />
                     )}

@@ -4,8 +4,9 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 import Link from "next/link";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -58,7 +59,7 @@ function VerifyEmailContent() {
           <CardTitle className="flex items-center justify-center gap-2">
             {status === "loading" && (
               <>
-                <Loader2 className="h-6 w-6 animate-spin" />
+                <ValkyrieLoader inline size="xs" className="h-6 w-6" />
                 Verifying your email...
               </>
             )}
@@ -111,7 +112,7 @@ export default function VerifyEmailPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <ValkyrieLoader size="md" label="Loading" />
         </div>
       }
     >

@@ -22,7 +22,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { toast } from "sonner";
 import { PasswordValueObject } from "@/domain/customers/value-objects/password.value-object";
 import { PasswordStrengthMeter } from "@/components/auth/PasswordStrengthMeter";
@@ -142,7 +143,9 @@ function ResetPasswordForm() {
           </div>
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && (
+              <ValkyrieLoader inline size="xs" className="mr-2 h-4 w-4" />
+            )}
             Update password
           </Button>
 

@@ -13,7 +13,8 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle, Check, Loader2, ShoppingBag } from "lucide-react";
+import { AlertTriangle, Check, ShoppingBag } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -211,7 +212,11 @@ export function CartStockDialog() {
                             onClick={() => handleKeepAvailable(line)}
                           >
                             {lineBusy ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <ValkyrieLoader
+                                inline
+                                size="xs"
+                                className="h-3.5 w-3.5"
+                              />
                             ) : (
                               <>Keep {line.available}</>
                             )}
@@ -282,7 +287,7 @@ export function CartStockDialog() {
             onClick={handleFixAll}
           >
             {isFixingAll ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <ValkyrieLoader inline size="xs" className="mr-2 h-4 w-4" />
             ) : (
               <Check className="mr-2 h-4 w-4" />
             )}

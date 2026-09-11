@@ -7,14 +7,14 @@
 
 import { Suspense } from "react";
 import { SearchContent } from "@/components/search/SearchContent";
-import { Loader2 } from "lucide-react";
+import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 
 export default function SearchPage() {
   return (
     <Suspense
       fallback={
         <div className="min-h-[60vh] flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <ValkyrieLoader size="md" label="Loading" />
         </div>
       }
     >

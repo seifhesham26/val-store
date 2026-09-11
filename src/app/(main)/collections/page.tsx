@@ -134,7 +134,11 @@ export default async function CollectionsPage() {
     title: collection.title,
     href: collection.href,
     image: resolveImage(TILE_IMAGES[collection.href] ?? FALLBACK_IMAGE),
-    count: initialPage?.total ?? 0,
+    // No `?? 0`. The seeded read is tolerated-on-failure above, so an absent
+    // page means "unknown", not "none" — and `?? 0` printed a confident
+    // "0 PRODUCTS" under New Arrivals on a collection whose own preview row,
+    // fetched client-side, was showing five.
+    count: initialPage?.total,
     featured: i === 0,
   }));
 
