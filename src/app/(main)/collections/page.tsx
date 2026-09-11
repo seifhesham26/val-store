@@ -44,7 +44,7 @@ import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
 
 /** Artwork per collection row. Falls back until the campaign shots land. */
 const TILE_IMAGES: Record<string, string> = {
-  "/collections/new": "/brand/tile-new.jpg",
+  "/collections/new": "/brand/tile-new.png",
   "/collections/men": "/brand/tile-men.jpg",
   "/collections/women": "/brand/tile-women.jpg",
   "/collections/sale": "/brand/tile-sale.jpg",
