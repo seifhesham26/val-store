@@ -9,12 +9,14 @@ import {
   User,
   LogIn,
   LogOut,
+  ChevronRight,
   Instagram,
   Facebook,
   Twitter,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { useCartStore } from "@/lib/stores/cart-store";
+import { cn } from "@/lib/utils";
 
 interface NavLink {
   label: string;
@@ -54,6 +56,65 @@ const collectionsLinks = [
   { label: "Sale", href: "/collections/sale" },
   { label: "Browse All Collections", href: "/collections" },
 ];
+
+/**
+ * A group heading. Deliberately not a link, and deliberately nothing like one.
+ *
+ * This is the storefront's eyebrow style — the same one `CollectionBanner`
+ * uses — because that is what it is.
+ */
+function MenuLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-0.5 pb-1 pt-5 text-[11px] font-medium uppercase tracking-[0.28em] text-gray-500">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * Anything that navigates: a full-width row with a chevron and a pressed
+ * state, so a tap target looks like a tap target.
+ *
+ * `emphasis` only changes weight and colour. It does not change whether the
+ * row is a link — every row is.
+ */
+function MenuRow({
+  href,
+  onClick,
+  emphasis = "sub",
+  children,
+}: {
+  href: string;
+  onClick: () => void;
+  emphasis?: "sub" | "primary" | "sale";
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn(
+        "group -mx-2 flex items-center justify-between rounded-lg px-2 py-3 transition-colors active:bg-white/10",
+        emphasis === "sale"
+          ? "text-red-400 hover:text-red-300"
+          : emphasis === "primary"
+            ? "text-white hover:text-val-accent"
+            : "text-gray-300 hover:text-white"
+      )}
+    >
+      <span
+        className={
+          emphasis === "sub"
+            ? "text-base"
+            : "text-lg font-medium uppercase tracking-wider"
+        }
+      >
+        {children}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-gray-600 transition-transform group-hover:translate-x-0.5 group-hover:text-current" />
+    </Link>
+  );
+}
 
 const socialLinks = [
   {
@@ -101,10 +162,23 @@ export function MobileMenu({
         onClick={onClose}
       />
 
-      {/* Menu panel */}
-      <div className="absolute inset-y-0 right-0 w-full max-w-sm bg-black border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
+      {/*
+       * Menu panel.
+       *
+       * `h-[100dvh]` rather than `inset-y-0`: a fixed element is laid out
+       * against the *layout* viewport, which on a phone is the tall one with
+       * the URL bar retracted — so the last section of the panel sat behind the
+       * browser's own chrome and read as content hidden under the block above
+       * it. The dynamic unit tracks the visible viewport instead.
+       *
+       * Every section below is `shrink-0` for the other half of the same bug.
+       * Flex children shrink by default, and these have fixed-height contents
+       * that cannot shrink with them, so on a short viewport they overlapped
+       * instead of yielding. The scrollable nav is the only thing that gives.
+       */}
+      <div className="absolute top-0 right-0 flex h-[100dvh] w-full max-w-sm flex-col border-l border-white/10 bg-black animate-in slide-in-from-right duration-300">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <div className="flex shrink-0 items-center justify-between p-4 border-b border-white/10">
           <Image
             src="/logo/VAL-LOGO.png"
             alt="Valkyrie"
@@ -121,73 +195,57 @@ export function MobileMenu({
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
-          <div className="space-y-1 px-4">
-            {/* Shop with subcategories */}
-            <div className="py-3">
-              <Link
-                href="/collections/all"
-                className="text-lg font-medium text-white hover:text-val-accent transition-colors uppercase tracking-wider"
-                onClick={onClose}
-              >
-                Shop
-              </Link>
-              <div className="mt-2 ml-4 space-y-2">
-                {shopCategories.map((category) => (
-                  <Link
-                    key={category.label}
-                    href={category.href}
-                    className="block text-sm text-gray-400 hover:text-val-accent transition-colors"
-                    onClick={onClose}
-                  >
-                    {category.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            {/* New */}
-            <Link
-              href="/collections/new"
-              className="block py-3 text-lg font-medium text-white hover:text-val-accent transition-colors uppercase tracking-wider"
+        {/*
+         * Navigation.
+         *
+         * Two kinds of thing, two visual languages. Before this, a group
+         * heading and a destination were both `text-lg font-medium uppercase
+         * tracking-wider`, so "Shop" (a link), "Collections" (a plain `span`,
+         * not clickable at all) and "New" (a link) were indistinguishable —
+         * and all three read as headings rather than as anything tappable.
+         *
+         * "Shop" and "Collections" are now headings and nothing else. That
+         * costs no destination: "All Products" sits directly under the first
+         * and "Browse All Collections" under the second, which is where those
+         * two links already went.
+         */}
+        <nav className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+          <MenuLabel>Shop</MenuLabel>
+          {shopCategories.map((category) => (
+            <MenuRow
+              key={category.label}
+              href={category.href}
               onClick={onClose}
             >
-              New
-            </Link>
+              {category.label}
+            </MenuRow>
+          ))}
 
-            {/* Collections with subcategories */}
-            <div className="py-3">
-              <span className="text-lg font-medium text-white uppercase tracking-wider">
-                Collections
-              </span>
-              <div className="mt-2 ml-4 space-y-2">
-                {collectionsLinks.map((collection) => (
-                  <Link
-                    key={collection.label}
-                    href={collection.href}
-                    className="block text-sm text-gray-400 hover:text-val-accent transition-colors"
-                    onClick={onClose}
-                  >
-                    {collection.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
+          <div className="mt-4 h-px bg-white/10" />
+          <MenuRow href="/collections/new" onClick={onClose} emphasis="primary">
+            New
+          </MenuRow>
+          <div className="h-px bg-white/10" />
 
-            {/* Sale */}
-            <Link
-              href="/collections/sale"
-              className="block py-3 text-lg font-medium text-red-400 hover:text-red-300 transition-colors uppercase tracking-wider"
+          <MenuLabel>Collections</MenuLabel>
+          {collectionsLinks.map((collection) => (
+            <MenuRow
+              key={collection.label}
+              href={collection.href}
               onClick={onClose}
             >
-              Sale
-            </Link>
-          </div>
+              {collection.label}
+            </MenuRow>
+          ))}
+
+          <div className="mt-4 h-px bg-white/10" />
+          <MenuRow href="/collections/sale" onClick={onClose} emphasis="sale">
+            Sale
+          </MenuRow>
         </nav>
 
         {/* User actions */}
-        <div className="border-t border-white/10 p-4 space-y-4">
+        <div className="shrink-0 border-t border-white/10 p-4 space-y-4">
           <Link
             href="/search"
             className="flex items-center gap-3 text-gray-400 hover:text-white transition-colors"
@@ -241,8 +299,13 @@ export function MobileMenu({
         </div>
 
         {/* Social links */}
-        <div className="border-t border-white/10 p-4">
-          <div className="flex items-center gap-6">
+        {/*
+         * The safe-area padding is why this is the section that was getting
+         * lost: it is the last thing in the panel, so it is the one that ends
+         * up under the home indicator on a notched phone.
+         */}
+        <div className="shrink-0 border-t border-white/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="flex items-center justify-center gap-8">
             {socialLinks.map((social) => (
               <a
                 key={social.label}
