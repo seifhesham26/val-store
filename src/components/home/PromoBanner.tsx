@@ -28,17 +28,26 @@ export function PromoBanner({
     <section className="bg-val-steel">
       <div className="max-w-7xl mx-auto grid md:grid-cols-2">
         {/* Image Side */}
-        <div
-          className="val-reveal relative aspect-square md:aspect-auto md:min-h-[400px]"
-          data-reveal
-        >
+        {/*
+         * Square at every width, because the art is square (1:1 is what
+         * `docs/IMAGE-PROMPTS.md` asks for here). `md:aspect-auto
+         * md:min-h-[400px]` made this panel 640x400 inside the `max-w-7xl`
+         * container — a 1.6:1 window onto a 1:1 photograph, which threw away
+         * the top and bottom thirds and left a band across the model's
+         * midsection. Keeping the ratio means the panel never crops, and it
+         * grows with the container instead of flattening as the screen widens.
+         */}
+        <div className="val-reveal relative aspect-square" data-reveal>
           {backgroundImage ? (
             <Image
               src={backgroundImage}
               alt=""
               fill
               sizes="(min-width: 768px) 50vw, 100vw"
-              className="object-cover"
+              // `object-top` only bites if the copy column ever grows taller
+              // than the square and stretches this one with it — in which case
+              // the hood survives and the hem is what goes.
+              className="object-cover object-top"
               unoptimized={unoptimizedFor(backgroundImage)}
             />
           ) : (

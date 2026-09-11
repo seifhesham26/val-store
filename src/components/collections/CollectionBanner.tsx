@@ -45,12 +45,24 @@ export function CollectionBanner({
           fill
           priority
           sizes="100vw"
-          className="object-cover opacity-25"
+          // The banner art is portrait-subject photography in a landscape
+          // frame; on a phone the frame is wider than it is tall, so the crop
+          // is vertical. Biased upward to keep faces rather than midriffs.
+          className="object-cover object-[50%_30%]"
         />
-        <div className="absolute inset-0 bg-black/70" />
+        {/*
+         * One scrim, not two. This was `opacity-25` on the image *and* a
+         * `bg-black/70` over it: 0.25 x 0.30 = 7.5% of an already low-key
+         * photograph, which renders as a plain black rectangle on every phone
+         * — the exact dead space this banner was built to remove. A single
+         * gradient does the legibility job and leaves the picture a picture.
+         * Denser at top and bottom because the eyebrow and the meta row are
+         * the smallest, lowest-contrast text on the banner.
+         */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/60 to-black/85" />
       </div>
 
-      <div className="relative grid min-h-[clamp(340px,40vh,460px)] lg:grid-cols-[1fr_0.8fr]">
+      <div className="relative grid min-h-[clamp(340px,40vh,560px)] lg:grid-cols-[1fr_0.8fr]">
         <div className="flex flex-col justify-center gap-5 px-4 py-14 sm:px-6 lg:px-8 xl:pl-[max(2rem,calc((100vw-1600px)/2+2rem))]">
           {eyebrow ? (
             <div className="val-reveal flex items-center gap-4" data-reveal>

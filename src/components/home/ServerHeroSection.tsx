@@ -95,6 +95,13 @@ export async function ServerHeroSection() {
           sizes="100vw"
           priority
           fetchPriority="high"
+          // Above the default 75. Next never upscales past the source, so on a
+          // display wider than the source file the browser is already
+          // stretching these pixels — re-encoding them at 75 on top of that is
+          // what makes the hero look soft. This buys sharpness within the
+          // source's resolution; it cannot add resolution the file does not
+          // have. See `docs/IMAGE-PROMPTS.md` for the size the hero wants.
+          quality={90}
           className="object-cover"
           unoptimized={unoptimizedFor(heroImage)}
         />
