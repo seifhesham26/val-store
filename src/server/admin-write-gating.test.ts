@@ -37,6 +37,15 @@ const SELF_SCOPED_EXCEPTIONS = new Set([
   "notifications.ts::delete",
 ]);
 
+/**
+ * Mutations gated even stricter than the write tier — `adminSuperProcedure`
+ * (`super_admin` only), not `adminWriteProcedure`. A role change left on the
+ * write tier would let a plain admin promote themselves to `super_admin`,
+ * so this is the one case a mutation is *expected* to use a different
+ * procedure than the rest.
+ */
+const SUPER_ADMIN_EXCEPTIONS = new Set(["customers.ts::updateRole"]);
+
 interface Procedure {
   file: string;
   name: string;
@@ -83,10 +92,11 @@ describe("admin write gating", () => {
     expect(procedures.some((p) => !p.isMutation)).toBe(true);
   });
 
-  it("gates every mutation on adminWriteProcedure", () => {
+  it("gates every mutation on adminWriteProcedure or stricter", () => {
     const ungated = procedures
       .filter((p) => p.isMutation)
       .filter((p) => !SELF_SCOPED_EXCEPTIONS.has(`${p.file}::${p.name}`))
+      .filter((p) => !SUPER_ADMIN_EXCEPTIONS.has(`${p.file}::${p.name}`))
       .filter((p) => p.procedure !== "adminWriteProcedure")
       .map((p) => `${p.file} :: ${p.name} uses ${p.procedure}`);
 
@@ -109,6 +119,16 @@ describe("admin write gating", () => {
       expect(proc, `${key} no longer exists`).toBeDefined();
       expect(proc!.isMutation).toBe(true);
       expect(proc!.procedure).toBe("adminProcedure");
+    }
+  });
+
+  it("keeps role changes on the super-admin-only tier", () => {
+    for (const key of SUPER_ADMIN_EXCEPTIONS) {
+      const [file, name] = key.split("::");
+      const proc = procedures.find((p) => p.file === file && p.name === name);
+      expect(proc, `${key} no longer exists`).toBeDefined();
+      expect(proc!.isMutation).toBe(true);
+      expect(proc!.procedure).toBe("adminSuperProcedure");
     }
   });
 });

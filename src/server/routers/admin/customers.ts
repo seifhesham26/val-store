@@ -4,16 +4,29 @@
  * List registered users and their order history.
  */
 
-import { router, adminProcedure } from "@/server/trpc";
+import { router, adminProcedure, adminSuperProcedure } from "@/server/trpc";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { db } from "@/db";
-import { user, orders } from "@/db/schema";
+import { user, orders, userProfiles } from "@/db/schema";
 import { eq, desc, count, sql } from "drizzle-orm";
 import {
   containsPattern,
   LIKE_ESCAPE_CHAR,
 } from "@/domain/shared/like-pattern";
 import { SUM_NET_REVENUE } from "@/infrastructure/database/queries/revenue";
+import { DrizzleUserProfileRepository } from "@/infrastructure/database/repositories/customers/user-profile.repository";
+import { UserProfileEntity } from "@/domain/customers/entities/user-profile.entity";
+import type { UserRole } from "@/domain/customers/value-objects/user-role";
+
+const userProfileRepository = new DrizzleUserProfileRepository();
+
+const ASSIGNABLE_ROLES = [
+  "customer",
+  "worker",
+  "admin",
+  "super_admin",
+] as const;
 
 export const adminCustomersRouter = router({
   /**
@@ -55,10 +68,15 @@ export const adminCustomersRouter = router({
           // The shared definition, so a customer's lifetime value and the
           // dashboard cannot give different answers about the same money.
           totalSpent: sql<string>`${SUM_NET_REVENUE}`,
+          // A row with no user_profiles is a customer — the default the
+          // signup hook writes, so this only shows for rows created before
+          // that hook existed.
+          role: sql<UserRole>`coalesce(${userProfiles.role}, 'customer')`,
         })
         .from(user)
         .leftJoin(orders, eq(user.id, orders.userId))
-        .groupBy(user.id)
+        .leftJoin(userProfiles, eq(user.id, userProfiles.userId))
+        .groupBy(user.id, userProfiles.role)
         .orderBy(desc(user.createdAt))
         .limit(limit)
         .offset(offset);
@@ -101,12 +119,12 @@ export const adminCustomersRouter = router({
       const limit = input.orderLimit ?? 20;
       const offset = input.orderOffset ?? 0;
 
-      // Three independent reads, so they go down the connection together —
-      // ~1 round trip rather than 3. The orders and totals queries are keyed
-      // on the same id the customer lookup uses, so nothing here waits on
-      // anything else here; the "does this customer exist" check just moves
-      // below the fetch instead of gating it.
-      const [customer, customerOrders, [totals]] = await Promise.all([
+      // Four independent reads, so they go down the connection together —
+      // ~1 round trip rather than 4. The orders, totals and role queries are
+      // keyed on the same id the customer lookup uses, so nothing here waits
+      // on anything else here; the "does this customer exist" check just
+      // moves below the fetch instead of gating it.
+      const [customer, customerOrders, [totals], profile] = await Promise.all([
         db.query.user.findFirst({ where: eq(user.id, input.id) }),
         // Bounded. This used to load every order the customer had ever
         // placed, with every line item and every joined product row —
@@ -139,12 +157,17 @@ export const adminCustomersRouter = router({
           })
           .from(orders)
           .where(eq(orders.userId, input.id)),
+        db.query.userProfiles.findFirst({
+          where: eq(userProfiles.userId, input.id),
+          columns: { role: true },
+        }),
       ]);
 
       if (!customer) return null;
 
       return {
         ...customer,
+        role: profile?.role ?? "customer",
         orderCount: Number(totals?.orderCount ?? 0),
         totalSpent: totals?.totalSpent ? parseFloat(totals.totalSpent) : 0,
         orders: customerOrders,
@@ -160,4 +183,54 @@ export const adminCustomersRouter = router({
     const [{ total }] = await db.select({ total: count() }).from(user);
     return total;
   }),
+
+  /**
+   * Change a user's role. `super_admin` only — see `adminSuperProcedure`.
+   */
+  updateRole: adminSuperProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        role: z.enum(ASSIGNABLE_ROLES),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Changing your own role could lock you out of the admin area with no
+      // other super_admin around to undo it, so it is refused outright
+      // rather than merely discouraged.
+      if (input.userId === ctx.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You cannot change your own role",
+        });
+      }
+
+      // Every account gets a `user_profiles` row from the signup hook, but an
+      // older or hand-seeded row may not have one.
+      const existing = await userProfileRepository.findByUserId(input.userId);
+
+      if (existing) {
+        await userProfileRepository.update(
+          new UserProfileEntity(
+            existing.id,
+            existing.userId,
+            input.role,
+            existing.createdAt,
+            existing.updatedAt
+          )
+        );
+      } else {
+        await userProfileRepository.create(
+          new UserProfileEntity(
+            "", // generated by the database on insert
+            input.userId,
+            input.role,
+            new Date(),
+            new Date()
+          )
+        );
+      }
+
+      return { userId: input.userId, role: input.role };
+    }),
 });
