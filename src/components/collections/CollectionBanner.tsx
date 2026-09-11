@@ -45,10 +45,16 @@ export function CollectionBanner({
           fill
           priority
           sizes="100vw"
-          // The banner art is portrait-subject photography in a landscape
-          // frame; on a phone the frame is wider than it is tall, so the crop
-          // is vertical. Biased upward to keep faces rather than midriffs.
-          className="object-cover object-[50%_30%]"
+          // Anchored to the right edge, not centred. Below `lg` the frame is
+          // proportionally *narrower* than the 16:9 source, so the crop is
+          // horizontal — and every banner in the set is composed with its
+          // subject in the right third and the left two-thirds left empty for
+          // the desktop scrim (see `temp/prompts/README.md`). Centring the
+          // crop therefore cut into the only part of the photograph with
+          // anything in it. `100%` keeps the whole subject and throws away the
+          // empty left side. The `30%` still applies on a short, wide frame,
+          // where the crop turns vertical instead.
+          className="object-cover object-[100%_30%]"
         />
         {/*
          * One scrim, not two. This was `opacity-25` on the image *and* a
@@ -115,7 +121,14 @@ export function CollectionBanner({
             fill
             priority
             sizes="45vw"
-            className="object-cover object-center"
+            // Right-anchored for the same reason as the mobile layer above:
+            // this panel is narrower than the 16:9 source, so it crops
+            // horizontally, and `object-center` was cutting roughly the last
+            // 15% off the right — which is precisely where the subject is
+            // composed. It is also the end of the scrim's fade, so the subject
+            // now lands on the clearest part of the panel rather than under
+            // the darkest part of it.
+            className="object-cover object-[100%_30%]"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black via-black/55 to-transparent" />
         </div>

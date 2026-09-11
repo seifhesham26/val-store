@@ -131,7 +131,7 @@ async function seed() {
         content: JSON.stringify({
           title: "Something is coming",
           subtitle: "Premium streetwear, made for Egypt. Launching soon.",
-          backgroundImage: "/brand/hero.jpg",
+          backgroundImage: "/brand/hero.png",
           overlayOpacity: 40,
           ctaText: "See the first drop",
           ctaLink: "/collections/all",

@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const FALLBACK_IMAGE = "/brand/hero.jpg";
+const FALLBACK_IMAGE = "/brand/hero.png";
 
 /**
  * Resolve a banner image, falling back when the campaign shot has not landed.
