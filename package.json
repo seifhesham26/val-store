@@ -25,6 +25,7 @@
     "icons": "tsx scripts/generate-icons.ts"
   },
   "dependencies": {
+    "@better-auth/infra": "^0.4.9",
     "@gsap/react": "^2.1.2",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",

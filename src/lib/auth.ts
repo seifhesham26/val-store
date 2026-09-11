@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { dash } from "@better-auth/infra";
 import { db } from "@/db";
 import { container } from "@/application/container";
 import { userProfiles, customers, user } from "@/db/schema";
@@ -243,6 +244,9 @@ export const auth = betterAuth({
       enabled: !!process.env.FACEBOOK_CLIENT_ID,
     },
   },
+
+  // Better Auth Dash: ownership verification + hosted auth monitoring.
+  plugins: [dash()],
 
   // Database hooks for custom logic after user creation
   databaseHooks: {
