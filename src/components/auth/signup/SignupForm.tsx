@@ -32,6 +32,7 @@ interface SignupFormData {
   lastName: string;
   phone: string;
   birthday: string;
+  marketingConsent: boolean;
 }
 
 export function SignupForm() {
@@ -48,6 +49,7 @@ export function SignupForm() {
     lastName: "",
     phone: "",
     birthday: "",
+    marketingConsent: false,
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -259,6 +261,45 @@ export function SignupForm() {
           </PopoverContent>
         </Popover>
       </div>
+
+      <div className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          id="marketingConsent"
+          checked={formData.marketingConsent}
+          onChange={(e) =>
+            setFormData((prev) => ({
+              ...prev,
+              marketingConsent: e.target.checked,
+            }))
+          }
+          className="mt-1 h-4 w-4 rounded border-white/20 bg-white/6 accent-val-accent"
+        />
+        <label
+          htmlFor="marketingConsent"
+          className="text-xs text-gray-400 leading-relaxed cursor-pointer"
+        >
+          Send me exclusive offers, new arrivals and updates via email
+        </label>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-gray-500">
+        By creating an account, you agree to our{" "}
+        <Link
+          href="/terms"
+          className="text-gray-400 underline underline-offset-2 hover:text-white"
+        >
+          Terms of Sale
+        </Link>{" "}
+        and{" "}
+        <Link
+          href="/privacy"
+          className="text-gray-400 underline underline-offset-2 hover:text-white"
+        >
+          Privacy Policy
+        </Link>
+        . We use your data to manage your account and process orders.
+      </p>
 
       <Button
         type="submit"

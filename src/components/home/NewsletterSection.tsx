@@ -79,6 +79,16 @@ export function NewsletterSection({
             >
               {subscribeMutation.isPending ? "Subscribing..." : "Subscribe"}
             </Button>
+            <p className="text-[11px] leading-relaxed text-gray-400/70 sm:col-span-2 text-center">
+              By subscribing, you agree to receive marketing emails from
+              Valkyrie. Unsubscribe any time.{" "}
+              <a
+                href="/privacy"
+                className="underline underline-offset-2 hover:text-white"
+              >
+                Privacy Policy
+              </a>
+            </p>
           </form>
         )}
       </div>

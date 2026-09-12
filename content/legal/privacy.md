@@ -1,6 +1,6 @@
 ---
 title: Privacy Policy
-effectiveDate: 2026-09-09
+effectiveDate: 2026-09-12
 ---
 
 This policy explains what personal data we collect when you use this store, why
@@ -58,9 +58,13 @@ one place.
   invoicing your order, handling returns and refunds, and contacting you about
   an order.
 - **Because the law requires it** — keeping accounting and tax records.
-- **With your consent** — marketing email, which you can withdraw at any time
-  using the unsubscribe link in any message, or by contacting us. We also use
-  your date of birth to send you a birthday offer.
+- **With your consent** — marketing communications (currently email; SMS or
+  WhatsApp may be added in the future, each with its own separate opt-in).
+  Marketing consent is opt-in only: we never pre-tick the box, and we never
+  treat an account sign-up as consent to receive promotions. You can withdraw
+  consent at any time by clicking the unsubscribe link in any marketing email,
+  toggling the setting in your account preferences, or by contacting us. We
+  also use your date of birth, with your consent, to send you a birthday offer.
 - **For our legitimate interest in running the store** — securing accounts,
   preventing fraud, and understanding which products sell.
 
@@ -88,11 +92,31 @@ We do not sell your personal data. We share only what is needed, with:
 ## Transfers outside Egypt
 
 Every provider listed above operates outside Egypt, so your personal data is
-processed abroad — our database is hosted in the European Union, and the others
-process data in the European Union or the United States.
+processed abroad. The specific locations are:
 
-We rely on written data-processing terms with each provider. Where Egyptian law
-requires an approval, permit or licence for a particular transfer, we obtain it.
+- **Neon (database)** — European Union. All customer data, orders, addresses
+  and account records are stored here.
+- **Stripe (payments)** — European Union and United States. Receives payment
+  references and transaction amounts only; card numbers go directly to Stripe
+  and never reach us.
+- **Resend (email)** — United States. Receives email addresses and message
+  content for order confirmations, account emails and marketing.
+- **Vercel (hosting)** — United States and European Union edge network. Serves
+  the site and processes requests.
+- **UploadThing (images)** — United States. Stores product images and profile
+  pictures.
+- **Upstash (rate limiting)** — European Union. Processes IP addresses for rate
+  limiting to protect sign-in and checkout.
+- **Google / Facebook** — United States. Only if you choose to sign in with
+  them.
+
+We rely on written data-processing agreements with each provider. Under Egypt's
+Personal Data Protection Law (No. 151 of 2020), cross-border transfers require
+that the receiving country provides an adequate level of protection, or that
+appropriate safeguards are in place. EU-based processing is recognised as
+providing adequate protection. For US-based providers, we rely on their
+standard contractual clauses and data processing agreements.
+
 [CROSS-BORDER TRANSFER STATUS]
 
 ## How long we keep it

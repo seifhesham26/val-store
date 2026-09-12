@@ -185,6 +185,24 @@ export function CheckoutForm({ addresses }: { addresses: AddressList }) {
               onPaymentMethodChange={setPaymentMethod}
             />
 
+            <p className="text-[11px] leading-relaxed text-gray-500">
+              By placing this order, you agree to our{" "}
+              <a
+                href="/terms"
+                className="text-gray-400 underline underline-offset-2 hover:text-white"
+              >
+                Terms of Sale
+              </a>
+              . Your data is used to process and deliver your order. See our{" "}
+              <a
+                href="/privacy"
+                className="text-gray-400 underline underline-offset-2 hover:text-white"
+              >
+                Privacy Policy
+              </a>
+              .
+            </p>
+
             <div className="flex flex-col sm:flex-row gap-4 pt-6 mt-8 border-t border-white/10">
               <Button
                 variant="outline"

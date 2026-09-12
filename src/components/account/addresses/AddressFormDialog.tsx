@@ -100,6 +100,16 @@ export function AddressFormDialog({
               </option>
             </select>
           </div>
+          <p className="text-[11px] leading-relaxed text-gray-500">
+            Your address and phone number are used for order delivery. See our{" "}
+            <a
+              href="/privacy"
+              className="text-gray-400 underline underline-offset-2 hover:text-white"
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
           <div className="flex gap-3 pt-2">
             <Button
               type="button"

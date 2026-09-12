@@ -1,6 +1,6 @@
 ---
 title: Terms of Sale
-effectiveDate: 2026-09-09
+effectiveDate: 2026-09-12
 ---
 
 These terms apply to everything you buy from this store. They are governed by
@@ -11,7 +11,7 @@ the laws of the Arab Republic of Egypt.
 [REGISTERED BUSINESS NAME], [REGISTERED ADDRESS].
 Commercial Register No. [COMMERCIAL REGISTER NUMBER].
 Tax Registration No. [TAX REGISTRATION NUMBER].
-Email [SUPPORT EMAIL] · Phone [SUPPORT PHONE].
+Email support@valkyrie-eg.com · Phone [SUPPORT PHONE].
 
 ## When your order becomes a contract
 
@@ -76,7 +76,7 @@ the version that governs that order — a later change does not apply backwards.
 
 ## Complaints
 
-Contact us first at [SUPPORT EMAIL] and we will try to resolve it. You may also
+Contact us first at support@valkyrie-eg.com and we will try to resolve it. You may also
 contact the Consumer Protection Agency (جهاز حماية المستهلك) on **19588**.
 Nothing in these terms prevents you from using any remedy Egyptian law gives
 you.
