@@ -245,7 +245,7 @@ export async function Footer() {
             <div className="flex flex-col items-center gap-4 md:flex-row md:gap-5">
               <Link href="/" aria-label={`${storeName} home`}>
                 <Image
-                  src="/logo/VAL-LOGO.png"
+                  src="/logo/VAL-LOGO.jpg"
                   alt={storeName}
                   width={140}
                   height={40}

@@ -29,7 +29,7 @@ export class ResendEmailService implements EmailServiceInterface {
     }
     this.resend = new Resend(apiKey);
     this.fromEmail =
-      process.env.EMAIL_FROM || "Valkyrie <noreply@valstore.com>";
+      process.env.EMAIL_FROM || "Valkyrie <noreply@valkyrie-eg.com>";
     this.appName = process.env.NEXT_PUBLIC_APP_NAME || "Valkyrie";
     // `SITE_URL` rather than a local fallback to localhost: this is the
     // origin of every link in every transactional email — order confirmation,

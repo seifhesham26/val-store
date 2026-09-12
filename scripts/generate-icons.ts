@@ -10,7 +10,7 @@
  * Two source files, two different jobs:
  *
  * - `Val-full-logo.png` — the winged V mark. Square-ish enough to be an icon.
- * - `VAL-LOGO.png` — the wordmark. Far too wide for an icon (~3.9:1), so it is
+ * - `VAL-LOGO.jpg` — the wordmark. Far too wide for an icon (~3.9:1), so it is
  *   only used on the 1200x630 social card, under the mark.
  *
  * ## Why the background is keyed out rather than trimmed
@@ -48,7 +48,7 @@ import sharp from "sharp";
 // `seed-products.ts` — every script here is run from the repo root via pnpm.
 const ROOT = process.cwd();
 const MARK_SRC = path.join(ROOT, "public/logo/Val-full-logo.png");
-const WORDMARK_SRC = path.join(ROOT, "public/logo/VAL-LOGO.png");
+const WORDMARK_SRC = path.join(ROOT, "public/logo/VAL-LOGO.jpg");
 
 const APP_DIR = path.join(ROOT, "src/app");
 const ICONS_DIR = path.join(ROOT, "public/icons");

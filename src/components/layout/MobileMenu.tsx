@@ -180,7 +180,7 @@ export function MobileMenu({
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between p-4 border-b border-white/10">
           <Image
-            src="/logo/VAL-LOGO.png"
+            src="/logo/VAL-LOGO.jpg"
             alt="Valkyrie"
             width={120}
             height={35}

@@ -6,7 +6,7 @@ import { getCachedSiteSettings } from "@/lib/cache";
  * Contact details, read from site settings.
  *
  * `contactEmail` and `contactPhone` have been settable in the admin all along
- * and were read by nothing — this card hardcoded `support@valstore.com` and
+ * and were read by nothing — this card hardcoded `support@valkyrie-eg.com` and
  * `+1 (555) 123-4567`, a US number on a store that ships in Egypt and charges
  * in EGP. It also printed a New York street address that does not exist.
  *
@@ -27,7 +27,7 @@ export async function ContactInfo() {
     settings = null;
   }
 
-  const email = settings?.contactEmail || "support@valstore.com";
+  const email = settings?.contactEmail || "support@valkyrie-eg.com";
   const phone = settings?.contactPhone || null;
 
   return (

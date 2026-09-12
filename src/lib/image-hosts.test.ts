@@ -27,7 +27,7 @@ describe("image host lists", () => {
 
 describe("shouldOptimizeImage", () => {
   it("optimises local asset paths", () => {
-    expect(shouldOptimizeImage("/logo/VAL-LOGO.png")).toBe(true);
+    expect(shouldOptimizeImage("/logo/VAL-LOGO.jpg")).toBe(true);
     expect(shouldOptimizeImage("/uploads/a.jpg")).toBe(true);
   });
 
@@ -68,7 +68,7 @@ describe("shouldOptimizeImage", () => {
 describe("unoptimizedFor", () => {
   it("is the exact inverse of shouldOptimizeImage", () => {
     const samples = [
-      "/logo/VAL-LOGO.png",
+      "/logo/VAL-LOGO.jpg",
       "https://utfs.io/f/abc.jpg",
       "https://picsum.photos/seed/x/800/1000",
       "https://example.com/photo.jpg",

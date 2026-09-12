@@ -16,10 +16,10 @@ export function PressContact() {
           and we&apos;ll get back to you.
         </p>
         <a
-          href="mailto:support@valstore.com"
+          href="mailto:support@valkyrie-eg.com"
           className="text-primary hover:underline"
         >
-          support@valstore.com
+          support@valkyrie-eg.com
         </a>
       </CardContent>
     </Card>

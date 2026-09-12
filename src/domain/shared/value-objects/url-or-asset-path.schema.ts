@@ -12,7 +12,7 @@ function isAbsoluteHttpUrl(value: string): boolean {
 
 /**
  * A full http(s) URL, or a site-relative asset path such as
- * `/logo/VAL-LOGO.png`.
+ * `/logo/VAL-LOGO.jpg`.
  *
  * Assets served out of `public/` are the normal case for logos, favicons and
  * section imagery, and `z.string().url()` rejects them outright. That made the

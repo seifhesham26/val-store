@@ -10,10 +10,10 @@ export function ContactFormPlaceholder() {
         <p className="text-muted-foreground">
           Contact form coming soon. In the meantime, please email us at{" "}
           <a
-            href="mailto:support@valstore.com"
+            href="mailto:support@valkyrie-eg.com"
             className="text-primary hover:underline"
           >
-            support@valstore.com
+            support@valkyrie-eg.com
           </a>
         </p>
       </CardContent>
