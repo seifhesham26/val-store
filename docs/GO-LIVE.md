@@ -322,7 +322,7 @@ For completeness, so nobody re-does it. All of this shipped on 2026-09-11 and
 needs no console work:
 
 - `favicon.ico` (16/32/48), `icon.png` (512), `apple-icon.png` (180) — all
-  generated from `public/logo/Val-full-logo.png`, replacing a placeholder black
+  generated from `public/logo/Val-full-logo.jpg`, replacing a placeholder black
   circle with a white triangle that was never the brand.
 - `public/icons/icon-{192,512}.png` and `maskable-512.png` for the manifest.
 - `opengraph-image.png` / `twitter-image.png` (1200×630) — the card shown when

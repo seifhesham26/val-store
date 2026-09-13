@@ -99,7 +99,7 @@ export function Navbar({
             {/* Center: Logo */}
             <Link href="/" className="shrink-0">
               <Image
-                src="/logo/VAL-LOGO.jpg"
+                src="/logo/VAL-LOGO.png"
                 alt="Valkyrie"
                 width={140}
                 height={40}
