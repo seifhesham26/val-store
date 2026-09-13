@@ -23,3 +23,6 @@
  * arrivals. It narrows by itself as the catalogue ages.
  */
 export const NEW_ARRIVAL_WINDOW_DAYS = 30;
+
+/** Number of products shown in the homepage New Arrivals row. */
+export const NEW_ARRIVALS_LIMIT = 8;

@@ -8,10 +8,11 @@ import { ProductCard } from "@/components/products/ProductCard";
 import { trpc } from "@/lib/trpc";
 import type { ProductListPage } from "@/lib/cache";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+import {
+  NEW_ARRIVALS_LIMIT,
+  NEW_ARRIVAL_WINDOW_DAYS,
+} from "@/domain/products/new-arrivals";
 import { useReveal } from "@/hooks/use-reveal";
-
-export const NEW_ARRIVALS_LIMIT = 8;
 
 interface NewArrivalsProps {
   title?: string;
