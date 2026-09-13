@@ -24,7 +24,10 @@ const nextConfig: NextConfig = {
     qualities: [75, 90],
     // A product image is immutable once uploaded — the URL changes when the
     // image does — so there is no reason to re-optimise it every 60 seconds.
-    minimumCacheTTL: 60 * 60 * 24 * 30,
+    // Replacements receive a new URL, so optimized bytes are safe to keep for
+    // a full year. URL versioning matters because this cache has no manual
+    // invalidation API.
+    minimumCacheTTL: 60 * 60 * 24 * 365,
   },
 
   // Security headers

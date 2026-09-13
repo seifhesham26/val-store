@@ -43,22 +43,15 @@ const CACHE_TAGS = {
 // Default revalidation time (60 seconds)
 const DEFAULT_REVALIDATE = 60;
 
-/**
- * Revalidation for catalogue data, which is tag-invalidated.
- *
- * Every admin write that changes what a product card shows now calls
- * `revalidateCatalogue()` — including the variant and image mutations, which
- * previously called nothing at all and left the storefront stale after an
- * edit. The tags are therefore the correctness mechanism and this TTL is only
- * a backstop for a write path nobody remembered to announce.
- *
- * Five minutes rather than the hour it could be: this audit found two write
- * paths with no invalidation at all, so the demonstrated rate of missed tags
- * in this codebase is not zero, and a stale-for-an-hour storefront is a much
- * worse failure than a stale-for-five-minutes one. Raise it once the tag
- * coverage has stayed complete through a few more features.
- */
+/** Short recovery backstop for category and legal-page caches. */
 const CATALOGUE_REVALIDATE = 300;
+
+/**
+ * Product metadata and image URLs are rare-write data. Product, variant, and
+ * image mutations all call `revalidateCatalogue`, so this one-day TTL is only
+ * a recovery backstop if a future write path forgets to announce itself.
+ */
+const PRODUCT_CATALOGUE_REVALIDATE = 60 * 60 * 24;
 
 /**
  * Get hero section content with caching
@@ -244,7 +237,10 @@ export const getCachedFeaturedProducts = unstable_cache(
     }));
   },
   [CACHE_TAGS.FEATURED_PRODUCTS],
-  { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.FEATURED_PRODUCTS] }
+  {
+    revalidate: PRODUCT_CATALOGUE_REVALIDATE,
+    tags: [CACHE_TAGS.FEATURED_PRODUCTS],
+  }
 );
 
 /**
@@ -394,7 +390,7 @@ export const getCachedProductsByCategory = unstable_cache(
       }));
   },
   ["products-by-category"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -453,7 +449,7 @@ export const getCachedProductBySlug = unstable_cache(
     };
   },
   ["product-by-slug"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -483,7 +479,7 @@ export const getCachedAllProducts = unstable_cache(
     }));
   },
   ["all-products"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -526,7 +522,7 @@ export const getCachedRelatedProducts = unstable_cache(
     }));
   },
   ["related-products"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -543,7 +539,7 @@ export const getCachedProductSlugs = unstable_cache(
     return products.map((p) => p.slug);
   },
   ["product-slugs"],
-  { revalidate: CATALOGUE_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /** Every active category slug, for `generateStaticParams`. */
@@ -597,7 +593,7 @@ export const getCachedFirstProductPage = unstable_cache(
     });
   },
   ["product-list-first-page"],
-  { revalidate: CATALOGUE_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /** The exact payload shape `InfiniteProductGrid` seeds its query cache with. */

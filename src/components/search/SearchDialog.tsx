@@ -16,6 +16,7 @@ import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { ProductImage } from "@/components/shared/ProductImage";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { formatCurrency } from "@/lib/currency";
+import { CATALOGUE_QUERY_OPTIONS } from "@/lib/catalogue-query-policy";
 
 interface SearchDialogProps {
   open: boolean;
@@ -29,7 +30,10 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
   const { data, isLoading } = trpc.public.products.search.useQuery(
     { query: debouncedQuery },
-    { enabled: debouncedQuery.length >= 2 }
+    {
+      ...CATALOGUE_QUERY_OPTIONS,
+      enabled: debouncedQuery.length >= 2,
+    }
   );
 
   // Reset query when dialog closes

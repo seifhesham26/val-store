@@ -5,16 +5,10 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import { useState } from "react";
 
 /**
- * React Query's own defaults are tuned for dashboards that must never look
- * stale: `staleTime: 0` refetches on every mount, and `refetchOnWindowFocus`
- * refetches everything again each time the tab regains focus. On a storefront
- * that means re-querying the catalogue every time a customer navigates back to
- * a grid or alt-tabs, for data that changes when an admin edits a product.
- *
- * Thirty seconds is short enough that a price or stock edit shows up promptly
- * and long enough that browsing costs nothing. Anything that genuinely needs to
- * be fresher — the cart's stock check, the shared variant-stock query — sets
- * its own `staleTime` and `refetchInterval`, which still win.
+ * React Query's defaults refetch on every mount and whenever the tab regains
+ * focus. Thirty seconds stays the safe shared default for account and admin
+ * data. Rare-write catalogue queries opt into a longer policy, while cart and
+ * live-stock queries keep their own refresh intervals.
  */
 const DEFAULT_STALE_MS = 30_000;
 

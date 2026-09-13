@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import type { Gender } from "@/types/product";
 import type { ProductListPage } from "@/lib/cache";
 import { ProductCard } from "@/components/products/ProductCard";
+import { CATALOGUE_QUERY_OPTIONS } from "@/lib/catalogue-query-policy";
 
 export const PREVIEW_LIMIT = 5;
 
@@ -43,7 +44,7 @@ export function CollectionSection({
       limit: PREVIEW_LIMIT,
       ...queryParams,
     },
-    { initialData: initialPage }
+    { ...CATALOGUE_QUERY_OPTIONS, initialData: initialPage }
   );
 
   const products = data?.products ?? [];

@@ -14,6 +14,7 @@ import { ProductCardSkeletonGrid } from "@/components/products/ProductCardSkelet
 import { ValkyrieLoader } from "@/components/ui/valkyrie-loader";
 import { ChevronDown, Search } from "lucide-react";
 import Link from "next/link";
+import { CATALOGUE_QUERY_OPTIONS } from "@/lib/catalogue-query-policy";
 
 interface InfiniteSearchGridProps {
   query: string;
@@ -31,6 +32,7 @@ export function InfiniteSearchGrid({ query }: InfiniteSearchGridProps) {
     trpc.public.products.search.useInfiniteQuery(
       { query, limit: ITEMS_PER_PAGE },
       {
+        ...CATALOGUE_QUERY_OPTIONS,
         getNextPageParam: (lastPage) => {
           if (lastPage.page < lastPage.totalPages) {
             return lastPage.page + 1;

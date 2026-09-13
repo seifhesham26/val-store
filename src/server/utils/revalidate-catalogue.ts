@@ -21,4 +21,7 @@ import { revalidateTag } from "next/cache";
 export function revalidateCatalogue(): void {
   revalidateTag("featured-products", "max");
   revalidateTag("all-products", "max");
+  // Product create/delete/category moves also change the product counts
+  // returned with cached category navigation and collection data.
+  revalidateTag("categories", "max");
 }

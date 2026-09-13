@@ -59,13 +59,13 @@ describe("CreateOrderUseCase shipping", () => {
         createdAt: now,
         updatedAt: now,
       })),
-    } as AddressRepositoryInterface;
+    } as unknown as AddressRepositoryInterface;
     const shippingRateRepository = {
       getConfig: vi.fn(async () => ({
         rates: [{ governorate: "cairo", fee: 60, isDeliverable: true }],
         freeShippingThreshold: 2_000,
       })),
-    } as ShippingRateRepositoryInterface;
+    } as unknown as ShippingRateRepositoryInterface;
     const scheduler = {
       runAfterResponse: vi.fn(),
     } as TaskSchedulerInterface;

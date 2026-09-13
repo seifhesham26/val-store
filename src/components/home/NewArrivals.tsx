@@ -13,6 +13,7 @@ import {
   NEW_ARRIVAL_WINDOW_DAYS,
 } from "@/domain/products/new-arrivals";
 import { useReveal } from "@/hooks/use-reveal";
+import { CATALOGUE_QUERY_OPTIONS } from "@/lib/catalogue-query-policy";
 
 interface NewArrivalsProps {
   title?: string;
@@ -42,7 +43,7 @@ export function NewArrivals({
     // 8 }` — the eight newest, which was close enough to be right by accident
     // but agreed with nothing else that claimed to show new arrivals.
     { limit: NEW_ARRIVALS_LIMIT, createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS },
-    { staleTime: 1000 * 60 * 5, initialData: initialPage }
+    { ...CATALOGUE_QUERY_OPTIONS, initialData: initialPage }
   );
 
   const items = products?.products ?? [];
