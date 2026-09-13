@@ -13,6 +13,22 @@ wrong place.
 Everything in Tiers A–D is now implemented except two items that are not code —
 see [Still outstanding](#still-outstanding).
 
+## 2026-09-14 follow-up — lightweight catalogue reads
+
+Public product lists previously called `findAll()`, which materialized every
+selected product as a full entity with its complete image and variant
+relations. The router then fetched the two card images and card variants again
+through its purpose-built batched projections. Product detail and homepage
+caches repeated the same pattern, while static route generation loaded full
+entities merely to read each slug.
+
+Storefront callers now use lightweight catalogue repository methods that
+select only scalar product columns. Card images and variants remain the two
+bounded batch queries, full entity reads remain available to admin and business
+logic, and static route generation selects only active slugs. The public API
+shape and four-query pipelining behavior are unchanged; the duplicated relation
+payload and unnecessary mapping work are gone.
+
 ---
 
 ## Ground truth

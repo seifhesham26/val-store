@@ -267,10 +267,14 @@ async function resolveFeaturedProducts(
     .map((item) => item.itemId);
 
   if (curatedIds.length === 0) {
-    return repo.findFeatured(limit);
+    return repo.findCatalogue({
+      isActive: true,
+      isFeatured: true,
+      limit,
+    });
   }
 
-  const products = await repo.findByIds(curatedIds);
+  const products = await repo.findCatalogueByIds(curatedIds);
   const byId = new Map(products.map((product) => [product.id, product]));
 
   // Re-apply the admin's order, and drop ids whose product has since been
@@ -285,7 +289,9 @@ async function resolveFeaturedProducts(
   // A curation can outlive its products: archive or delete every item on the
   // list and this resolves to nothing. Fall back rather than render a titled
   // section with an empty grid under it.
-  return resolved.length > 0 ? resolved : repo.findFeatured(limit);
+  return resolved.length > 0
+    ? resolved
+    : repo.findCatalogue({ isActive: true, isFeatured: true, limit });
 }
 
 /**
@@ -377,17 +383,15 @@ export const getCachedCategories = unstable_cache(
 export const getCachedProductsByCategory = unstable_cache(
   async (categoryId: string) => {
     const repo = container.getProductRepository();
-    const products = await repo.findByCategory(categoryId);
+    const products = await repo.findCatalogue({ categoryId, isActive: true });
 
-    return products
-      .filter((p) => p.isActive)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        basePrice: p.basePrice,
-        salePrice: p.salePrice,
-      }));
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      basePrice: p.basePrice,
+      salePrice: p.salePrice,
+    }));
   },
   ["products-by-category"],
   { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
@@ -399,7 +403,7 @@ export const getCachedProductsByCategory = unstable_cache(
 export const getCachedProductBySlug = unstable_cache(
   async (slug: string) => {
     const productRepo = container.getProductRepository();
-    const product = await productRepo.findBySlug(slug);
+    const product = await productRepo.findCatalogueBySlug(slug);
 
     if (!product || !product.isActive) {
       return null;
@@ -460,7 +464,7 @@ export const getCachedAllProducts = unstable_cache(
   async (limit: number = 50) => {
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
-    const products = await repo.findAll({ isActive: true, limit });
+    const products = await repo.findCatalogue({ isActive: true, limit });
 
     // Batch-fetch primary images (1 query instead of N)
     const imageMap = await imageRepo.findFirstTwoByProducts(
@@ -491,7 +495,7 @@ export const getCachedRelatedProducts = unstable_cache(
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
     const variantRepo = container.getProductVariantRepository();
-    const products = await repo.findAll({
+    const products = await repo.findCatalogue({
       isActive: true,
       excludeId,
       limit,
@@ -535,8 +539,7 @@ export const getCachedRelatedProducts = unstable_cache(
 export const getCachedProductSlugs = unstable_cache(
   async () => {
     const repo = container.getProductRepository();
-    const products = await repo.findAll({ isActive: true });
-    return products.map((p) => p.slug);
+    return repo.findActiveSlugs();
   },
   ["product-slugs"],
   { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }

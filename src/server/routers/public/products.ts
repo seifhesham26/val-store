@@ -16,7 +16,7 @@ import { z } from "zod";
 import { headers } from "next/headers";
 import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
-import type { ProductEntity } from "@/domain/products/entities/product.entity";
+import type { ProductCatalogueRecord } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
 import { genderFilterSchema } from "./gender-filter.schema";
 import {
@@ -41,7 +41,7 @@ const productSortSchema = z.enum(
  * The batched repository helpers already existed for the cached homepage; the
  * storefront routers were the callers that never adopted them.
  */
-async function withCardData(pageProducts: ProductEntity[]) {
+async function withCardData(pageProducts: ProductCatalogueRecord[]) {
   if (pageProducts.length === 0) return [];
 
   const imageRepo = container.getProductImageRepository();
@@ -122,7 +122,7 @@ export const publicProductsRouter = router({
       };
 
       const [pageProducts, total] = await Promise.all([
-        repo.findAll({ ...filters, limit, offset }),
+        repo.findCatalogue({ ...filters, limit, offset }),
         repo.count(filters),
       ]);
 
@@ -175,7 +175,7 @@ export const publicProductsRouter = router({
       const filters = { isActive: true, search: input.query };
 
       const [pageProducts, total] = await Promise.all([
-        repo.findAll({ ...filters, limit, offset }),
+        repo.findCatalogue({ ...filters, limit, offset }),
         repo.count(filters),
       ]);
 

@@ -253,3 +253,73 @@ describe("sort", () => {
     }
   );
 });
+
+describe("lightweight catalogue reads", () => {
+  it("returns the same filtered page and order as the full entity reader", async () => {
+    const filters = {
+      isActive: true,
+      sort: "newest" as const,
+      limit: 5,
+      offset: 0,
+    };
+
+    const [catalogueRows, fullRows] = await Promise.all([
+      repo.findCatalogue(filters),
+      repo.findAll(filters),
+    ]);
+
+    expect(catalogueRows.map((product) => product.id)).toEqual(
+      fullRows.map((product) => product.id)
+    );
+    expect(
+      catalogueRows.map(({ id, name, slug, basePrice, salePrice }) => ({
+        id,
+        name,
+        slug,
+        basePrice,
+        salePrice,
+      }))
+    ).toEqual(
+      fullRows.map(({ id, name, slug, basePrice, salePrice }) => ({
+        id,
+        name,
+        slug,
+        basePrice,
+        salePrice,
+      }))
+    );
+  });
+
+  it("returns each requested catalogue product once", async () => {
+    const ids = allActive.slice(0, 2).map((product) => product.id);
+    if (ids.length < 2) return;
+
+    const rows = await repo.findCatalogueByIds([ids[0], ids[1], ids[0]]);
+
+    expect(rows.map((product) => product.id).sort()).toEqual([...ids].sort());
+  });
+
+  it("finds a catalogue product by slug without changing its scalar data", async () => {
+    const expected = allActive[0];
+    if (!expected) return;
+
+    const product = await repo.findCatalogueBySlug(expected.slug);
+
+    expect(product).toMatchObject({
+      id: expected.id,
+      name: expected.name,
+      slug: expected.slug,
+      basePrice: expected.basePrice,
+      salePrice: expected.salePrice,
+      isActive: true,
+    });
+  });
+
+  it("returns only active slugs", async () => {
+    const slugs = await repo.findActiveSlugs();
+
+    expect([...slugs].sort()).toEqual(
+      allActive.map((product) => product.slug).sort()
+    );
+  });
+});
