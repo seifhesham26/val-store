@@ -369,8 +369,10 @@ These are known dependencies, not current code defects.
 
 1. **Inventory adjustment request/review.** The product design is approved in
    `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`.
-   Review that specification, then plan and implement it without expanding into
-   later phases.
+   The implementation plan is in
+   `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`.
+   Review the plan, choose an execution style, then implement it without
+   expanding into later phases.
 2. **Refund authorization workflow.** Design customer confirmation around the
    existing return model, but do not pretend to move money before OTP and OPay
    behavior are known.
@@ -390,13 +392,15 @@ approve it, implement it, verify it, and update this handoff.
 
 ## Immediate next task
 
-The **Inventory adjustment request/review** analysis and product design are now
-complete. The immediate next step is brand-owner review of
-`docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`.
-After approval, write the implementation plan and execute it as its own phase.
-Do not re-open the settled product questions unless implementation uncovers a
-real contradiction or unsafe edge case. Do not include OPay, OTP, direct worker
-stock writes, assignments, or the future media-buyer role.
+The **Inventory adjustment request/review** analysis, product design, and
+implementation plan are complete. The immediate next step is brand-owner
+review of
+`docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`.
+After approval, choose subagent-driven or inline execution and implement it as
+its own phase. Do not re-open the settled product questions unless
+implementation uncovers a real contradiction or unsafe edge case. Do not
+include OPay, OTP, direct worker stock writes, assignments, or the future
+media-buyer role.
 
 ## Source-of-truth documents
 
@@ -405,6 +409,8 @@ stock writes, assignments, or the future media-buyer role.
   — approved design record for the completed customer-access phase
 - `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`
   — approved design record for the next inventory-operations phase
+- `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`
+  — task-by-task implementation plan for that approved design
 - `docs/superpowers/plans/2026-09-14-customer-data-access-and-audit.md` —
   implementation plan and verification record for that phase
 - `docs/ISSUES.md` — defect catalogue and resolved-history details
@@ -425,11 +431,13 @@ stock writes, assignments, or the future media-buyer role.
 > and `docs/PRELAUNCH-HANDOFF.md` completely before acting, then verify the branch
 > and working tree. Treat the handoff Q&A ledger as my latest approved product
 > decisions. The customer-data access and audit foundation is complete; do not
-> redesign or repeat it. The **Inventory adjustment request/review** design is
-> approved in
-> `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`.
-> Review that specification, write the implementation plan, then implement and
-> verify only that phase. Preserve the approved request, inspection, quarantine,
-> availability, concurrency, and customer-copy decisions. Clearly separate
-> implemented, approved-but-unbuilt, and externally blocked work. Do not run
+> redesign or repeat it. The **Inventory adjustment request/review** design and
+> plan are approved in
+> `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`
+> and
+> `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`.
+> Choose an execution style, then implement and verify only that phase. Preserve
+> the approved request, inspection, quarantine, availability, concurrency, and
+> customer-copy decisions. Clearly separate implemented, approved-but-unbuilt,
+> and externally blocked work. Do not run
 > `pnpm db:migrate` on the current development database.
