@@ -29,6 +29,22 @@ logic, and static route generation selects only active slugs. The public API
 shape and four-query pipelining behavior are unchanged; the duplicated relation
 payload and unnecessary mapping work are gone.
 
+## 2026-09-14 follow-up — duplicate index cleanup
+
+Ten standalone btree indexes duplicated UNIQUE constraint-backed indexes on
+the same table and column. Their declarations were removed from
+`src/db/schema.ts`, and `drizzle/0006_drop_duplicate_indexes.sql` was applied to
+the development database. All ten constraint indexes remain, so uniqueness and
+lookup support are unchanged while future writes maintain one index instead of
+two.
+
+`src/db/index-hygiene.integration.test.ts` detects duplicate public indexes by
+their table, access method, keys, expressions, and predicate rather than by a
+hardcoded list of redundant names. It separately verifies the ten identifier
+constraints remain. Migration `0006` is intentionally not journalled, matching
+the current out-of-band migration state; its change must be folded into the
+planned canonical baseline.
+
 ---
 
 ## Ground truth

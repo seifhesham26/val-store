@@ -146,26 +146,20 @@ export const userProfiles = pgTable("user_profiles", {
  * Customer represents a real human, identified by phone number.
  * Multiple user accounts can belong to the same customer.
  */
-export const customers = pgTable(
-  "customers",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    phone: varchar("phone", { length: 20 }).notNull().unique(),
-    preferredName: varchar("preferred_name", { length: 100 }),
-    isPhoneVerified: boolean("is_phone_verified").default(false).notNull(),
-    totalOrders: integer("total_orders").default(0).notNull(),
-    totalSpent: decimal("total_spent", { precision: 10, scale: 2 })
-      .default("0")
-      .notNull(),
-    loyaltyPoints: integer("loyalty_points").default(0).notNull(),
-    notes: text("notes"), // Admin notes
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (table) => ({
-    phoneIdx: uniqueIndex("idx_customers_phone").on(table.phone),
-  })
-);
+export const customers = pgTable("customers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  phone: varchar("phone", { length: 20 }).notNull().unique(),
+  preferredName: varchar("preferred_name", { length: 100 }),
+  isPhoneVerified: boolean("is_phone_verified").default(false).notNull(),
+  totalOrders: integer("total_orders").default(0).notNull(),
+  totalSpent: decimal("total_spent", { precision: 10, scale: 2 })
+    .default("0")
+    .notNull(),
+  loyaltyPoints: integer("loyalty_points").default(0).notNull(),
+  notes: text("notes"), // Admin notes
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 // ============================================
 // ADDRESSES TABLE
@@ -217,7 +211,6 @@ export const categories = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    slugIdx: index("idx_categories_slug").on(table.slug),
     parentIdIdx: index("idx_categories_parent_id").on(table.parentId),
     isActiveIdx: index("idx_categories_is_active").on(table.isActive),
   })
@@ -252,8 +245,6 @@ export const products = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    slugIdx: index("idx_products_slug").on(table.slug),
-    skuIdx: index("idx_products_sku").on(table.sku),
     categoryIdIdx: index("idx_products_category_id").on(table.categoryId),
     isActiveIdx: index("idx_products_is_active").on(table.isActive),
     isFeaturedIdx: index("idx_products_is_featured").on(table.isFeatured),
@@ -295,7 +286,6 @@ export const productVariants = pgTable(
   },
   (table) => ({
     productIdIdx: index("idx_variants_product_id").on(table.productId),
-    skuIdx: index("idx_variants_sku").on(table.sku),
     isAvailableIdx: index("idx_variants_is_available").on(table.isAvailable),
   })
 );
@@ -403,7 +393,6 @@ export const orders = pgTable(
   },
   (table) => ({
     userIdIdx: index("idx_orders_user_id").on(table.userId),
-    orderNumberIdx: index("idx_orders_order_number").on(table.orderNumber),
     statusIdx: index("idx_orders_status").on(table.status),
     createdAtIdx: index("idx_orders_created_at").on(table.createdAt),
     // "My orders" pages `WHERE user_id = ? ORDER BY created_at DESC`, which the
@@ -595,7 +584,6 @@ export const coupons = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    codeIdx: index("idx_coupons_code").on(table.code),
     isActiveIdx: index("idx_coupons_is_active").on(table.isActive),
   })
 );
@@ -850,9 +838,6 @@ export const contentSections = pgTable(
     }),
   },
   (table) => ({
-    sectionTypeIdx: uniqueIndex("idx_content_sections_type").on(
-      table.sectionType
-    ),
     isActiveIdx: index("idx_content_sections_is_active").on(table.isActive),
   })
 );
@@ -895,26 +880,20 @@ export const contentSectionsHistory = pgTable(
  * Legal pages (returns, terms, privacy, shipping, faq).
  * Slugs come from the closed set in `src/domain/legal/legal-slugs.ts`.
  */
-export const legalPages = pgTable(
-  "legal_pages",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    slug: varchar("slug", { length: 64 }).notNull().unique(),
-    title: varchar("title", { length: 200 }).notNull(),
-    bodyMarkdown: text("body_markdown").notNull(),
-    effectiveDate: date("effective_date").notNull(),
-    version: integer("version").default(1).notNull(),
-    isPublished: boolean("is_published").default(true).notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-    updatedBy: text("updated_by").references(() => user.id, {
-      onDelete: "set null",
-    }),
-  },
-  (table) => ({
-    slugIdx: uniqueIndex("idx_legal_pages_slug").on(table.slug),
-  })
-);
+export const legalPages = pgTable("legal_pages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(),
+  title: varchar("title", { length: 200 }).notNull(),
+  bodyMarkdown: text("body_markdown").notNull(),
+  effectiveDate: date("effective_date").notNull(),
+  version: integer("version").default(1).notNull(),
+  isPublished: boolean("is_published").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: text("updated_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
+});
 
 // ============================================
 // LEGAL PAGES HISTORY TABLE
@@ -1097,7 +1076,6 @@ export const newsletterSubscribers = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    emailIdx: uniqueIndex("idx_newsletter_email").on(table.email),
     isActiveIdx: index("idx_newsletter_is_active").on(table.isActive),
   })
 );
