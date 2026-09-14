@@ -13,8 +13,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  */
 const sessionCalls = { count: 0 };
 const roleCalls = { count: 0 };
-let currentSession: { user: { id: string; email: string; name: string } } | null =
-  null;
+let currentSession: {
+  user: { id: string; email: string; name: string };
+} | null = null;
 let sessionThrows = false;
 
 vi.mock("@/lib/auth", () => ({
@@ -27,10 +28,6 @@ vi.mock("@/lib/auth", () => ({
       },
     },
   },
-}));
-
-vi.mock("next/headers", () => ({
-  headers: async () => new Headers(),
 }));
 
 // Mocked outright rather than partially: the real module imports `@/db`,
@@ -74,6 +71,18 @@ describe("createContext is lazy", () => {
 
   it("reports that it has not touched auth", () => {
     expect(createContext().touchedAuth()).toBe(false);
+  });
+
+  it("resolves the client IP from the request without touching auth", () => {
+    const request = new Request("https://example.test/api/trpc", {
+      headers: { "x-real-ip": "203.0.113.42" },
+    });
+
+    const ctx = createContext({ req: request });
+
+    expect(ctx.clientIp).toBe("203.0.113.42");
+    expect(sessionCalls.count).toBe(0);
+    expect(roleCalls.count).toBe(0);
   });
 
   it("resolves the user only when asked", async () => {

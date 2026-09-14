@@ -23,12 +23,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { container } from "@/application/container";
 import { PhoneValueObject } from "@/domain/customers/value-objects/phone.value-object";
-import {
-  authRateLimiter,
-  enforceRateLimit,
-  getClientIp,
-} from "../utils/rate-limiter";
-import { headers } from "next/headers";
+import { authRateLimiter, enforceRateLimit } from "../utils/rate-limiter";
 import { auth } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 
@@ -97,15 +92,18 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const reqHeaders = await headers();
+      const reqHeaders = ctx.reqHeaders;
 
       // Two limits, because they stop different attacks. The IP limit slows a
       // single host walking the keyspace; the identifier limit slows a
       // distributed one grinding a single account, which no per-IP budget
       // catches. Both no-op silently without UPSTASH_* configured, so local
       // development is unaffected.
-      const ip = getClientIp(reqHeaders);
-      await enforceRateLimit(authRateLimiter, `signin:ip:${ip}`, RATE_LIMITED);
+      await enforceRateLimit(
+        authRateLimiter,
+        `signin:ip:${ctx.clientIp}`,
+        RATE_LIMITED
+      );
 
       const isPhone = PhoneValueObject.looksLikePhone(input.identifier);
 

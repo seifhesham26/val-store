@@ -13,17 +13,12 @@
  */
 
 import { z } from "zod";
-import { headers } from "next/headers";
 import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import type { ProductCatalogueRecord } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
 import { genderFilterSchema } from "./gender-filter.schema";
-import {
-  apiRateLimiter,
-  enforceRateLimit,
-  getClientIp,
-} from "@/server/utils/rate-limiter";
+import { apiRateLimiter, enforceRateLimit } from "@/server/utils/rate-limiter";
 import { PRODUCT_SORTS, type ProductSort } from "@/lib/collection-sort";
 
 /**
@@ -154,17 +149,14 @@ export const publicProductsRouter = router({
         cursor: z.number().min(1).optional(),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       // The most expensive thing an anonymous caller can ask for: two
       // unindexed leading-wildcard scans per call, with no auth to slow anyone
       // down first. Reading the client IP is not an auth lookup, so this does
       // not mark the request as having touched auth and the response stays
       // publicly cacheable — which is also why the limiter only ever sees the
       // requests a shared cache could not answer.
-      await enforceRateLimit(
-        apiRateLimiter,
-        `search:${getClientIp(await headers())}`
-      );
+      await enforceRateLimit(apiRateLimiter, `search:${ctx.clientIp}`);
 
       const repo = container.getProductRepository();
       const page = input.cursor ?? 1;

@@ -79,4 +79,51 @@ describe("public database indexes", () => {
       "products_slug_unique",
     ]);
   });
+
+  it("leaves only reviewed low-value foreign keys without a supporting index", async () => {
+    const uncovered = await client<{ constraintName: string }[]>`
+      select constraint_info.conname as "constraintName"
+      from pg_constraint constraint_info
+      join pg_class table_rel on table_rel.oid = constraint_info.conrelid
+      join pg_namespace namespace on namespace.oid = table_rel.relnamespace
+      where constraint_info.contype = 'f'
+        and namespace.nspname = 'public'
+        and not exists (
+          select 1
+          from pg_index index_info
+          where index_info.indrelid = constraint_info.conrelid
+            and index_info.indisvalid
+            and index_info.indisready
+            and index_info.indpred is null
+            and index_info.indnkeyatts >= cardinality(constraint_info.conkey)
+            and not exists (
+              select 1
+              from generate_subscripts(constraint_info.conkey, 1) position
+              where (index_info.indkey::smallint[])[position - 1]
+                is distinct from constraint_info.conkey[position]
+            )
+        )
+      order by constraint_info.conname
+    `;
+
+    expect(uncovered.map((row) => row.constraintName)).toEqual([
+      // History is read by section, not author, and grows only on CMS edits.
+      "content_sections_history_created_by_user_id_fk",
+      // Bounded configuration table, never filtered by editor.
+      "content_sections_updated_by_user_id_fk",
+      // History is read by page, not author, and grows only on legal edits.
+      "legal_pages_history_created_by_user_id_fk",
+      // Bounded configuration table, never filtered by editor.
+      "legal_pages_updated_by_user_id_fk",
+      // Orders are retained rather than deleted, and no query resolves a
+      // review from its order id.
+      "reviews_order_id_orders_id_fk",
+      // Bounded configuration tables, never filtered by editor.
+      "shipping_rates_updated_by_user_id_fk",
+      "site_settings_updated_by_user_id_fk",
+      // Notification lists start from their indexed user id, while products
+      // are soft-deleted rather than physically removed.
+      "user_notifications_product_id_products_id_fk",
+    ]);
+  });
 });

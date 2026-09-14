@@ -1,6 +1,6 @@
 import { initTRPC } from "@trpc/server";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { resolveClientIp } from "./utils/client-ip";
 import {
   AuthUser,
   getUserRole,
@@ -26,6 +26,10 @@ import {
  * batch containing several protected calls still resolves the user once.
  */
 export interface TRPCContext {
+  /** Request headers, empty for an in-process caller. */
+  reqHeaders: Headers;
+  /** Resolved once when the context is created; used only for rate limits. */
+  clientIp: string;
   /**
    * Resolves the signed-in user, or null. Memoised: safe to call repeatedly,
    * queries at most once per request.
@@ -52,10 +56,10 @@ export interface TRPCContext {
 }
 
 /** The work the context used to do eagerly, now deferred until asked. */
-async function resolveUser(): Promise<AuthUser | null> {
+async function resolveUser(reqHeaders: Headers): Promise<AuthUser | null> {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: reqHeaders,
     });
 
     if (!session?.user) {
@@ -88,16 +92,22 @@ async function resolveUser(): Promise<AuthUser | null> {
  * Synchronous on purpose: building the context now costs nothing, because all
  * of the work it used to do has moved behind `getUser`.
  *
- * `resHeaders` is handed straight through from the fetch adapter. It is
- * optional so the signature stays compatible with a caller that has no HTTP
- * response to speak of.
+ * The fetch adapter supplies `req` and `resHeaders`. Both stay optional so the
+ * same function remains usable in unit tests; a direct caller has no HTTP
+ * request and receives an empty request-header set instead.
  */
-export function createContext(opts?: { resHeaders?: Headers }): TRPCContext {
+export function createContext(opts?: {
+  req?: Request;
+  resHeaders?: Headers;
+}): TRPCContext {
   let pending: Promise<AuthUser | null> | null = null;
+  const reqHeaders = opts?.req?.headers ?? new Headers();
 
   return {
+    reqHeaders,
+    clientIp: resolveClientIp(reqHeaders),
     getUser: () => {
-      pending ??= resolveUser();
+      pending ??= resolveUser(reqHeaders);
       return pending;
     },
     touchedAuth: () => pending !== null,
@@ -112,8 +122,13 @@ export function createContext(opts?: { resHeaders?: Headers }): TRPCContext {
  * `touchedAuth` reports true so a directly-constructed context is never
  * mistaken for an anonymous request by the caching layer.
  */
-export function createDirectContext(user: AuthUser | null): TRPCContext {
+export function createDirectContext(
+  user: AuthUser | null,
+  reqHeaders: Headers = new Headers()
+): TRPCContext {
   return {
+    reqHeaders,
+    clientIp: resolveClientIp(reqHeaders),
     getUser: async () => user,
     touchedAuth: () => true,
     // No HTTP response exists for an in-process caller, and nothing reached

@@ -45,6 +45,22 @@ constraints remain. Migration `0006` is intentionally not journalled, matching
 the current out-of-band migration state; its change must be folded into the
 planned canonical baseline.
 
+## 2026-09-14 follow-up — foreign-key index coverage
+
+The live schema has 41 foreign keys. Twenty-five already had a supporting index;
+eight more now cover the growing or operationally important child columns used
+when variants, coupons, addresses, orders, or users are changed or deleted:
+`cart_items.variant_id`, `carts.coupon_id`, `coupon_usages.order_id`,
+`inventory_logs.created_by`, `order_items.variant_id`, and the orders table's
+coupon, shipping-address, and billing-address columns.
+
+`drizzle/0007_add_foreign_key_indexes.sql` was applied to the development
+database and is intentionally not journalled. The integration invariant now
+discovers every uncovered foreign key from PostgreSQL's catalog. Its eight
+documented exceptions are bounded configuration tables or columns with neither
+a reverse lookup nor a hard-delete path; a new uncovered foreign key therefore
+requires an explicit indexing decision instead of passing silently.
+
 ---
 
 ## Ground truth

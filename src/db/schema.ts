@@ -395,6 +395,13 @@ export const orders = pgTable(
     userIdIdx: index("idx_orders_user_id").on(table.userId),
     statusIdx: index("idx_orders_status").on(table.status),
     createdAtIdx: index("idx_orders_created_at").on(table.createdAt),
+    couponIdIdx: index("idx_orders_coupon_id").on(table.couponId),
+    shippingAddressIdIdx: index("idx_orders_shipping_address_id").on(
+      table.shippingAddressId
+    ),
+    billingAddressIdIdx: index("idx_orders_billing_address_id").on(
+      table.billingAddressId
+    ),
     // "My orders" pages `WHERE user_id = ? ORDER BY created_at DESC`, which the
     // single-column user_id index cannot satisfy without a sort.
     userCreatedIdx: index("idx_orders_user_created").on(
@@ -436,6 +443,7 @@ export const orderItems = pgTable(
   (table) => ({
     orderIdIdx: index("idx_order_items_order_id").on(table.orderId),
     productIdIdx: index("idx_order_items_product_id").on(table.productId),
+    variantIdIdx: index("idx_order_items_variant_id").on(table.variantId),
   })
 );
 
@@ -447,26 +455,32 @@ export const orderItems = pgTable(
 // creates a unique btree, and every lookup in the cart repository is
 // keyed on it. A second index would be the same tree maintained twice on
 // every write.
-export const carts = pgTable("carts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // Unique for now, which preserves exactly the current "one cart per
-  // user" behaviour. Dropping this constraint is what would later allow
-  // saved or multiple carts; nothing else needs to change for that.
-  userId: text("user_id")
-    .notNull()
-    .unique()
-    .references(() => user.id, { onDelete: "cascade" }),
-  // SET NULL, deliberately not cascade: deleting a coupon must not delete
-  // the carts that referenced it.
-  couponId: uuid("coupon_id").references(() => coupons.id, {
-    onDelete: "set null",
-  }),
-  // These three move together. Either all are set or all are null.
-  couponAppliedAt: timestamp("coupon_applied_at"),
-  couponCheckedAt: timestamp("coupon_checked_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const carts = pgTable(
+  "carts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Unique for now, which preserves exactly the current "one cart per
+    // user" behaviour. Dropping this constraint is what would later allow
+    // saved or multiple carts; nothing else needs to change for that.
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // SET NULL, deliberately not cascade: deleting a coupon must not delete
+    // the carts that referenced it.
+    couponId: uuid("coupon_id").references(() => coupons.id, {
+      onDelete: "set null",
+    }),
+    // These three move together. Either all are set or all are null.
+    couponAppliedAt: timestamp("coupon_applied_at"),
+    couponCheckedAt: timestamp("coupon_checked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    couponIdIdx: index("idx_carts_coupon_id").on(table.couponId),
+  })
+);
 
 export const cartItems = pgTable(
   "cart_items",
@@ -488,6 +502,7 @@ export const cartItems = pgTable(
   (table) => ({
     cartIdIdx: index("idx_cart_items_cart_id").on(table.cartId),
     productIdIdx: index("idx_cart_product_id").on(table.productId),
+    variantIdIdx: index("idx_cart_items_variant_id").on(table.variantId),
   })
 );
 
@@ -610,6 +625,7 @@ export const couponUsages = pgTable(
   (table) => ({
     couponIdIdx: index("idx_coupon_usages_coupon_id").on(table.couponId),
     userIdIdx: index("idx_coupon_usages_user_id").on(table.userId),
+    orderIdIdx: index("idx_coupon_usages_order_id").on(table.orderId),
     uniqueUsageIdx: uniqueIndex("idx_coupon_usages_unique").on(
       table.couponId,
       table.userId,
@@ -688,6 +704,7 @@ export const inventoryLogs = pgTable(
   },
   (table) => ({
     variantIdIdx: index("idx_inventory_variant_id").on(table.variantId),
+    createdByIdx: index("idx_inventory_created_by").on(table.createdBy),
     createdAtIdx: index("idx_inventory_created_at").on(table.createdAt),
   })
 );
