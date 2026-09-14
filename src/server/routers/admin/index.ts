@@ -13,6 +13,7 @@ import { adminNotificationsRouter } from "./notifications";
 import { categoriesRouter } from "./categories";
 import { legalRouter } from "./legal";
 import { shippingRouter } from "./shipping";
+import { accessAuditRouter } from "./access-audit";
 
 export const adminRouter = router({
   products: productsRouter,
@@ -29,4 +30,5 @@ export const adminRouter = router({
   categories: categoriesRouter,
   legal: legalRouter,
   shipping: shippingRouter,
+  accessAudit: accessAuditRouter,
 });

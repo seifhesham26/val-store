@@ -66,10 +66,14 @@ export interface DashboardRepositoryInterface {
   /**
    * Get recent orders for the dashboard
    */
-  getRecentOrders(limit?: number): Promise<RecentOrder[]>;
+  getRecentOrders(
+    limit?: number,
+    statuses?: OrderStatusValue[]
+  ): Promise<RecentOrder[]>;
 
   /**
    * Get analytics data for the analytics page
    */
   getAnalytics(days: number): Promise<AnalyticsData>;
 }
+import type { OrderStatusValue } from "@/domain/orders/value-objects/order-status.value-object";

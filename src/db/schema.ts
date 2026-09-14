@@ -139,12 +139,90 @@ export const userProfiles = pgTable("user_profiles", {
 });
 
 // ============================================
+// CUSTOMER-DATA ACCESS AUDIT
+// ============================================
+
+/**
+ * Append-only record of staff access to customer data.
+ *
+ * Actor identity is snapshotted so a later account rename or deletion cannot
+ * make an investigation unreadable. Customer values are deliberately absent:
+ * this table records access to a field group, never the phone/address itself.
+ */
+export const customerDataAccessAudits = pgTable(
+  "customer_data_access_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: text("actor_user_id").notNull(),
+    actorName: varchar("actor_name", { length: 255 }),
+    actorEmail: varchar("actor_email", { length: 255 }).notNull(),
+    actorRole: userRoleEnum("actor_role").notNull(),
+    subjectUserId: text("subject_user_id"),
+    orderId: uuid("order_id"),
+    action: varchar("action", {
+      length: 32,
+      enum: [
+        "order_view",
+        "delivery_reveal",
+        "customer_lookup",
+        "customer_reveal",
+        "order_export",
+      ],
+    }).notNull(),
+    fieldGroup: varchar("field_group", {
+      length: 32,
+      enum: [
+        "order_summary",
+        "shipping_contact",
+        "customer_history",
+        "customer_contact",
+        "bulk_order_data",
+      ],
+    }).notNull(),
+    reason: varchar("reason", {
+      length: 32,
+      enum: [
+        "order_fulfillment",
+        "customer_support",
+        "delivery_issue",
+        "account_correction",
+        "order_status",
+        "delivery_problem",
+        "return_exchange",
+        "operations_export",
+        "other",
+      ],
+    }).notNull(),
+    reasonNote: text("reason_note"),
+    confirmedCustomerRequest: boolean("confirmed_customer_request")
+      .default(false)
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    actorCreatedIdx: index("idx_customer_access_actor_created").on(
+      table.actorUserId,
+      table.createdAt
+    ),
+    subjectCreatedIdx: index("idx_customer_access_subject_created").on(
+      table.subjectUserId,
+      table.createdAt
+    ),
+    orderCreatedIdx: index("idx_customer_access_order_created").on(
+      table.orderId,
+      table.createdAt
+    ),
+    createdAtIdx: index("idx_customer_access_created_at").on(table.createdAt),
+  })
+);
+
+// ============================================
 // CUSTOMERS TABLE (Real Human Identity)
 // ============================================
 
 /**
- * Customer represents a real human, identified by phone number.
- * Multiple user accounts can belong to the same customer.
+ * Customer represents a real human, identified by normalized phone number.
+ * The approved launch identity rule is one normalized phone per account.
  */
 export const customers = pgTable("customers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -978,6 +1056,11 @@ export const featuredItems = pgTable(
 
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type NewUserProfile = typeof userProfiles.$inferInsert;
+
+export type CustomerDataAccessAudit =
+  typeof customerDataAccessAudits.$inferSelect;
+export type NewCustomerDataAccessAudit =
+  typeof customerDataAccessAudits.$inferInsert;
 
 export type Address = typeof addresses.$inferSelect;
 export type NewAddress = typeof addresses.$inferInsert;

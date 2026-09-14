@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-09-14, after the database index audit and request-context cleanup): `type-check` clean, `lint` **0 problems**, **708** unit tests passing across 63 files, `build` succeeds, and `pnpm test:integration`, which needs a database, is **54/54** across five files.
+Baseline as of last check (2026-09-15, after the customer-data access and audit foundation): `type-check` clean, `lint` **0 problems**, **768** unit tests passing across 72 files, `build` succeeds, and `pnpm test:integration`, which needs a database, is **54/54** across five files.
 
 Two things this file previously claimed that were not true, corrected here because they cost time to re-derive: lint reports **no warnings at all** — the three `@next/next/no-location-assign-relative-destination` warnings described in earlier versions do not fire — and the test count was 270 before the audit added 60.
 
@@ -33,7 +33,7 @@ pnpm seed:basic       # minimal seed
 npx tsx scripts/set-admin.ts <email>   # promote a user to super_admin
 ```
 
-**Migrations: eight SQL files, two journal entries, and the baseline was wrong until 2026-09-03.** `drizzle/` holds `0000_long_ultragirl` (the baseline, all 27 original tables), `0001_glossy_scourge` (two composite indexes, **applied**), `0002_search_trgm` (GIN trigram indexes, **not applied**, needs owner privileges, deliberately not urgent at the current catalogue size), `0003_backfill_currency` (the defaults are fixed; the historical seed-row backfill was deliberately not applied), `0004_order_address_snapshots`, `0005_cart_entity`, `0006_drop_duplicate_indexes`, and `0007_add_foreign_key_indexes`. `meta/_journal.json` lists only `0000` and `0001`, so **`pnpm db:migrate` will not run `0002` through `0007`**. Files `0004`–`0007` are reflected in the current development database and document their out-of-band application requirements in their own headers.
+**Migrations: nine SQL files, two journal entries, and the baseline was wrong until 2026-09-03.** `drizzle/` holds `0000_long_ultragirl` (the baseline, all 27 original tables), `0001_glossy_scourge` (two composite indexes, **applied**), `0002_search_trgm` (GIN trigram indexes, **not applied**, needs owner privileges, deliberately not urgent at the current catalogue size), `0003_backfill_currency` (the defaults are fixed; the historical seed-row backfill was deliberately not applied), `0004_order_address_snapshots`, `0005_cart_entity`, `0006_drop_duplicate_indexes`, `0007_add_foreign_key_indexes`, and `0008_customer_data_access_audit`. `meta/_journal.json` lists only `0000` and `0001`, so **`pnpm db:migrate` will not run `0002` through `0008`**. Files `0004`–`0008` are reflected in the current development database and document their out-of-band application requirements in their own headers.
 
 **The bug worth remembering:** the baseline and both `meta/*_snapshot.json` files created `orders.currency`, `payments.currency` and `site_settings.currency` as `DEFAULT 'USD'` while `src/db/schema.ts` declared `EGP`. The same schema built two ways disagreed — `db:push` gave EGP, `db:migrate` gave USD — so a database rebuilt through the migration path would have reintroduced the currency bug on a fresh install. All three files now say EGP. If you edit a shipped migration again, note that it changes the file hash, so a database that already ran it will refuse to migrate; that was acceptable here only because the database was being rebuilt.
 
@@ -70,9 +70,19 @@ Checkout depends on cart + order repos, so `createCheckoutModule()` takes them a
 
 ### tRPC
 
-Root router is `src/server/index.ts` → `{ admin, auth, public }`. `src/server/trpc.ts` defines `publicProcedure`, `protectedProcedure` (session required), and **two admin tiers**: `adminProcedure` (roles `worker`/`admin`/`super_admin` — every admin **query**) and `adminWriteProcedure` (`admin`/`super_admin` — every admin **mutation**).
+Root router is `src/server/index.ts` → `{ admin, auth, public }`. `src/server/trpc.ts` defines `publicProcedure`, `protectedProcedure` (session required), and capability-specific admin tiers: `adminProcedure` (roles `worker`/`admin`/`super_admin` for ordinary reads), `customerDirectoryProcedure` (`admin`/`super_admin` for browsable customer data), `adminWriteProcedure` (`admin`/`super_admin` for managed-data writes), and `adminSuperProcedure` (`super_admin` for role changes).
 
-**The tiers are asymmetric and that is the trap.** `adminProcedure` is the permissive one, so a new mutation written with it is silently writable by a read-only `worker`, and nothing about that is a type error. `src/server/admin-write-gating.test.ts` is the guard: it scans the routers and fails if a mutation is on the read tier, if a query is over-gated, or if the scan stops matching anything. Three mutations sit on the read tier deliberately — `admin.notifications.{markAsRead,markAllAsRead,delete}` touch only rows scoped to `ctx.user.id`, so a worker keeps their own notification bell.
+**The tiers are asymmetric and that is the trap.** `adminProcedure` is the permissive one, so a new mutation written with it is silently callable by a worker, and nothing about that is a type error. `src/server/admin-write-gating.test.ts` is the guard: it scans the routers, requires ordinary queries on the worker tier, customer-directory reads on their narrower tier, managed writes on the write tier, and names every deliberate exception. Notification mutations remain self-scoped. `customers.supportLookup`, `customers.revealContact`, `orders.revealDelivery`, and `orders.recordExport` are mutations because an audit insert must complete before the protected read is returned; they are read capabilities with an audit side effect, not managed-data writes.
+
+### Customer-data access and audit
+
+Workers are fulfilment operators at launch. Their ordinary order list and dashboard contain active orders only (`pending`, `processing`, `paid`, `shipped`), and order responses remove customer email plus both address objects. Opening a detail page writes an `order_view` event; **Show delivery details** writes another event before returning the shipping address and phone. Billing address is never returned by an admin order route.
+
+Historical worker access starts at `/admin/customers`: exact email, an unchecked customer-request confirmation, and a reason. A successful lookup returns a 30-minute audit-id grant tied to that worker and customer. Direct historical order access without that grant is rejected. Workers cannot browse or partially search the customer directory. Admins and super admins retain the searchable name/email directory, while phone and saved shipping addresses move behind a reasoned, audited reveal.
+
+`customer_data_access_audits` stores actor/role snapshots, subject/order ids, action, field group, reason and time — never the revealed value. Recording is fail-closed and removes rows older than 12 months using the database clock in the same transaction. Audit review is scoped per stored event rather than the actor's current role: super admins see all retained rows, admins see their own rows plus other accounts' worker-era rows, and workers see only themselves. Order CSV export is admin/super only and must record its audit event before the browser creates the file.
+
+Staff order reads are minimized at the repository boundary, not merely masked after loading: list/detail queries omit both address snapshots, both address relations, notes, and payment-gateway payloads. Worker list/detail queries also project customer email to `NULL`. `findShippingAddress()` is a separate shipping-only read invoked only after authorization and audit persistence; there is no staff billing-address read.
 
 **Context is lazy, and that is load-bearing in two directions.** `TRPCContext` exposes a memoised `getUser()` rather than a resolved `user`; `isAuthed`/`isAdmin` await it, so handlers below them still read `ctx.user` as a non-null `AuthUser`. A `publicProcedure` that never asks does **zero** auth queries — which is the point, since catalogue reads used to pay for a session lookup plus a `user_profiles` role query before running. Roles live in `user_profiles`, **not** on the Better Auth `user` table, and are cached in-process for 60s (`invalidateUserRole` drops one on write). The `session` table has no `role` column, so do not try to read a role off the session — a `generateSessionData` that did exactly that was removed as dead.
 
@@ -108,7 +118,7 @@ The role predicates live in `src/domain/customers/value-objects/user-role.ts`, *
 Two identity concepts coexist:
 
 - Better Auth `user` + `user_profiles` (role) — what login, orders, cart, and the admin "Customers" page actually use.
-- `customers`, keyed on **phone**, modeling "a real human" so multiple accounts can map to one person (loyalty points, totals, admin notes). Written by the signup hook, read by essentially nothing; `GetOrCreateCustomerUseCase` has no callers.
+- `customers`, keyed on **normalized phone**, modeling the one real human behind the account (loyalty points, totals, admin notes). The approved launch identity rule is one normalized phone → one account; older prose about multiple accounts per phone is obsolete. Written by the signup hook, read by essentially nothing; `GetOrCreateCustomerUseCase` has no callers.
 
 Deletion semantics differ by entity: products soft-delete (`isActive = false`), categories **hard-delete**. `categories.parentId` still has no FK constraint, so the protection against orphaning a parent's children is application-level — `DeleteCategoryUseCase` refuses to delete a category that has children or products. Anything writing outside that use case can still orphan rows.
 
@@ -167,7 +177,7 @@ What is actually left:
 
 Only one of the six entries this section used to list is still true.
 
-- ~~The `worker` role does nothing~~ — **implemented 2026-09-03 as the read-only tier.** A worker opens every admin screen and can change nothing; see [tRPC](#trpc) for the two procedure tiers and the guard test. **What it does not buy:** a worker still reads every customer's address and order history, because read-only constrains writes, not scope. Splitting catalogue work from customer data is a larger change and was not taken. Individual write controls are also still rendered — the server rejects them and `AdminReadOnlyBanner` explains why, but they are not disabled per control yet.
+- ~~The `worker` role does nothing~~ — **implemented 2026-09-03 as the read-only tier and scoped 2026-09-14 for customer data.** Workers still read non-customer admin screens, but their order browsing is fulfilment-only, email/address fields are removed from default responses, historical access requires the audited exact-email support flow, and bulk export/customer-directory reads are server-rejected. Individual write controls are still rendered on some non-customer screens — the server rejects them and `AdminReadOnlyBanner` explains why, but they are not disabled per control yet.
 
 Verified done 2026-09-02, listed so nobody re-does them:
 
@@ -250,7 +260,7 @@ These are working. They are listed because each is easy to break again — the f
 
 `docs/REFUNDS.md`, `docs/LOYALTY-POINTS.md` and `docs/PHONE-VERIFICATION.md` are **planned work, not defects**. Refunds record a return correctly but move no money — deliberate, pending the payment gateway decision, with the interim exposure stated (the admin button says "Refund", so refunds must be issued by hand in the provider's dashboard until then). Loyalty and phone verification are designed and agreed but entirely unbuilt: no table, no column, no code.
 
-**That was the whole of `docs/` as of 2026-09-03**, plus `GO-LIVE.md` added 2026-09-11 with the domain. Fifteen files were deleted on 2026-09-03: eight pre-implementation domain roadmaps, `connections.md`, a merged branch’s UI checklist, the P0/P1/P3 test plans, and the plan and spec for a pass that had shipped. All of them described intent or a finished branch rather than current state, which is the specific way documentation becomes actively misleading — this catalogue had already been caught listing 23 fixed items as open. `git log --diff-filter=D -- docs/` recovers any of them.
+`docs/PRELAUNCH-HANDOFF.md` is the continuity source for approved product decisions and the ordered remaining roadmap. The customer-access design and implementation plan are retained under `docs/superpowers/` as the record of the completed phase. Fifteen older files were deleted on 2026-09-03 because they described intent or finished work rather than current state; `git log --diff-filter=D -- docs/` recovers any of them.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

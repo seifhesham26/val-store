@@ -38,7 +38,20 @@ export const adminReviewsRouter = router({
         reviewRepo.countAll(onlyPending),
       ]);
 
-      return { items, total, limit: DEFAULT_ADMIN_REVIEW_LIMIT };
+      return {
+        items: items.map((review) => ({
+          id: review.id,
+          rating: review.rating,
+          title: review.title,
+          comment: review.comment,
+          isVerifiedPurchase: review.isVerifiedPurchase,
+          isApproved: review.isApproved,
+          createdAt: review.createdAt,
+          userName: review.userName,
+        })),
+        total,
+        limit: DEFAULT_ADMIN_REVIEW_LIMIT,
+      };
     }),
 
   /**

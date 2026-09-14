@@ -142,13 +142,18 @@ function parseAddressSnapshot(value: unknown): OrderAddress | null {
  * batched rather than per-row to keep the admin list at two queries.
  */
 async function loadCustomers(
-  userIds: (string | null)[]
+  userIds: (string | null)[],
+  includeEmail = true
 ): Promise<Map<string, OrderCustomer>> {
   const ids = [...new Set(userIds.filter((id): id is string => !!id))];
   if (ids.length === 0) return new Map();
 
   const rows = await db
-    .select({ id: user.id, name: user.name, email: user.email })
+    .select({
+      id: user.id,
+      name: user.name,
+      email: includeEmail ? user.email : sql<string | null>`null`,
+    })
     .from(user)
     .where(inArray(user.id, ids));
 
@@ -188,6 +193,78 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     );
   }
 
+  async findByIdForStaff(
+    orderId: string,
+    includeCustomerEmail: boolean
+  ): Promise<{ order: OrderEntity; hasShippingAddress: boolean } | null> {
+    const [order, [addressPresence]] = await Promise.all([
+      db.query.orders.findFirst({
+        where: eq(orders.id, orderId),
+        columns: {
+          id: true,
+          orderNumber: true,
+          userId: true,
+          status: true,
+          subtotal: true,
+          taxAmount: true,
+          shippingAmount: true,
+          discountAmount: true,
+          totalAmount: true,
+          couponId: true,
+          createdAt: true,
+          updatedAt: true,
+          shippedAt: true,
+          deliveredAt: true,
+        },
+        with: {
+          items: { with: { product: { with: { images: true } } } },
+          payments: {
+            columns: {
+              paymentMethod: true,
+              paymentStatus: true,
+              updatedAt: true,
+            },
+          },
+        },
+      }),
+      db
+        .select({
+          hasShippingAddress: sql<boolean>`(
+            ${orders.shippingAddressSnapshot} IS NOT NULL
+            OR ${orders.shippingAddressId} IS NOT NULL
+          )`,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .limit(1),
+    ]);
+
+    if (!order) return null;
+    const customers = await loadCustomers([order.userId], includeCustomerEmail);
+
+    return {
+      order: this.mapToEntity(
+        order,
+        order.userId ? (customers.get(order.userId) ?? null) : null
+      ),
+      hasShippingAddress: addressPresence?.hasShippingAddress ?? false,
+    };
+  }
+
+  async findShippingAddress(orderId: string): Promise<OrderAddress | null> {
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+      columns: { shippingAddressSnapshot: true },
+      with: { shippingAddress: true },
+    });
+
+    if (!order) return null;
+    return resolveOrderAddress(
+      order.shippingAddressSnapshot,
+      order.shippingAddress
+    );
+  }
+
   /**
    * Find orders by user ID
    */
@@ -203,18 +280,41 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
     const ordersList = await db.query.orders.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
+      columns: {
+        id: true,
+        orderNumber: true,
+        userId: true,
+        status: true,
+        subtotal: true,
+        taxAmount: true,
+        shippingAmount: true,
+        discountAmount: true,
+        totalAmount: true,
+        couponId: true,
+        createdAt: true,
+        updatedAt: true,
+        shippedAt: true,
+        deliveredAt: true,
+      },
       with: {
         items: true,
-        shippingAddress: true,
-        billingAddress: true,
-        payments: true,
+        payments: {
+          columns: {
+            paymentMethod: true,
+            paymentStatus: true,
+            updatedAt: true,
+          },
+        },
       },
       orderBy: [desc(orders.createdAt), desc(orders.id)],
       limit: filters?.limit,
       offset: filters?.offset,
     });
 
-    const customers = await loadCustomers(ordersList.map((o) => o.userId));
+    const customers = await loadCustomers(
+      ordersList.map((o) => o.userId),
+      filters?.includeCustomerEmail ?? true
+    );
 
     return ordersList.map((o) =>
       this.mapToEntity(o, o.userId ? (customers.get(o.userId) ?? null) : null)
@@ -1163,6 +1263,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
     if (filters?.status) {
       conditions.push(sql`${orders.status} = ${filters.status}`);
+    } else if (filters?.statuses?.length) {
+      conditions.push(inArray(orders.status, filters.statuses));
     }
 
     if (filters?.startDate) {
@@ -1300,8 +1402,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       taxAmount: string;
       shippingAmount: string;
       totalAmount: string;
-      shippingAddressId: string | null;
-      billingAddressId: string | null;
+      shippingAddressId?: string | null;
+      billingAddressId?: string | null;
       discountAmount?: string;
       couponId?: string | null;
       adminNotes?: string | null;

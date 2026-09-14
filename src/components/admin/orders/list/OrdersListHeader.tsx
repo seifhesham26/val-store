@@ -10,8 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, FileDown, RotateCcw, Undo2, X } from "lucide-react";
-import { toast } from "sonner";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
+import { isActiveFulfillmentStatus } from "@/domain/customer-access/customer-access-policy";
 
 export interface OrderFilters {
   search: string;
@@ -24,12 +24,18 @@ interface OrdersListHeaderProps {
   filters: OrderFilters;
   onFiltersChange: (filters: OrderFilters) => void;
   onExport: () => void;
+  canExport: boolean;
+  isExporting: boolean;
+  workerMode: boolean;
 }
 
 export function OrdersListHeader({
   filters,
   onFiltersChange,
   onExport,
+  canExport,
+  isExporting,
+  workerMode,
 }: OrdersListHeaderProps) {
   const hasActiveFilters =
     filters.search !== "" ||
@@ -70,7 +76,9 @@ export function OrdersListHeader({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            {ORDER_STATUSES.map((status) => (
+            {ORDER_STATUSES.filter(
+              (status) => !workerMode || isActiveFulfillmentStatus(status)
+            ).map((status) => (
               <SelectItem key={status} value={status}>
                 {status.charAt(0).toUpperCase() + status.slice(1)}
               </SelectItem>
@@ -127,16 +135,12 @@ export function OrdersListHeader({
           </Button>
         )}
 
-        <Button
-          variant="outline"
-          onClick={() => {
-            onExport();
-            toast.success("Orders exported");
-          }}
-        >
-          <FileDown className="mr-2 h-4 w-4" />
-          Export
-        </Button>
+        {canExport && (
+          <Button variant="outline" onClick={onExport} disabled={isExporting}>
+            <FileDown className="mr-2 h-4 w-4" />
+            {isExporting ? "Authorizing..." : "Export"}
+          </Button>
+        )}
       </div>
     </>
   );

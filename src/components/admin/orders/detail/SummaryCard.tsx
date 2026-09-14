@@ -43,9 +43,11 @@ export function SummaryCard({ order }: { order: OrderData }) {
           {order.customer ? (
             <span className="truncate text-right text-sm font-medium">
               {order.customer.name}
-              <span className="block text-xs font-normal text-muted-foreground">
-                {order.customer.email}
-              </span>
+              {order.customer.email && (
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {order.customer.email}
+                </span>
+              )}
             </span>
           ) : (
             <span className="text-sm text-muted-foreground">

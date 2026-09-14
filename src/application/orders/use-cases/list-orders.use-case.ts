@@ -1,6 +1,7 @@
 import { OrderEntity } from "@/domain/orders/entities/order.entity";
 import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
+import type { OrderStatusValue } from "@/domain/orders/value-objects/order-status.value-object";
 
 /**
  * List Orders Use Case
@@ -9,6 +10,8 @@ import { pageWindow, pageCount } from "@/domain/shared/pagination";
 export interface ListOrdersInput {
   userId?: string;
   status?: string;
+  statuses?: OrderStatusValue[];
+  includeCustomerEmail?: boolean;
   startDate?: Date;
   endDate?: Date;
   minTotal?: number;
@@ -71,6 +74,8 @@ export class ListOrdersUseCase {
     const filters = {
       userId: input.userId,
       status: input.status,
+      statuses: input.statuses,
+      includeCustomerEmail: input.includeCustomerEmail,
       startDate: input.startDate,
       endDate: input.endDate,
       minTotal: input.minTotal,

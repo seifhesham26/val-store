@@ -10,6 +10,10 @@ import { ShoppingBag, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/currency";
+import { CustomerContactReveal } from "./CustomerContactReveal";
+import { StaffAccessHistory } from "./StaffAccessHistory";
+import { useAdminWriteAccess } from "@/hooks/use-admin-write-access";
+import { canReviewAccessFor } from "@/domain/customer-access/customer-access-policy";
 
 interface CustomerDetailDialogProps {
   customerId: string | null;
@@ -20,6 +24,8 @@ export function CustomerDetailDialog({
   customerId,
   onClose,
 }: CustomerDetailDialogProps) {
+  const { role: viewerRole } = useAdminWriteAccess();
+  const { data: viewer } = trpc.public.user.getSession.useQuery();
   const { data: customerDetail, isLoading } =
     trpc.admin.customers.getById.useQuery(
       { id: customerId! },
@@ -56,6 +62,11 @@ export function CustomerDetailDialog({
                 </p>
               </div>
             </div>
+
+            <CustomerContactReveal
+              key={customerDetail.id}
+              customerId={customerDetail.id}
+            />
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -114,8 +125,8 @@ export function CustomerDetailDialog({
                           </p>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {order.items.length} item
-                          {order.items.length !== 1 ? "s" : ""}
+                          {order.itemCount} item
+                          {order.itemCount !== 1 ? "s" : ""}
                         </p>
                       </div>
 
@@ -141,6 +152,14 @@ export function CustomerDetailDialog({
                 </div>
               )}
             </div>
+
+            {viewerRole &&
+              customerDetail.role !== "customer" &&
+              canReviewAccessFor(
+                viewerRole,
+                customerDetail.role,
+                viewer?.id === customerDetail.id
+              ) && <StaffAccessHistory staffUserId={customerDetail.id} />}
           </div>
         ) : null}
       </DialogContent>

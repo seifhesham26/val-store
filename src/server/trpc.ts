@@ -228,6 +228,16 @@ export const protectedProcedure = t.procedure.use(isAuthed);
 export const adminProcedure = t.procedure.use(isAdminArea);
 
 /**
+ * Browsable customer data â€” admin and super_admin only.
+ *
+ * This deliberately has its own name even though it currently shares the
+ * admin/super role check with writes. A customer-data read is not a write, and
+ * keeping the capability explicit prevents a future worker write permission
+ * from silently opening the customer directory too.
+ */
+export const customerDirectoryProcedure = t.procedure.use(isAdminWriter);
+
+/**
  * Write access to admin-managed data — admin, super_admin only.
  *
  * Every admin **mutation** uses this, with one deliberate exception:

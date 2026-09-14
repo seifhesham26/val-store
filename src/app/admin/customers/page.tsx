@@ -13,6 +13,8 @@ import { CustomersSearch } from "@/components/admin/customers/CustomersSearch";
 import { CustomersTable } from "@/components/admin/customers/CustomersTable";
 import { CustomerDetailDialog } from "@/components/admin/customers/CustomerDetailDialog";
 import { useAdminWriteAccess } from "@/hooks/use-admin-write-access";
+import { WorkerSupportLookup } from "@/components/admin/customers/WorkerSupportLookup";
+import { canBrowseCustomerDirectory } from "@/domain/customer-access/customer-access-policy";
 
 export default function AdminCustomersPage() {
   const [search, setSearch] = useState("");
@@ -20,14 +22,18 @@ export default function AdminCustomersPage() {
     null
   );
 
-  const { data, isLoading } = trpc.admin.customers.list.useQuery({
-    search: search || undefined,
-    limit: 100,
-  });
+  const { role, isPending: isRolePending } = useAdminWriteAccess();
+  const canBrowse = role ? canBrowseCustomerDirectory(role) : false;
+  const { data, isLoading } = trpc.admin.customers.list.useQuery(
+    {
+      search: search || undefined,
+      limit: 100,
+    },
+    { enabled: canBrowse }
+  );
   const { data: session } = trpc.public.user.getSession.useQuery();
-  const { role } = useAdminWriteAccess();
 
-  if (isLoading) {
+  if (isRolePending || (canBrowse && isLoading)) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
@@ -38,6 +44,10 @@ export default function AdminCustomersPage() {
       </div>
     );
   }
+
+  if (role === "worker") return <WorkerSupportLookup />;
+
+  if (!canBrowse) return null;
 
   const { customers = [], total = 0 } = data ?? {};
 

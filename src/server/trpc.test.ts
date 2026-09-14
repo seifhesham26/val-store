@@ -40,14 +40,31 @@ vi.mock("./utils/auth-helpers", () => ({
   requireAuth: (user: unknown) => {
     if (!user) throw new Error("UNAUTHORIZED");
   },
-  requireAdmin: () => {},
+  requireAdmin: (user: { role: string }) => {
+    if (user.role !== "admin" && user.role !== "super_admin") {
+      throw new Error("FORBIDDEN");
+    }
+  },
+  requireAdminArea: (user: { role: string }) => {
+    if (!["worker", "admin", "super_admin"].includes(user.role)) {
+      throw new Error("FORBIDDEN");
+    }
+  },
+  requireSuperAdmin: (user: { role: string }) => {
+    if (user.role !== "super_admin") throw new Error("FORBIDDEN");
+  },
   isAdmin: () => false,
   requireRole: () => {},
   invalidateUserRole: () => {},
   clearRoleCache: () => {},
 }));
 
-const { createContext, createDirectContext } = await import("./trpc");
+const {
+  createContext,
+  createDirectContext,
+  customerDirectoryProcedure,
+  router,
+} = await import("./trpc");
 
 const SESSION = {
   user: { id: "u1", email: "a@b.c", name: "Ada" },
@@ -181,4 +198,39 @@ describe("createDirectContext", () => {
     // request by the caching layer.
     expect(createDirectContext(null).touchedAuth()).toBe(true);
   });
+});
+
+describe("customerDirectoryProcedure", () => {
+  const testRouter = router({
+    directory: customerDirectoryProcedure.query(({ ctx }) => ctx.user.role),
+  });
+
+  it("rejects a worker from the browsable customer directory", async () => {
+    const caller = testRouter.createCaller(
+      createDirectContext({
+        id: "worker-1",
+        email: "worker@example.com",
+        name: "Worker",
+        role: "worker",
+      })
+    );
+
+    await expect(caller.directory()).rejects.toThrow("FORBIDDEN");
+  });
+
+  it.each(["admin", "super_admin"] as const)(
+    "admits %s to the browsable customer directory",
+    async (role) => {
+      const caller = testRouter.createCaller(
+        createDirectContext({
+          id: `${role}-1`,
+          email: `${role}@example.com`,
+          name: role,
+          role,
+        })
+      );
+
+      await expect(caller.directory()).resolves.toBe(role);
+    }
+  );
 });

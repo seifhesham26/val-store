@@ -20,6 +20,7 @@ import { createInventoryModule } from "./inventory";
 import { createNotificationModule } from "./notifications";
 import { createLegalModule } from "./legal";
 import { createShippingModule } from "./shipping";
+import { createCustomerAccessModule } from "./customer-access";
 import { NextTaskScheduler } from "@/infrastructure/services/next-task-scheduler.service";
 
 function createContainer() {
@@ -73,6 +74,9 @@ function createContainer() {
   const services = createServicesModule();
   const legal = createLegalModule();
   const shipping = createShippingModule();
+  const customerAccess = createCustomerAccessModule({
+    getOrderRepository: orders.getOrderRepository,
+  });
 
   return {
     // Products
@@ -104,6 +108,7 @@ function createContainer() {
     // Legal
     ...legal,
     ...shipping,
+    ...customerAccess,
   };
 }
 
