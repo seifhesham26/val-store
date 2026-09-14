@@ -201,7 +201,21 @@ unless the code and tests prove otherwise**.
 - Workers do not directly overwrite inventory.
 - Normal stock changes come from orders, cancellations, and approved returns.
 - A worker who finds damaged, missing, or extra physical stock submits an
-  adjustment request; an admin reviews and confirms it before stock changes.
+  adjustment request; an admin or super admin approves, corrects, or rejects it
+  before stock changes.
+- Multiple requests may remain pending for one variant. Approval applies a
+  signed difference to the current locked stock, not an old absolute count, and
+  records one inventory movement. The original request remains immutable.
+- Entering 1-20 recorded units creates one worker inspection for that low-stock
+  cycle. While unresolved, the final 10 units are protected. A green all-fine
+  result releases them without admin review; damaged or missing stock
+  quarantines the variant until review.
+- Customers see **Temporarily unavailable - we're confirming availability**
+  when inspection protection or quarantine prevents sale. Do not claim sold out
+  or restocking when neither is true.
+- Product cards, scrolling stock refresh, product detail, quantity controls,
+  cart, and checkout must share the same sellable-stock rule. Checkout remains
+  authoritative under a variant lock.
 - Fulfilment should eventually store practical tracking data: carrier, tracking
   number/reference, shipment status, and relevant timestamps.
 
@@ -288,7 +302,15 @@ an idea changed later, the **latest** answer is the one marked as current.
 | Should a refund require customer confirmation?           | Yes. Use a customer OTP/confirmation gate before staff completes the refund workflow.                                                        | Approved, unbuilt                           |
 | Does the current refund button send money?               | No. It records the return/refund state; actual provider money movement waits for OPay.                                                       | Known limitation                            |
 | Can a worker directly edit stock?                        | No. Routine inventory follows system events such as sale, cancellation, and approved return.                                                 | Approved                                    |
-| What if a worker finds extra, missing, or damaged stock? | The worker submits an adjustment request; an admin reviews and confirms it before inventory changes.                                         | Approved, unbuilt                           |
+| What if a worker finds extra, missing, or damaged stock? | The worker submits an immutable request; an admin/super admin approves, corrects, or rejects it before inventory changes.                    | Design approved; unbuilt                    |
+| May two workers report the same variant?                 | Yes. Keep both pending reports, group them for investigation, and let the reviewer approve valid findings or reject duplicates.              | Design approved; unbuilt                    |
+| How is a stale adjustment request applied?               | Apply its signed difference to current stock under a row lock, never overwrite current stock with the old request-time count.                | Design approved; unbuilt                    |
+| When should low-stock inspection begin?                  | Create one inspection per low-stock cycle when recorded stock enters 1-20. Zero stock creates no inspection.                                 | Design approved; unbuilt                    |
+| What happens while that inspection is pending?           | Protect the final 10 units. At 11 only one is sellable; at 10 the variant is temporarily unavailable.                                        | Design approved; unbuilt                    |
+| What happens after an all-fine inspection?               | Record it immediately in green without admin review and allow the verified remainder to sell below 10 down to zero.                          | Design approved; unbuilt                    |
+| What happens when a flaw is reported?                    | Damaged/missing quarantines the variant pending review; existing trusted stock stays sellable for an extra-stock report.                     | Design approved; unbuilt                    |
+| What should customers see during protection/quarantine?  | “Temporarily unavailable - we're confirming availability.” Say “restocking” only when an actual incoming restock exists.                     | Design approved; unbuilt                    |
+| Where should unresolved work be visible?                 | On the Inventory Requests tab and as a count beside Inventory in the staff sidebar, using the existing in-app notification system.           | Design approved; unbuilt                    |
 | What does “tracking information” mean?                   | The shipment carrier, tracking/reference number, delivery status, and relevant fulfilment timestamps shown to staff/customer as appropriate. | Approved concept, unbuilt                   |
 
 ### Roles, leads, and external data
@@ -345,10 +367,10 @@ These are known dependencies, not current code defects.
 
 ## Recommended remaining phases
 
-1. **Inventory adjustment request/review.** Let a worker report damaged,
-   missing, or extra stock; require an admin decision before inventory changes.
-   This is the next phase because it is fully buildable without an external
-   provider and closes the main remaining worker-operations gap.
+1. **Inventory adjustment request/review.** The product design is approved in
+   `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`.
+   Review that specification, then plan and implement it without expanding into
+   later phases.
 2. **Refund authorization workflow.** Design customer confirmation around the
    existing return model, but do not pretend to move money before OTP and OPay
    behavior are known.
@@ -368,25 +390,21 @@ approve it, implement it, verify it, and update this handoff.
 
 ## Immediate next task
 
-Start with **Inventory adjustment request/review**. Before coding:
-
-1. Inspect the existing inventory router, `AdjustStockUseCase`, inventory logs,
-   roles, admin screens, and every current stock-changing path.
-2. Clearly separate what already changes stock safely from the new worker request
-   workflow.
-3. Propose the smallest request → admin approve/reject design, including request
-   reasons, quantities, audit/history, and what happens if stock changes while a
-   request waits.
-4. Explain each operational choice in plain language and ask the brand owner the
-   necessary product questions one at a time.
-5. Do not write implementation code until the design is approved. Do not include
-   OPay, OTP, direct worker stock writes, or the future media-buyer role.
+The **Inventory adjustment request/review** analysis and product design are now
+complete. The immediate next step is brand-owner review of
+`docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`.
+After approval, write the implementation plan and execute it as its own phase.
+Do not re-open the settled product questions unless implementation uncovers a
+real contradiction or unsafe edge case. Do not include OPay, OTP, direct worker
+stock writes, assignments, or the future media-buyer role.
 
 ## Source-of-truth documents
 
 - `AGENTS.md` — current architecture, commands, traps, and verified baseline
 - `docs/superpowers/specs/2026-09-14-customer-data-access-and-audit-design.md`
   — approved design record for the completed customer-access phase
+- `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`
+  — approved design record for the next inventory-operations phase
 - `docs/superpowers/plans/2026-09-14-customer-data-access-and-audit.md` —
   implementation plan and verification record for that phase
 - `docs/ISSUES.md` — defect catalogue and resolved-history details
@@ -407,11 +425,11 @@ Start with **Inventory adjustment request/review**. Before coding:
 > and `docs/PRELAUNCH-HANDOFF.md` completely before acting, then verify the branch
 > and working tree. Treat the handoff Q&A ledger as my latest approved product
 > decisions. The customer-data access and audit foundation is complete; do not
-> redesign or repeat it. Start the recommended **Inventory adjustment
-> request/review** phase. First inspect every current stock-changing path,
-> inventory router/use case/log, role boundary, and relevant admin screen. Explain
-> the findings in plain language, propose an opinionated minimal request → admin
-> approve/reject design, and ask me necessary product questions one at a time.
-> Do not write code until we agree on the design. Clearly separate implemented,
-> approved-but-unbuilt, and externally blocked work. Do not run
+> redesign or repeat it. The **Inventory adjustment request/review** design is
+> approved in
+> `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`.
+> Review that specification, write the implementation plan, then implement and
+> verify only that phase. Preserve the approved request, inspection, quarantine,
+> availability, concurrency, and customer-copy decisions. Clearly separate
+> implemented, approved-but-unbuilt, and externally blocked work. Do not run
 > `pnpm db:migrate` on the current development database.
