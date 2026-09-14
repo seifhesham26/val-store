@@ -415,6 +415,8 @@ media-buyer role.
   — approved design record for the completed customer-access phase
 - `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`
   — approved design record for the next inventory-operations phase
+- `docs/superpowers/specs/2026-09-15-refund-authorization-evidence-design.md`
+  — approved-but-unbuilt refund policy, confirmation, and inspection-evidence design
 - `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`
   — task-by-task implementation plan for that approved design
 - `docs/superpowers/plans/2026-09-14-customer-data-access-and-audit.md` —
