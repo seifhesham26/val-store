@@ -179,9 +179,11 @@ unless the code and tests prove otherwise**.
 - Staff handling an order may view the fulfilment data needed for that order
   without asking for a new OTP on every click. Checkout consent and the privacy
   notice must explain this operational use.
-- Refund authorization should require a customer confirmation/OTP before staff
-  completes the refund workflow. Provider-side money movement remains deferred
-  until OPay exists.
+- Refund authorization follows the hardcoded policy in `docs/REFUNDS.md`.
+  Every outcome requires a ten-second read-and-acknowledge gate; a positive
+  refund also requires the one-minute, five-attempt customer OTP before staff
+  completes the workflow. Provider-side money movement remains deferred until
+  OPay exists.
 - Access events should appear on the staff member's admin profile for owner/admin
   review.
 
@@ -296,22 +298,26 @@ an idea changed later, the **latest** answer is the one marked as current.
 
 ### Refunds, inventory, and fulfilment
 
-| Question                                                 | Brand-owner answer / decision                                                                                                                | State                                       |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| What return windows were approved?                       | 14 days for normal returns and 30 days for defective items.                                                                                  | Approved policy; verify legal copy/workflow |
-| Should a refund require customer confirmation?           | Yes. Use a customer OTP/confirmation gate before staff completes the refund workflow.                                                        | Approved, unbuilt                           |
-| Does the current refund button send money?               | No. It records the return/refund state; actual provider money movement waits for OPay.                                                       | Known limitation                            |
-| Can a worker directly edit stock?                        | No. Routine inventory follows system events such as sale, cancellation, and approved return.                                                 | Approved                                    |
-| What if a worker finds extra, missing, or damaged stock? | The worker submits an immutable request; an admin/super admin approves, corrects, or rejects it before inventory changes.                    | Design approved; unbuilt                    |
-| May two workers report the same variant?                 | Yes. Keep both pending reports, group them for investigation, and let the reviewer approve valid findings or reject duplicates.              | Design approved; unbuilt                    |
-| How is a stale adjustment request applied?               | Apply its signed difference to current stock under a row lock, never overwrite current stock with the old request-time count.                | Design approved; unbuilt                    |
-| When should low-stock inspection begin?                  | Create one inspection per low-stock cycle when recorded stock enters 1-20. Zero stock creates no inspection.                                 | Design approved; unbuilt                    |
-| What happens while that inspection is pending?           | Protect the final 10 units. At 11 only one is sellable; at 10 the variant is temporarily unavailable.                                        | Design approved; unbuilt                    |
-| What happens after an all-fine inspection?               | Record it immediately in green without admin review and allow the verified remainder to sell below 10 down to zero.                          | Design approved; unbuilt                    |
-| What happens when a flaw is reported?                    | Damaged/missing quarantines the variant pending review; existing trusted stock stays sellable for an extra-stock report.                     | Design approved; unbuilt                    |
-| What should customers see during protection/quarantine?  | “Temporarily unavailable - we're confirming availability.” Say “restocking” only when an actual incoming restock exists.                     | Design approved; unbuilt                    |
-| Where should unresolved work be visible?                 | On the Inventory Requests tab and as a count beside Inventory in the staff sidebar, using the existing in-app notification system.           | Design approved; unbuilt                    |
-| What does “tracking information” mean?                   | The shipment carrier, tracking/reference number, delivery status, and relevant fulfilment timestamps shown to staff/customer as appropriate. | Approved concept, unbuilt                   |
+| Question                                                 | Brand-owner answer / decision                                                                                                                                                                           | State                                       |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| What return windows were approved?                       | 14 days for normal returns and 30 days for defective items.                                                                                                                                             | Approved policy; verify legal copy/workflow |
+| Should a refund require customer confirmation?           | Yes. Use a customer OTP/confirmation gate before staff completes the refund workflow.                                                                                                                   | Approved, unbuilt                           |
+| Should refund rules be editable in Settings?             | No. Refund windows, calculations, delivery treatment, goodwill percentage, OTP/evidence gates, and fee responsibility are hardcoded; changes require code.                                              | Approved policy; unbuilt                    |
+| What is the approved refund calculation?                 | Unworn change-of-mind returns refund 100% of paid item value; worn but resellable change-of-mind returns may receive 70% goodwill; defective/wrong items refund 100% plus applicable original delivery. | Approved policy; unbuilt                    |
+| Who pays delivery on a change-of-mind return?            | The original outbound delivery fee is not refunded; Valkyrie pays one return pickup. Rejected customer-caused returns keep the original fee and the customer pays collection.                           | Approved policy; unbuilt                    |
+| What proof is required for a return?                     | Customer condition/package photos before pickup, then staff unboxing and inspection video before the final refund decision.                                                                             | Approved policy; unbuilt                    |
+| Does the current refund button send money?               | No. It records the return/refund state; actual provider money movement waits for OPay.                                                                                                                  | Known limitation                            |
+| Can a worker directly edit stock?                        | No. Routine inventory follows system events such as sale, cancellation, and approved return.                                                                                                            | Approved                                    |
+| What if a worker finds extra, missing, or damaged stock? | The worker submits an immutable request; an admin/super admin approves, corrects, or rejects it before inventory changes.                                                                               | Design approved; unbuilt                    |
+| May two workers report the same variant?                 | Yes. Keep both pending reports, group them for investigation, and let the reviewer approve valid findings or reject duplicates.                                                                         | Design approved; unbuilt                    |
+| How is a stale adjustment request applied?               | Apply its signed difference to current stock under a row lock, never overwrite current stock with the old request-time count.                                                                           | Design approved; unbuilt                    |
+| When should low-stock inspection begin?                  | Create one inspection per low-stock cycle when recorded stock enters 1-20. Zero stock creates no inspection.                                                                                            | Design approved; unbuilt                    |
+| What happens while that inspection is pending?           | Protect the final 10 units. At 11 only one is sellable; at 10 the variant is temporarily unavailable.                                                                                                   | Design approved; unbuilt                    |
+| What happens after an all-fine inspection?               | Record it immediately in green without admin review and allow the verified remainder to sell below 10 down to zero.                                                                                     | Design approved; unbuilt                    |
+| What happens when a flaw is reported?                    | Damaged/missing quarantines the variant pending review; existing trusted stock stays sellable for an extra-stock report.                                                                                | Design approved; unbuilt                    |
+| What should customers see during protection/quarantine?  | “Temporarily unavailable - we're confirming availability.” Say “restocking” only when an actual incoming restock exists.                                                                                | Design approved; unbuilt                    |
+| Where should unresolved work be visible?                 | On the Inventory Requests tab and as a count beside Inventory in the staff sidebar, using the existing in-app notification system.                                                                      | Design approved; unbuilt                    |
+| What does “tracking information” mean?                   | The shipment carrier, tracking/reference number, delivery status, and relevant fulfilment timestamps shown to staff/customer as appropriate.                                                            | Approved concept, unbuilt                   |
 
 ### Roles, leads, and external data
 
@@ -373,9 +379,9 @@ These are known dependencies, not current code defects.
    `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`.
    Review the plan, choose an execution style, then implement it without
    expanding into later phases.
-2. **Refund authorization workflow.** Design customer confirmation around the
-   existing return model, but do not pretend to move money before OTP and OPay
-   behavior are known.
+2. **Refund authorization workflow.** Implement the hardcoded policy and
+   evidence/confirmation gates in `docs/REFUNDS.md`, but do not pretend to move
+   money before OTP and OPay behavior are known.
 3. **Identity and messaging.** Update the old phone/loyalty designs for one phone
    per account, then implement Resend and the chosen OTP provider when credentials
    exist.
