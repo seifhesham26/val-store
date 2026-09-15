@@ -101,7 +101,7 @@ function createContainer() {
     ...services,
     // Coupons
     ...couponsModule,
-    // Inventory
+    // Inventory stock, worker inspections/requests, and admin review
     ...inventory,
     // Notifications
     ...notifications,

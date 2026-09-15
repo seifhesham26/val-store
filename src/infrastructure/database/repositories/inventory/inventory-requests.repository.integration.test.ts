@@ -8,10 +8,42 @@
 
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import { client } from "@/db";
+import { client, db } from "@/db";
 import { DrizzleInventoryRepository } from "./inventory.repository";
+import { DrizzleInventoryRequestsRepository } from "./inventory-requests.repository";
+import { lockVariantStockState } from "./inventory-stock-state";
 
 const inventory = new DrizzleInventoryRepository();
+const requests = new DrizzleInventoryRequestsRepository();
+
+function submit(
+  category: "damaged" | "missing" | "extra" = "missing",
+  inspectionId?: string
+) {
+  return requests.submit({
+    variantId: fixture.variantId,
+    inspectionId,
+    requester: { id: fixture.workerId, name: "Original Worker" },
+    category,
+    requestedQuantity: 2,
+    explanation: "Original count explanation",
+  });
+}
+
+function review(
+  requestId: string,
+  decision: "approved" | "rejected" = "approved",
+  approvedQuantity?: number,
+  decisionExplanation?: string
+) {
+  return requests.review({
+    requestId,
+    decision,
+    approvedQuantity,
+    decisionExplanation,
+    reviewer: { id: fixture.workerId, name: "Reviewing Admin" },
+  });
+}
 
 function adjust(newQuantity: number) {
   return inventory.adjustStockWithLog(fixture.variantId, newQuantity, {
@@ -112,6 +144,319 @@ afterEach(async () => {
 
 afterAll(async () => {
   await client.end({ timeout: 5 });
+});
+
+describe("inventory request transactions", () => {
+  it("isolates inspection and quarantine predicates between two variants", async () => {
+    const otherId = randomUUID();
+    await client`insert into product_variants (id, product_id, sku, stock_quantity)
+      values (${otherId}, ${fixture.productId}, ${`${fixture.sku}-OTHER`}, 19)`;
+    await adjust(0);
+    await adjust(15);
+    expect(
+      await inventory.getVariantSellability([fixture.variantId, otherId])
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variantId: fixture.variantId,
+          availabilityState: "inspection_pending",
+          sellableStock: 5,
+        }),
+        expect.objectContaining({
+          variantId: otherId,
+          availabilityState: "available",
+          sellableStock: 19,
+        }),
+      ])
+    );
+    await submit("missing");
+    expect(
+      await inventory.getVariantSellability([fixture.variantId, otherId])
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variantId: fixture.variantId,
+          availabilityState: "quarantined",
+          sellableStock: 0,
+        }),
+        expect.objectContaining({
+          variantId: otherId,
+          availabilityState: "available",
+          sellableStock: 19,
+        }),
+      ])
+    );
+    const other = await db.transaction((tx) =>
+      lockVariantStockState(tx, otherId)
+    );
+    expect(other).toMatchObject({
+      pendingInspection: false,
+      pendingFlaw: false,
+      openInspectionId: null,
+      sellableStock: 19,
+    });
+  });
+
+  it("stores immutable snapshots and multiple pending requests while quarantining only flaws", async () => {
+    const extra = await submit("extra");
+    expect(extra).toMatchObject({
+      success: true,
+      request: {
+        stockAtRequest: 2,
+        sku: fixture.sku,
+        requester: { name: "Original Worker" },
+      },
+    });
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+        .sellableStock
+    ).toBe(2);
+    const missing = await submit();
+    const damaged = await submit("damaged");
+    expect(missing.success && damaged.success).toBe(true);
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+        .availabilityState
+    ).toBe("quarantined");
+    expect(await inventory.getLogsByVariant(fixture.variantId)).toEqual([]);
+    const work = await requests.listWork();
+    expect(
+      work.pendingRequestGroups.find(
+        (group) => group.variantId === fixture.variantId
+      )?.requests
+    ).toHaveLength(3);
+  });
+
+  it("links a pending inspection and completes it as flaw_reported in the submission transaction", async () => {
+    await adjust(0);
+    await adjust(15);
+    const [inspection] = await cycles();
+    const result = await submit("damaged", inspection.id);
+    expect(result).toMatchObject({
+      success: true,
+      request: { inspectionId: inspection.id, stockAtRequest: 15 },
+    });
+    expect((await cycles())[0].status).toBe("flaw_reported");
+    const work = await requests.listWork();
+    const history = work.history.find(
+      (item) =>
+        item.kind === "inspection" && item.inspection.id === inspection.id
+    );
+    expect(history).toMatchObject({
+      kind: "inspection",
+      inspection: {
+        completedBy: { name: "Original Worker" },
+        adjustmentRequestId: result.success ? result.request.id : "missing",
+      },
+    });
+  });
+
+  it("completes all-fine once without moving stock or logging, releasing the inspection hold", async () => {
+    await adjust(0);
+    await adjust(15);
+    const [inspection] = await cycles();
+    const before = await inventory.getLogsByVariant(fixture.variantId);
+    const results = await Promise.all(
+      [1, 2].map(() =>
+        requests.completeAllFine({
+          inspectionId: inspection.id,
+          worker: { id: fixture.workerId, name: "Checking Worker" },
+        })
+      )
+    );
+    expect(results.filter((result) => result.success)).toHaveLength(1);
+    expect(results.filter((result) => !result.success)).toEqual([
+      { success: false, error: "conflict" },
+    ]);
+    expect(await inventory.getLogsByVariant(fixture.variantId)).toEqual(before);
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+    ).toMatchObject({ stockQuantity: 15, sellableStock: 15 });
+  });
+
+  it("approves against current stock once, preserving originals and linking exactly one truthful log", async () => {
+    const saved = await submit();
+    if (!saved.success) throw new Error("submit failed");
+    await adjust(8);
+    const results = await Promise.all([
+      review(saved.request.id),
+      review(saved.request.id),
+    ]);
+    const success = results.find((result) => result.success)!;
+    expect(results.filter((result) => !result.success)).toEqual([
+      { success: false, error: "conflict" },
+    ]);
+    expect(success).toMatchObject({
+      success: true,
+      request: {
+        status: "approved",
+        approvedQuantity: 2,
+        requestedQuantity: 2,
+        stockAtRequest: 2,
+        explanation: "Original count explanation",
+        reviewer: { name: "Reviewing Admin" },
+        inventoryLogId: expect.any(String),
+      },
+    });
+    const logs = await inventory.getLogsByVariant(fixture.variantId);
+    expect(logs).toHaveLength(2);
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          previousQuantity: 8,
+          newQuantity: 6,
+          quantityChange: -2,
+        }),
+      ])
+    );
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+        .stockQuantity
+    ).toBe(6);
+  });
+
+  it("requires explanations for correction and rejection, then records a corrected delta without changing the original", async () => {
+    const saved = await submit("extra");
+    if (!saved.success) throw new Error("submit failed");
+    expect(await review(saved.request.id, "approved", 3)).toEqual({
+      success: false,
+      error: "decision_explanation_required",
+    });
+    expect(await review(saved.request.id, "rejected", undefined, "  ")).toEqual(
+      { success: false, error: "decision_explanation_required" }
+    );
+    expect(await inventory.getLogsByVariant(fixture.variantId)).toEqual([]);
+    expect(
+      await review(saved.request.id, "approved", 3, " Recounted three ")
+    ).toMatchObject({
+      success: true,
+      request: {
+        requestedQuantity: 2,
+        approvedQuantity: 3,
+        decisionExplanation: "Recounted three",
+      },
+    });
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+        .stockQuantity
+    ).toBe(5);
+  });
+
+  it("rejects negative resulting stock and allows rejection without a stock log", async () => {
+    const saved = await submit();
+    if (!saved.success) throw new Error("submit failed");
+    await adjust(1);
+    expect(await review(saved.request.id)).toEqual({
+      success: false,
+      error: "insufficient_stock",
+    });
+    const before = await inventory.getLogsByVariant(fixture.variantId);
+    expect(
+      await review(saved.request.id, "rejected", undefined, "Recount matched")
+    ).toMatchObject({
+      success: true,
+      request: {
+        status: "rejected",
+        inventoryLogId: null,
+        approvedQuantity: null,
+      },
+    });
+    expect(await inventory.getLogsByVariant(fixture.variantId)).toEqual(before);
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+    ).toMatchObject({ stockQuantity: 1, sellableStock: 1 });
+  });
+
+  it("retains quarantine until every pending flaw resolves", async () => {
+    const first = await submit();
+    const second = await submit("damaged");
+    if (!first.success || !second.success) throw new Error("submit failed");
+    await review(first.request.id, "rejected", undefined, "Duplicate count");
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+        .availabilityState
+    ).toBe("quarantined");
+    await review(second.request.id, "rejected", undefined, "Recount matched");
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+        .sellableStock
+    ).toBe(2);
+  });
+
+  it("rolls approval stock, request and cycle back when the audit actor cannot be saved", async () => {
+    const saved = await submit();
+    if (!saved.success) throw new Error("submit failed");
+    await expect(
+      requests.review({
+        requestId: saved.request.id,
+        decision: "approved",
+        reviewer: { id: "missing-reviewer", name: "Missing" },
+      })
+    ).rejects.toMatchObject({ cause: { code: "23503" } });
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+    ).toMatchObject({ stockQuantity: 2, availabilityState: "quarantined" });
+    expect(await inventory.getLogsByVariant(fixture.variantId)).toEqual([]);
+    expect(
+      (await requests.listWork()).pendingRequestGroups.find(
+        (group) => group.variantId === fixture.variantId
+      )?.requests[0].status
+    ).toBe("pending");
+  });
+
+  it("permits only rejection after deletion and retains product and actor snapshots", async () => {
+    const saved = await submit();
+    if (!saved.success) throw new Error("submit failed");
+    await client`delete from product_variants where id = ${fixture.variantId}`;
+    expect(await review(saved.request.id)).toEqual({
+      success: false,
+      error: "variant_deleted",
+    });
+    expect(
+      await review(saved.request.id, "rejected", undefined, "Variant removed")
+    ).toMatchObject({
+      success: true,
+      request: {
+        variantId: null,
+        sku: fixture.sku,
+        productName: fixture.productName,
+      },
+    });
+    expect(await submit()).toEqual({
+      success: false,
+      error: "variant_deleted",
+    });
+  });
+
+  it("rejects manually unavailable submissions and stale inspection commands", async () => {
+    await client`update product_variants set is_available = false where id = ${fixture.variantId}`;
+    expect(await submit()).toEqual({
+      success: false,
+      error: "variant_unavailable",
+    });
+    await client`update product_variants set is_available = true where id = ${fixture.variantId}`;
+    expect(await submit("missing", randomUUID())).toEqual({
+      success: false,
+      error: "conflict",
+    });
+    expect(
+      await requests.completeAllFine({
+        inspectionId: randomUUID(),
+        worker: { id: fixture.workerId, name: "Worker" },
+      })
+    ).toEqual({ success: false, error: "not_found" });
+  });
+
+  it("counts work items and excludes closed pending inspections", async () => {
+    const initial = await requests.countPending();
+    await adjust(0);
+    await adjust(15);
+    await submit("extra");
+    await submit("extra");
+    expect(await requests.countPending()).toBe(initial + 3);
+    await adjust(25);
+    expect(await requests.countPending()).toBe(initial + 2);
+  });
 });
 
 describe("inventory inspection cycles", () => {
