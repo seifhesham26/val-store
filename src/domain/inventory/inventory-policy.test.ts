@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import type {
+  CreateAdjustmentRequestCommand,
+  InventoryActorSnapshot,
+} from "./inventory-operations";
 import {
   resolveInventoryAvailability,
   shouldCloseInspectionCycle,
@@ -64,4 +68,18 @@ describe("inspection cycles", () => {
       expect(shouldCloseInspectionCycle(stockQuantity)).toBe(true);
     }
   );
+});
+
+describe("inventory actor records", () => {
+  it("retains a deleted actor's name in history while commands require an id", () => {
+    const historicalActor: InventoryActorSnapshot = {
+      id: null,
+      name: "Former worker",
+    };
+
+    expect(historicalActor).toEqual({ id: null, name: "Former worker" });
+    expectTypeOf<
+      CreateAdjustmentRequestCommand["requester"]["id"]
+    >().toEqualTypeOf<string>();
+  });
 });

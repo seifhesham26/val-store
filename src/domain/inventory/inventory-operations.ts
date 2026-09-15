@@ -8,6 +8,11 @@ export type InventoryInspectionStatus =
   | "flaw_reported";
 
 export interface InventoryActorSnapshot {
+  id: string | null;
+  name: string;
+}
+
+export interface InventoryCommandActor {
   id: string;
   name: string;
 }
@@ -61,7 +66,7 @@ export interface VariantSellability {
 export interface CreateAdjustmentRequestCommand {
   variantId: string;
   inspectionId?: string | null;
-  requester: InventoryActorSnapshot;
+  requester: InventoryCommandActor;
   category: InventoryAdjustmentCategory;
   requestedQuantity: number;
   explanation: string;
@@ -69,7 +74,7 @@ export interface CreateAdjustmentRequestCommand {
 
 export interface ReviewAdjustmentRequestCommand {
   requestId: string;
-  reviewer: InventoryActorSnapshot;
+  reviewer: InventoryCommandActor;
   decision: Exclude<InventoryAdjustmentStatus, "pending">;
   approvedQuantity?: number | null;
   decisionExplanation?: string | null;
