@@ -1,4 +1,5 @@
 import {
+  check,
   pgEnum,
   pgTable,
   uuid,
@@ -9,10 +10,12 @@ import {
   integer,
   decimal,
   date,
+  foreignKey,
   index,
   uniqueIndex,
   jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ============================================
 // ENUMS
@@ -75,6 +78,19 @@ export const inventoryChangeTypeEnum = pgEnum("inventory_change_type", [
   "return",
 ]);
 
+export const inventoryAdjustmentCategoryEnum = pgEnum(
+  "inventory_adjustment_category",
+  ["damaged", "missing", "extra"]
+);
+export const inventoryAdjustmentStatusEnum = pgEnum(
+  "inventory_adjustment_status",
+  ["pending", "approved", "rejected"]
+);
+export const inventoryInspectionStatusEnum = pgEnum(
+  "inventory_inspection_status",
+  ["pending", "all_fine", "flaw_reported"]
+);
+
 // Admin notification type enum
 export const notificationTypeEnum = pgEnum("notification_type", [
   "new_order",
@@ -82,6 +98,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "new_review",
   "failed_payment",
   "new_customer",
+  "inventory_request",
 ]);
 
 // User notification type enum
@@ -788,6 +805,123 @@ export const inventoryLogs = pgTable(
 );
 
 // ============================================
+// INVENTORY INSPECTIONS TABLE
+// ============================================
+
+export const inventoryInspections = pgTable(
+  "inventory_inspections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    variantId: uuid("variant_id").references(() => productVariants.id, {
+      onDelete: "set null",
+    }),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    sku: varchar("sku", { length: 100 }).notNull(),
+    size: varchar("size", { length: 50 }),
+    color: varchar("color", { length: 50 }),
+    triggerStock: integer("trigger_stock").notNull(),
+    status: inventoryInspectionStatusEnum("status")
+      .default("pending")
+      .notNull(),
+    completedBy: text("completed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    completedByName: varchar("completed_by_name", { length: 255 }),
+    completedAt: timestamp("completed_at"),
+    cycleEndedAt: timestamp("cycle_ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    variantIdx: index("idx_inventory_inspections_variant").on(table.variantId),
+    completedByIdx: index("idx_inventory_inspections_completed_by").on(
+      table.completedBy
+    ),
+    openVariantIdx: uniqueIndex("idx_inventory_inspections_open_variant")
+      .on(table.variantId)
+      .where(
+        sql`${table.cycleEndedAt} IS NULL AND ${table.variantId} IS NOT NULL`
+      ),
+  })
+);
+
+// ============================================
+// INVENTORY ADJUSTMENT REQUESTS TABLE
+// ============================================
+
+export const inventoryAdjustmentRequests = pgTable(
+  "inventory_adjustment_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    variantId: uuid("variant_id").references(() => productVariants.id, {
+      onDelete: "set null",
+    }),
+    inspectionId: uuid("inspection_id"),
+    requesterId: text("requester_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewerId: text("reviewer_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    inventoryLogId: uuid("inventory_log_id"),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    sku: varchar("sku", { length: 100 }).notNull(),
+    size: varchar("size", { length: 50 }),
+    color: varchar("color", { length: 50 }),
+    category: inventoryAdjustmentCategoryEnum("category").notNull(),
+    requestedQuantity: integer("requested_quantity").notNull(),
+    explanation: text("explanation").notNull(),
+    stockAtRequest: integer("stock_at_request").notNull(),
+    status: inventoryAdjustmentStatusEnum("status")
+      .default("pending")
+      .notNull(),
+    approvedQuantity: integer("approved_quantity"),
+    decisionExplanation: text("decision_explanation"),
+    requesterName: varchar("requester_name", { length: 255 }).notNull(),
+    reviewerName: varchar("reviewer_name", { length: 255 }),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    inspectionReference: foreignKey({
+      name: "inventory_requests_inspection_id_fk",
+      columns: [table.inspectionId],
+      foreignColumns: [inventoryInspections.id],
+    }).onDelete("set null"),
+    inventoryLogReference: foreignKey({
+      name: "inventory_requests_inventory_log_id_fk",
+      columns: [table.inventoryLogId],
+      foreignColumns: [inventoryLogs.id],
+    }).onDelete("set null"),
+    statusCreatedIdx: index(
+      "idx_inventory_adjustment_requests_status_created"
+    ).on(table.status, table.createdAt),
+    variantStatusIdx: index(
+      "idx_inventory_adjustment_requests_variant_status"
+    ).on(table.variantId, table.status),
+    requesterIdx: index("idx_inventory_adjustment_requests_requester").on(
+      table.requesterId
+    ),
+    reviewerIdx: index("idx_inventory_adjustment_requests_reviewer").on(
+      table.reviewerId
+    ),
+    inspectionIdx: index("idx_inventory_adjustment_requests_inspection").on(
+      table.inspectionId
+    ),
+    inventoryLogIdx: index(
+      "idx_inventory_adjustment_requests_inventory_log"
+    ).on(table.inventoryLogId),
+    requestedQuantityPositive: check(
+      "inventory_adjustment_requests_requested_quantity_positive",
+      sql`${table.requestedQuantity} > 0`
+    ),
+    approvedQuantityPositive: check(
+      "inventory_adjustment_requests_approved_quantity_positive",
+      sql`${table.approvedQuantity} IS NULL OR ${table.approvedQuantity} > 0`
+    ),
+  })
+);
+
+// ============================================
 // ADMIN NOTIFICATIONS TABLE
 // ============================================
 
@@ -1106,6 +1240,14 @@ export type NewPayment = typeof payments.$inferInsert;
 
 export type InventoryLog = typeof inventoryLogs.$inferSelect;
 export type NewInventoryLog = typeof inventoryLogs.$inferInsert;
+
+export type InventoryInspection = typeof inventoryInspections.$inferSelect;
+export type NewInventoryInspection = typeof inventoryInspections.$inferInsert;
+
+export type InventoryAdjustmentRequest =
+  typeof inventoryAdjustmentRequests.$inferSelect;
+export type NewInventoryAdjustmentRequest =
+  typeof inventoryAdjustmentRequests.$inferInsert;
 
 export type AdminNotification = typeof adminNotifications.$inferSelect;
 export type NewAdminNotification = typeof adminNotifications.$inferInsert;
