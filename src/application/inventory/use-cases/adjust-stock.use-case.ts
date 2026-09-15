@@ -14,10 +14,8 @@
  */
 
 import { InventoryRepositoryInterface } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
-import { inventoryChangeTypeEnum } from "@/db/schema";
+import type { InventoryChangeType } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
 import { NotificationService } from "@/application/notifications/notification.service";
-
-type InventoryChangeType = (typeof inventoryChangeTypeEnum.enumValues)[number];
 
 export interface AdjustStockInput {
   variantId: string;
@@ -43,32 +41,6 @@ export class AdjustStockUseCase {
   async execute(input: AdjustStockInput): Promise<AdjustStockResult> {
     const { variantId, newQuantity, reason, changeType, userId } = input;
 
-    // Unlocked read, used only to shape the two validation errors below —
-    // nothing is written from it. The previousQuantity that actually gets
-    // logged comes from the locked read inside adjustStockWithLog, so a
-    // concurrent write landing between this check and that call cannot be
-    // silently overwritten by a stale value from here.
-    const currentStock = await this.inventoryRepo.getVariantStock(variantId);
-
-    if (currentStock === null) {
-      return {
-        success: false,
-        previousQuantity: 0,
-        newQuantity: 0,
-        error: "Variant not found",
-      };
-    }
-
-    // Validate new quantity
-    if (newQuantity < 0) {
-      return {
-        success: false,
-        previousQuantity: currentStock,
-        newQuantity: currentStock,
-        error: "Stock cannot be negative",
-      };
-    }
-
     // Row lock, stock write, and audit log insert happen together in one
     // transaction — see the class docblock.
     const result = await this.inventoryRepo.adjustStockWithLog(
@@ -77,15 +49,12 @@ export class AdjustStockUseCase {
       { changeType, reason, createdBy: userId }
     );
 
-    if (!result) {
-      // The variant existed moments ago (the read above found it) but was
-      // gone by the time the locked write ran — deleted concurrently. Report
-      // it the same way as the initial not-found case.
+    if (!result || result.error) {
       return {
         success: false,
-        previousQuantity: currentStock,
-        newQuantity: currentStock,
-        error: "Variant not found",
+        previousQuantity: result?.previousQuantity ?? 0,
+        newQuantity: result?.newQuantity ?? 0,
+        error: result?.error ?? "Variant not found",
       };
     }
 

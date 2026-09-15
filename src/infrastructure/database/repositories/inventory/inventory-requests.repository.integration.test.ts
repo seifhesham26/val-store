@@ -9,6 +9,25 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { client } from "@/db";
+import { DrizzleInventoryRepository } from "./inventory.repository";
+
+const inventory = new DrizzleInventoryRepository();
+
+function adjust(newQuantity: number) {
+  return inventory.adjustStockWithLog(fixture.variantId, newQuantity, {
+    changeType: "adjustment",
+    reason: "Transactional stock-state test",
+    createdBy: fixture.workerId,
+  });
+}
+
+function cycles() {
+  return client<{ id: string; status: string; cycleEndedAt: Date | null }[]>`
+    select id, status, cycle_ended_at as "cycleEndedAt"
+    from inventory_inspections where variant_id = ${fixture.variantId}
+    order by created_at, id
+  `;
+}
 
 interface Fixture {
   workerId: string;
@@ -96,6 +115,174 @@ afterAll(async () => {
 });
 
 describe("inventory inspection cycles", () => {
+  it("serializes concurrent adjustments with truthful logs and one open cycle", async () => {
+    await client`update product_variants set stock_quantity = 21 where id = ${fixture.variantId}`;
+    const results = await Promise.all([adjust(20), adjust(19)]);
+    const first = results.find((result) => result?.previousQuantity === 21)!;
+    const second = results.find((result) => result?.previousQuantity !== 21)!;
+    expect(first).not.toBeNull();
+    expect(second.previousQuantity).toBe(first.newQuantity);
+    const logs = await inventory.getLogsByVariant(fixture.variantId);
+    expect(logs).toHaveLength(2);
+    expect(
+      logs.map((log) => ({
+        previousQuantity: log.previousQuantity,
+        newQuantity: log.newQuantity,
+      }))
+    ).toEqual(
+      expect.arrayContaining([
+        { previousQuantity: 21, newQuantity: first.newQuantity },
+        {
+          previousQuantity: first.newQuantity,
+          newQuantity: second.newQuantity,
+        },
+      ])
+    );
+    expect(await cycles()).toHaveLength(1);
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+    ).toMatchObject({
+      stockQuantity: second.newQuantity,
+      availabilityState: "inspection_pending",
+    });
+  });
+
+  it("opens once at 21 to 20, retains all_fine through 1, closes at zero and starts a fresh cycle", async () => {
+    await client`update product_variants set stock_quantity = 21 where id = ${fixture.variantId}`;
+    await adjust(20);
+    const opened = await cycles();
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ status: "pending", cycleEndedAt: null });
+    await adjust(19);
+    expect(await cycles()).toEqual(opened);
+    await client`update inventory_inspections set status = 'all_fine', completed_at = now() where id = ${opened[0].id}`;
+    await adjust(1);
+    expect(await cycles()).toEqual([{ ...opened[0], status: "all_fine" }]);
+    expect(
+      (await inventory.getVariantSellability([fixture.variantId]))[0]
+    ).toMatchObject({
+      sellableStock: 1,
+      availabilityState: "available",
+    });
+    await adjust(0);
+    expect((await cycles())[0].cycleEndedAt).not.toBeNull();
+    await adjust(15);
+    const restarted = await cycles();
+    expect(restarted).toHaveLength(2);
+    expect(restarted[1]).toMatchObject({
+      status: "pending",
+      cycleEndedAt: null,
+    });
+    expect(restarted[1].id).not.toBe(opened[0].id);
+  });
+
+  it("closes a pending cycle on restock above 20 and reports sellability changes", async () => {
+    await adjust(0);
+    const opened = await adjust(15);
+    expect(opened).toMatchObject({
+      previousQuantity: 0,
+      newQuantity: 15,
+      sellabilityChanged: true,
+    });
+    expect(await inventory.getVariantSellability([fixture.variantId])).toEqual([
+      {
+        variantId: fixture.variantId,
+        stockQuantity: 15,
+        isAvailable: true,
+        sellableStock: 5,
+        availabilityState: "inspection_pending",
+      },
+    ]);
+    await adjust(21);
+    expect((await cycles())[0].cycleEndedAt).not.toBeNull();
+    expect(await inventory.getVariantSellability([fixture.variantId])).toEqual([
+      {
+        variantId: fixture.variantId,
+        stockQuantity: 21,
+        isAvailable: true,
+        sellableStock: 21,
+        availabilityState: "available",
+      },
+    ]);
+  });
+
+  it.each([true, false])(
+    "keeps manual availability %s through zero and positive writes",
+    async (available) => {
+      await client`update product_variants set is_available = ${available} where id = ${fixture.variantId}`;
+      for (const quantity of [0, 15, 25]) {
+        await adjust(quantity);
+        const [row] =
+          await client`select is_available from product_variants where id = ${fixture.variantId}`;
+        expect(row.is_available).toBe(available);
+      }
+      const [{ count }] =
+        await client`select count(*)::int as count from inventory_logs where variant_id = ${fixture.variantId}`;
+      expect(count).toBe(3);
+    }
+  );
+
+  it("rolls stock and reconciliation back if the audit insert fails", async () => {
+    await expect(
+      inventory.adjustStockWithLog(fixture.variantId, 0, {
+        changeType: "adjustment",
+        createdBy: "missing-inventory-test-actor",
+      })
+    ).rejects.toMatchObject({ cause: { code: "23503" } });
+    const [row] =
+      await client`select stock_quantity from product_variants where id = ${fixture.variantId}`;
+    expect(row.stock_quantity).toBe(2);
+    expect(await cycles()).toEqual([]);
+  });
+
+  it.each([-1, 1.5, Number.NaN])(
+    "rejects invalid target %s from the locked read without writing",
+    async (quantity) => {
+      expect(await adjust(quantity)).toMatchObject({
+        previousQuantity: 2,
+        newQuantity: 2,
+        sellabilityChanged: false,
+        error: expect.any(String),
+      });
+      const [row] =
+        await client`select stock_quantity from product_variants where id = ${fixture.variantId}`;
+      expect(row.stock_quantity).toBe(2);
+      const [{ count }] =
+        await client`select count(*)::int as count from inventory_logs where variant_id = ${fixture.variantId}`;
+      expect(count).toBe(0);
+    }
+  );
+
+  it("omits missing ids, deduplicates ids, and quarantines only pending damaged or missing requests", async () => {
+    expect(await inventory.getVariantSellability([])).toEqual([]);
+    expect(await inventory.getVariantSellability([randomUUID()])).toEqual([]);
+    for (const category of ["extra", "damaged", "missing"] as const) {
+      const [request] = await client`
+        insert into inventory_adjustment_requests (variant_id, requester_id, requester_name, product_name, sku, category, requested_quantity, explanation, stock_at_request)
+        values (${fixture.variantId}, ${fixture.workerId}, 'Test Worker', ${fixture.productName}, ${fixture.sku}, ${category}, 1, 'Test count', 2) returning id
+      `;
+      const result = await inventory.getVariantSellability([
+        fixture.variantId,
+        fixture.variantId,
+        randomUUID(),
+      ]);
+      expect(result).toEqual([
+        {
+          variantId: fixture.variantId,
+          stockQuantity: 2,
+          isAvailable: true,
+          sellableStock: category === "extra" ? 2 : 0,
+          availabilityState: category === "extra" ? "available" : "quarantined",
+        },
+      ]);
+      await client`update inventory_adjustment_requests set status = 'rejected' where id = ${request.id}`;
+      expect(
+        (await inventory.getVariantSellability([fixture.variantId]))[0]
+          .sellableStock
+      ).toBe(2);
+    }
+  });
+
   it("permits completed history but rejects a second open cycle for one variant", async () => {
     await client`
       insert into "inventory_inspections" (
@@ -144,23 +331,25 @@ describe("inventory inspection cycles", () => {
 });
 
 describe("inventory adjustment request constraints", () => {
-  it("rejects zero requested and approved quantities", async () => {
-    await expect(
-      client`
+  it.each([0, -1])(
+    "rejects nonpositive requested and approved quantities (%s)",
+    async (quantity) => {
+      await expect(
+        client`
         insert into "inventory_adjustment_requests" (
           "variant_id", "requester_id", "requester_name", "product_name",
           "sku", "size", "color", "category", "requested_quantity",
           "explanation", "stock_at_request", "status"
         ) values (
           ${fixture.variantId}, ${fixture.workerId}, 'Inventory Test Worker',
-          ${fixture.productName}, ${fixture.sku}, 'M', 'Black', 'missing', 0,
+          ${fixture.productName}, ${fixture.sku}, 'M', 'Black', 'missing', ${quantity},
           'Zero is not a valid adjustment.', 2, 'pending'
         )
       `
-    ).rejects.toMatchObject({ code: "23514" });
+      ).rejects.toMatchObject({ code: "23514" });
 
-    await expect(
-      client`
+      await expect(
+        client`
         insert into "inventory_adjustment_requests" (
           "variant_id", "requester_id", "requester_name", "reviewer_id",
           "reviewer_name", "product_name", "sku", "size", "color",
@@ -171,12 +360,13 @@ describe("inventory adjustment request constraints", () => {
           ${fixture.variantId}, ${fixture.workerId}, 'Inventory Test Worker',
           ${fixture.workerId}, 'Inventory Test Worker', ${fixture.productName},
           ${fixture.sku}, 'M', 'Black', 'extra', 1,
-          'One extra unit was found.', 2, 'approved', 0,
+          'One extra unit was found.', 2, 'approved', ${quantity},
           'Zero is not a valid approved quantity.', now()
         )
       `
-    ).rejects.toMatchObject({ code: "23514" });
-  });
+      ).rejects.toMatchObject({ code: "23514" });
+    }
+  );
 });
 
 describe("inventory history references", () => {

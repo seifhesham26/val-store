@@ -62,19 +62,6 @@ export interface ProductVariantRepositoryInterface {
   update(variant: ProductVariantEntity): Promise<ProductVariantEntity>;
 
   /**
-   * Update stock quantity for a variant
-   */
-  updateStock(
-    variantId: string,
-    quantity: number
-  ): Promise<ProductVariantEntity>;
-
-  /**
-   * Adjust stock by delta (positive adds, negative removes)
-   */
-  adjustStock(variantId: string, delta: number): Promise<ProductVariantEntity>;
-
-  /**
    * Delete a variant
    */
   delete(variantId: string): Promise<void>;
