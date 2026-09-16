@@ -135,6 +135,25 @@ describe("inventory workflow authorization", () => {
     ).toEqual({ success: false, error: "forbidden" });
     expect(repo.listWork).not.toHaveBeenCalled();
   });
+  it("returns the persistent pending work-item count for staff", async () => {
+    vi.mocked(repo.countPending).mockResolvedValue(7);
+    const useCase = new ListInventoryWorkUseCase(repo);
+    expect(useCase).toMatchObject({ countPending: expect.any(Function) });
+
+    await expect(
+      useCase.countPending({ actor: actor("worker") })
+    ).resolves.toEqual({ success: true, count: 7 });
+    expect(repo.countPending).toHaveBeenCalledOnce();
+  });
+  it("rejects customer pending-count access before storage", async () => {
+    const useCase = new ListInventoryWorkUseCase(repo);
+    expect(useCase).toMatchObject({ countPending: expect.any(Function) });
+
+    await expect(
+      useCase.countPending({ actor: actor("customer") })
+    ).resolves.toEqual({ success: false, error: "forbidden" });
+    expect(repo.countPending).not.toHaveBeenCalled();
+  });
 });
 describe("inventory workflow validation and atomic results", () => {
   it.each(["", " \n ", "x".repeat(501)])(

@@ -1,4 +1,4 @@
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import { auth } from "@/lib/auth";
 import { resolveClientIp } from "./utils/client-ip";
 import {
@@ -226,6 +226,25 @@ export const protectedProcedure = t.procedure.use(isAuthed);
  * actually change who can do what.
  */
 export const adminProcedure = t.procedure.use(isAdminArea);
+
+/**
+ * Worker-only inventory commands.
+ *
+ * Built on the admin-area tier so authentication and admin-area membership
+ * are established first, then narrowed to exactly `worker`. Admins and super
+ * admins review worker requests through their own write capability; they do
+ * not impersonate the worker who inspected the stock.
+ */
+export const workerProcedure = adminProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "worker") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "This action is restricted to workers",
+    });
+  }
+
+  return next({ ctx });
+});
 
 /**
  * Browsable customer data â€” admin and super_admin only.

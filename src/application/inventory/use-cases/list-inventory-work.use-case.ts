@@ -18,4 +18,12 @@ export class ListInventoryWorkUseCase {
       return { success: false, error: "forbidden" };
     return { success: true, work: await this.repository.listWork() };
   }
+
+  async countPending(input: {
+    actor: InventoryWorkActor;
+  }): Promise<InventoryWorkResult<{ count: number }>> {
+    if (!isAdminAreaRole(input.actor.role))
+      return { success: false, error: "forbidden" };
+    return { success: true, count: await this.repository.countPending() };
+  }
 }

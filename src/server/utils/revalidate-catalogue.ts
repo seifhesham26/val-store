@@ -1,7 +1,8 @@
 import { revalidateTag } from "next/cache";
 
 /**
- * Announce that something a storefront product card renders has changed.
+ * Announce that something a storefront product card renders has changed,
+ * including variant stock or derived sellability.
  *
  * The storefront reads the catalogue through `unstable_cache`, so an edit that
  * is not announced here stays invisible for as long as the TTL — long enough
@@ -12,7 +13,8 @@ import { revalidateTag } from "next/cache";
  * variants and images — never called anything at all. A product card renders
  * its `primaryImage` and its `variants`, so editing either has exactly the
  * same staleness consequence as editing the product row, and all three now go
- * through this one function.
+ * through this one function. Inventory requests use it when a transition
+ * quarantines or releases a variant even if recorded stock stays unchanged.
  *
  * These tags are also what make a long cache TTL safe: the TTL is a backstop,
  * the tags are the actual correctness mechanism. Anything added here that
