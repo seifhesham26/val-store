@@ -34,6 +34,13 @@ import {
   generateOrderNumber,
   isOrderNumberCollision,
 } from "@/domain/orders/order-number";
+import {
+  lockVariantStockState,
+  reconcileLowStockCycle,
+} from "@/infrastructure/database/repositories/inventory/inventory-stock-state";
+import { InventoryQuarantineError } from "@/domain/orders/exceptions/inventory-quarantine.error";
+
+type OrderTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * How many order numbers to try before giving up.
@@ -348,6 +355,56 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
     const commit = () =>
       db.transaction(async (tx) => {
+        // Lock variants before inserting order_items. The FK insert takes a
+        // KEY SHARE lock on each variant; two concurrent checkouts that both
+        // inserted first could then deadlock while upgrading those locks to
+        // FOR UPDATE. Stable ordering prevents cross-variant deadlocks too.
+        const stockedItems = order.items
+          .filter((item) => item.variantId !== null)
+          .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
+
+        for (const item of stockedItems) {
+          if (!item.variantId) continue;
+
+          const variant = await lockVariantStockState(tx, item.variantId);
+          if (!variant) {
+            throw new Error(
+              `${item.productName} is no longer available and was removed from sale.`
+            );
+          }
+
+          if (variant.sellableStock < item.quantity) {
+            throw new Error(
+              `Not enough stock for ${item.productName}${
+                item.variantDetails ? ` (${item.variantDetails})` : ""
+              }. Only ${variant.sellableStock} left.`
+            );
+          }
+
+          const newQuantity = variant.stockQuantity - item.quantity;
+          await tx
+            .update(productVariants)
+            .set({ stockQuantity: newQuantity, updatedAt: now })
+            .where(eq(productVariants.id, item.variantId));
+
+          await tx.insert(inventoryLogs).values({
+            variantId: item.variantId,
+            changeType: "sale",
+            quantityChange: -item.quantity,
+            previousQuantity: variant.stockQuantity,
+            newQuantity,
+            reason: `Order ${orderNumber}`,
+            createdBy: order.userId,
+            createdAt: now,
+          });
+
+          await reconcileLowStockCycle(tx, {
+            variant,
+            previousStock: variant.stockQuantity,
+            stockQuantity: newQuantity,
+          });
+        }
+
         await tx.insert(orders).values({
           id: order.id,
           orderNumber,
@@ -398,65 +455,6 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           createdAt: now,
           updatedAt: now,
         });
-
-        // Reserve stock in the same transaction as the order.
-        //
-        // Locking each variant row (FOR UPDATE) serialises concurrent checkouts
-        // for the same variant, so two customers cannot both pass the stock check
-        // and oversell the last unit.
-        //
-        // Items are locked in a fixed (variant id) order. Two carts containing the
-        // same two variants would otherwise be able to grab them in opposite
-        // orders and deadlock each other.
-        const stockedItems = order.items
-          .filter((item) => item.variantId !== null)
-          .sort((a, b) => a.variantId!.localeCompare(b.variantId!));
-
-        for (const item of stockedItems) {
-          if (!item.variantId) continue; // Narrowing for TypeScript; filtered above
-
-          const [variant] = await tx
-            .select({
-              id: productVariants.id,
-              stockQuantity: productVariants.stockQuantity,
-            })
-            .from(productVariants)
-            .where(eq(productVariants.id, item.variantId))
-            .for("update")
-            .limit(1);
-
-          if (!variant) {
-            throw new Error(
-              `${item.productName} is no longer available and was removed from sale.`
-            );
-          }
-
-          if (variant.stockQuantity < item.quantity) {
-            throw new Error(
-              `Not enough stock for ${item.productName}${
-                item.variantDetails ? ` (${item.variantDetails})` : ""
-              }. Only ${variant.stockQuantity} left.`
-            );
-          }
-
-          const newQuantity = variant.stockQuantity - item.quantity;
-
-          await tx
-            .update(productVariants)
-            .set({ stockQuantity: newQuantity, updatedAt: now })
-            .where(eq(productVariants.id, item.variantId));
-
-          await tx.insert(inventoryLogs).values({
-            variantId: item.variantId,
-            changeType: "sale",
-            quantityChange: -item.quantity,
-            previousQuantity: variant.stockQuantity,
-            newQuantity,
-            reason: `Order ${orderNumber}`,
-            createdBy: order.userId,
-            createdAt: now,
-          });
-        }
 
         // Redeem the coupon only when the order is already a real commitment.
         //
@@ -565,95 +563,82 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     status: string,
     options?: UpdateOrderStatusOptions
   ): Promise<OrderEntity> {
-    // Find existing order
-    const existing = await this.findById(orderId);
-    if (!existing) {
-      throw new OrderNotFoundException(orderId);
-    }
-
-    // Validate status transition using value object
-    const currentStatus = OrderStatus.create(existing.status);
     const newStatus = OrderStatus.create(status);
-
-    if (
-      !currentStatus.canTransitionTo(newStatus.getValue(), {
-        paymentCaptured: existing.hasCapturedPayment(),
-      })
-    ) {
-      throw new InvalidOrderStatusException(
-        currentStatus.getValue(),
-        newStatus.getValue()
-      );
-    }
-
-    // Update timestamps based on status
-    const updates: {
-      status: OrderStatusValue;
-      updatedAt: Date;
-      shippedAt?: Date;
-      deliveredAt?: Date;
-      adminNotes?: string;
-    } = {
-      status: newStatus.getValue(),
-      updatedAt: new Date(),
-    };
-
-    if (newStatus.getValue() === "shipped" && !existing.shippedAt) {
-      updates.shippedAt = new Date();
-    }
-
-    if (newStatus.getValue() === "delivered" && !existing.deliveredAt) {
-      updates.deliveredAt = new Date();
-    }
-
     const target = newStatus.getValue();
-
-    // Refunds move money and stock per line, so they go through `refund()`
-    // where the returned quantities are recorded. Flipping the status here
-    // would mark the whole order refunded without any record of what actually
-    // came back.
     if (target === "refunded") {
       throw new Error(
         "Use the refund operation to record a return, not a status change"
       );
     }
 
-    // An unpaid card order inside its payment window is genuinely in flight —
-    // the customer may be on Stripe's page entering a card right now. Pulling
-    // it out from under them would take the stock back mid-payment and leave
-    // Stripe to charge for an order that no longer exists.
-    if (
-      target === "cancelled" &&
-      !options?.force &&
-      existing.isAwaitingPayment()
-    ) {
-      const deadline = existing.paymentDeadline();
-      throw new Error(
-        `This order is still within its payment window and cannot be cancelled yet. ` +
-          `It will be cancelled automatically at ${deadline?.toISOString()} if it is not paid.`
-      );
-    }
-    // `cancelled` is a final state, so an order can only reach it once — no
-    // risk of restoring the same stock twice.
-    const isClosing = target === "cancelled";
-
-    // Reject a restock that asks for more than was ordered, or names a line
-    // belonging to some other order, before anything is written. The clamp
-    // below still stands as a second line of defence.
-    if (options?.restock) {
-      existing.validateRestock(options.restock);
-    }
-
-    // Default to returning everything; an explicit list (even an empty one)
-    // means the caller decided line by line — a damaged return should not go
-    // back on sale.
-    const restockByItem = options?.restock
-      ? new Map(
-          options.restock.map((line) => [line.orderItemId, line.quantity])
-        )
-      : null;
-
     await db.transaction(async (tx) => {
+      const existing = await this.findLockedOrder(tx, orderId);
+      if (!existing) throw new OrderNotFoundException(orderId);
+
+      const currentStatus = OrderStatus.create(existing.status);
+      if (
+        !currentStatus.canTransitionTo(target, {
+          paymentCaptured: existing.hasCapturedPayment(),
+        })
+      ) {
+        throw new InvalidOrderStatusException(existing.status, target);
+      }
+
+      if (
+        target === "cancelled" &&
+        !options?.force &&
+        existing.isAwaitingPayment()
+      ) {
+        const deadline = existing.paymentDeadline();
+        throw new Error(
+          `This order is still within its payment window and cannot be cancelled yet. ` +
+            `It will be cancelled automatically at ${deadline?.toISOString()} if it is not paid.`
+        );
+      }
+
+      if (options?.restock) existing.validateRestock(options.restock);
+      const restockByItem = options?.restock
+        ? new Map(
+            options.restock.map((line) => [line.orderItemId, line.quantity])
+          )
+        : null;
+      const isClosing = target === "cancelled";
+      const now = new Date();
+      const updates: {
+        status: OrderStatusValue;
+        updatedAt: Date;
+        shippedAt?: Date;
+        deliveredAt?: Date;
+        adminNotes?: string;
+      } = { status: target, updatedAt: now };
+
+      if (target === "shipped" && !existing.shippedAt) {
+        const itemByVariant = new Map(
+          existing.items
+            .filter((item) => item.variantId !== null)
+            .map((item) => [item.variantId as string, item])
+        );
+        const quarantined = [];
+        for (const variantId of [...itemByVariant.keys()].sort()) {
+          const variant = await lockVariantStockState(tx, variantId);
+          const item = itemByVariant.get(variantId)!;
+          if (variant?.pendingFlaw) {
+            quarantined.push({
+              variantId,
+              sku: variant.sku,
+              productName: item.productName,
+              variantDetails: item.variantDetails,
+            });
+          }
+        }
+        if (quarantined.length > 0) {
+          throw new InventoryQuarantineError(quarantined);
+        }
+        updates.shippedAt = now;
+      }
+      if (target === "delivered" && !existing.deliveredAt) {
+        updates.deliveredAt = now;
+      }
       if (options?.reason) {
         updates.adminNotes = appendAdminNote(
           existing.adminNotes,
@@ -661,7 +646,16 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         );
       }
 
-      await tx.update(orders).set(updates).where(eq(orders.id, orderId));
+      const [updated] = await tx
+        .update(orders)
+        .set(updates)
+        .where(and(eq(orders.id, orderId), eq(orders.status, existing.status)))
+        .returning({ id: orders.id });
+      if (!updated) {
+        throw new Error(
+          "Order changed while it was being updated. Reload and try again."
+        );
+      }
 
       // Cash on delivery collects at the door, and nothing recorded it.
       //
@@ -689,8 +683,6 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
       if (!isClosing) return;
 
-      const now = new Date();
-
       // Lock variant rows in a consistent order across every path that touches
       // them (creation, cancellation, returns). Two transactions taking the
       // same two rows in opposite orders can deadlock each other.
@@ -714,14 +706,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
         if (restockQuantity <= 0) continue;
 
-        const [variant] = await tx
-          .select({ stockQuantity: productVariants.stockQuantity })
-          .from(productVariants)
-          .where(eq(productVariants.id, item.variantId))
-          .for("update")
-          .limit(1);
-
-        // The variant may have been deleted since the order was placed.
+        const variant = await lockVariantStockState(tx, item.variantId);
         if (!variant) continue;
 
         const newQuantity = variant.stockQuantity + restockQuantity;
@@ -741,6 +726,12 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
             ? `Order cancelled: ${options.reason}`
             : "Order cancelled — restocked",
           createdAt: now,
+        });
+
+        await reconcileLowStockCycle(tx, {
+          variant,
+          previousStock: variant.stockQuantity,
+          stockQuantity: newQuantity,
         });
       }
 
@@ -793,41 +784,34 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
     orderId: string,
     input: { lines: RefundLine[]; reason?: string }
   ): Promise<OrderEntity> {
-    const existing = await this.findById(orderId);
-    if (!existing) {
-      throw new OrderNotFoundException(orderId);
-    }
-
-    if (!existing.canRefund()) {
-      throw new Error("This order has no captured payment left to refund");
-    }
-
-    existing.validateRefund(input.lines);
-
-    const amount = existing.refundValue(input.lines);
-    const returnedUnits = input.lines.reduce(
-      (sum, line) => sum + line.returned,
-      0
-    );
-
-    // Does this return complete the order?
-    const fullyRefunded = existing.items.every((item) => {
-      const line = input.lines.find((l) => l.orderItemId === item.id);
-      return item.refundedQuantity + (line?.returned ?? 0) >= item.quantity;
-    });
-
-    if (fullyRefunded) {
-      const currentStatus = OrderStatus.create(existing.status);
-      if (
-        !currentStatus.canTransitionTo("refunded", {
-          paymentCaptured: existing.hasCapturedPayment(),
-        })
-      ) {
-        throw new InvalidOrderStatusException(existing.status, "refunded");
-      }
-    }
-
     await db.transaction(async (tx) => {
+      const existing = await this.findLockedOrder(tx, orderId);
+      if (!existing) throw new OrderNotFoundException(orderId);
+      if (!existing.canRefund()) {
+        throw new Error("This order has no captured payment left to refund");
+      }
+
+      existing.validateRefund(input.lines);
+      const amount = existing.refundValue(input.lines);
+      const returnedUnits = input.lines.reduce(
+        (sum, line) => sum + line.returned,
+        0
+      );
+      const fullyRefunded = existing.items.every((item) => {
+        const line = input.lines.find((entry) => entry.orderItemId === item.id);
+        return item.refundedQuantity + (line?.returned ?? 0) >= item.quantity;
+      });
+      if (fullyRefunded) {
+        const currentStatus = OrderStatus.create(existing.status);
+        if (
+          !currentStatus.canTransitionTo("refunded", {
+            paymentCaptured: existing.hasCapturedPayment(),
+          })
+        ) {
+          throw new InvalidOrderStatusException(existing.status, "refunded");
+        }
+      }
+
       const now = new Date();
 
       // Same ordering discipline as everywhere else that locks variant rows:
@@ -849,10 +833,8 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       for (const { line, item } of ordered) {
         if (!item) continue;
 
-        // Guarded increment rather than a plain one. The validation above ran
-        // outside this transaction, so two returns submitted at the same moment
-        // could both have passed it; this makes the database the arbiter and
-        // rolls the whole thing back if the units are no longer there.
+        // Keep the guarded increment as a final database invariant even though
+        // the parent order lock serialized the current quantity read.
         const [bumped] = await tx
           .update(orderItems)
           .set({
@@ -877,14 +859,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
 
         if (line.restocked <= 0 || !item.variantId) continue;
 
-        const [variant] = await tx
-          .select({ stockQuantity: productVariants.stockQuantity })
-          .from(productVariants)
-          .where(eq(productVariants.id, item.variantId))
-          .for("update")
-          .limit(1);
-
-        // The variant may have been deleted since the order was placed.
+        const variant = await lockVariantStockState(tx, item.variantId);
         if (!variant) continue;
 
         const newQuantity = variant.stockQuantity + line.restocked;
@@ -904,6 +879,12 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
             ? `Order return: ${input.reason}`
             : "Order return",
           createdAt: now,
+        });
+
+        await reconcileLowStockCycle(tx, {
+          variant,
+          previousStock: variant.stockQuantity,
+          stockQuantity: newQuantity,
         });
       }
 
@@ -1230,6 +1211,30 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     return result[0]?.count || 0;
+  }
+
+  /** Lock the order parent row, then hydrate its current transactional state. */
+  private async findLockedOrder(
+    tx: OrderTransaction,
+    orderId: string
+  ): Promise<OrderEntity | null> {
+    const [locked] = await tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .for("update");
+    if (!locked) return null;
+
+    const order = await tx.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+      with: {
+        items: true,
+        shippingAddress: true,
+        billingAddress: true,
+        payments: true,
+      },
+    });
+    return order ? this.mapToEntity(order, null) : null;
   }
 
   /**

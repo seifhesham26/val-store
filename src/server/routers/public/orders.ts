@@ -13,6 +13,7 @@ import { db } from "@/db";
 import { orders, payments } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
+import { revalidateAfterExpiredCheckoutSweep } from "@/server/utils/revalidate-expired-checkout-sweep";
 
 export const ordersRouter = router({
   /**
@@ -35,7 +36,9 @@ export const ordersRouter = router({
       // same call the cart's stock check already makes: the use case throttles
       // itself to once a minute per process and swallows its own errors, so at
       // worst a just-expired order shows as pending until the next load.
-      void container.getCancelExpiredCheckoutsUseCase().execute();
+      revalidateAfterExpiredCheckoutSweep(
+        container.getCancelExpiredCheckoutsUseCase().execute()
+      );
 
       const orderRepository = container.getOrderRepository();
       const page = input?.cursor ?? 1;

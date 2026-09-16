@@ -12,6 +12,11 @@ import {
 } from "@/domain/orders/entities/order.entity";
 import type { OrderStatusValue } from "@/domain/orders/value-objects/order-status.value-object";
 
+// `updateStatus(..., "shipped")` may throw InventoryQuarantineError when an
+// ordered variant has a pending damaged/missing request. Callers must expose
+// that only as an operational shipping block, never as a customer-facing
+// quality allegation.
+
 /** How much of each line to return to stock when closing an order. */
 export interface RestockLine {
   orderItemId: string;

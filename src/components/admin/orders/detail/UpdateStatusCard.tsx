@@ -1,7 +1,7 @@
 import { OrderData } from "./types";
 import { PaymentWindowNotice } from "./PaymentWindowNotice";
 import { usePaymentWindow } from "@/hooks/use-payment-window";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -26,12 +26,14 @@ import {
 interface UpdateStatusCardProps {
   order: OrderData;
   isPending: boolean;
+  shippingBlockMessage?: string | null;
   onStatusChange: (status: string) => void;
 }
 
 export function UpdateStatusCard({
   order,
   isPending,
+  shippingBlockMessage = null,
   onStatusChange,
 }: UpdateStatusCardProps) {
   // Derived from the clock, not from the flag in the response: otherwise the
@@ -48,6 +50,18 @@ export function UpdateStatusCard({
       <CardContent className="space-y-4">
         {order.awaitingPayment && order.paymentDeadline && (
           <PaymentWindowNotice deadline={order.paymentDeadline} />
+        )}
+
+        {shippingBlockMessage && (
+          <div className="flex gap-3 border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium">
+                {"We're confirming inventory before this order ships."}
+              </p>
+              <p>{shippingBlockMessage}</p>
+            </div>
+          </div>
         )}
 
         <div className="flex items-center gap-4">

@@ -14,12 +14,144 @@
  * Read-only. Nothing here writes.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { DrizzleOrderRepository } from "./order.repository";
-import { client } from "@/db";
-import type { OrderEntity } from "@/domain/orders/entities/order.entity";
+import { client, db } from "@/db";
+import {
+  addresses,
+  inventoryAdjustmentRequests,
+  inventoryInspections,
+  inventoryLogs,
+  orderItems,
+  orders,
+  productVariants,
+  products,
+  user,
+} from "@/db/schema";
+import { and, eq, gt } from "drizzle-orm";
+import {
+  OrderEntity,
+  type OrderItem,
+} from "@/domain/orders/entities/order.entity";
 
 const repo = new DrizzleOrderRepository();
+
+interface MutableOrderFixture {
+  userId: string;
+  addressId: string;
+  productId: string;
+  variantId: string;
+  sku: string;
+}
+
+const mutableFixtures: MutableOrderFixture[] = [];
+
+async function createMutableFixture(stockQuantity: number) {
+  const suffix = randomUUID();
+  const fixture: MutableOrderFixture = {
+    userId: "order-race-" + suffix,
+    addressId: randomUUID(),
+    productId: randomUUID(),
+    variantId: randomUUID(),
+    sku: "ORDER-RACE-" + suffix,
+  };
+  mutableFixtures.push(fixture);
+
+  await db.insert(user).values({
+    id: fixture.userId,
+    name: "Order Race Fixture",
+    email: "order-race-" + suffix + "@example.com",
+  });
+  await db.insert(addresses).values({
+    id: fixture.addressId,
+    userId: fixture.userId,
+    addressType: "shipping",
+    fullName: "Order Race Fixture",
+    addressLine1: "1 Test Street",
+    city: "Cairo",
+    state: "Cairo",
+    postalCode: "11511",
+    country: "Egypt",
+    phone: "+201000000000",
+  });
+  await db.insert(products).values({
+    id: fixture.productId,
+    name: "Order Race Product",
+    slug: "order-race-" + suffix,
+    sku: "ORDER-PRODUCT-" + suffix,
+    basePrice: "100.00",
+  });
+  await db.insert(productVariants).values({
+    id: fixture.variantId,
+    productId: fixture.productId,
+    sku: fixture.sku,
+    stockQuantity,
+  });
+
+  return fixture;
+}
+
+function orderFor(
+  fixture: MutableOrderFixture,
+  quantity: number,
+  paymentMethod: "stripe" | "cash_on_delivery" = "cash_on_delivery"
+): OrderEntity {
+  const now = new Date();
+  const items: OrderItem[] = [
+    {
+      id: "",
+      productId: fixture.productId,
+      variantId: fixture.variantId,
+      productName: "Order Race Product",
+      variantDetails: "Test",
+      quantity,
+      price: 100,
+      refundedQuantity: 0,
+    },
+  ];
+  return new OrderEntity(
+    randomUUID(),
+    fixture.userId,
+    "pending",
+    items,
+    quantity * 100,
+    0,
+    0,
+    quantity * 100,
+    fixture.addressId,
+    fixture.addressId,
+    paymentMethod,
+    "pending",
+    null,
+    null,
+    null,
+    now,
+    now
+  );
+}
+
+async function stockOf(variantId: string): Promise<number> {
+  const [row] = await db
+    .select({ stock: productVariants.stockQuantity })
+    .from(productVariants)
+    .where(eq(productVariants.id, variantId));
+  return row?.stock ?? -1;
+}
+
+afterEach(async () => {
+  for (const fixture of mutableFixtures.splice(0).reverse()) {
+    await db
+      .delete(inventoryAdjustmentRequests)
+      .where(eq(inventoryAdjustmentRequests.variantId, fixture.variantId));
+    await db
+      .delete(inventoryInspections)
+      .where(eq(inventoryInspections.variantId, fixture.variantId));
+    await db.delete(orders).where(eq(orders.userId, fixture.userId));
+    await db.delete(products).where(eq(products.id, fixture.productId));
+    await db.delete(user).where(eq(user.id, fixture.userId));
+  }
+});
 
 let allOrders: OrderEntity[] = [];
 
@@ -171,5 +303,154 @@ describe("user-scoped pagination, which is what 'My orders' now does", () => {
     for (const order of rows) {
       expect(order.userId).toBe(withUser.userId);
     }
+  });
+});
+
+describe("transactional stock integrity", () => {
+  it("honours the protected inspection floor during checkout", async () => {
+    const fixture = await createMutableFixture(11);
+    await db.insert(inventoryInspections).values({
+      variantId: fixture.variantId,
+      productName: "Order Race Product",
+      sku: fixture.sku,
+      triggerStock: 11,
+    });
+
+    await expect(repo.create(orderFor(fixture, 1))).resolves.toBeDefined();
+    expect(await stockOf(fixture.variantId)).toBe(10);
+
+    await expect(repo.create(orderFor(fixture, 2))).rejects.toThrow(
+      /Not enough stock/
+    );
+    expect(await stockOf(fixture.variantId)).toBe(10);
+  });
+
+  it("serializes concurrent orders at the protected floor", async () => {
+    const fixture = await createMutableFixture(19);
+    await db.insert(inventoryInspections).values({
+      variantId: fixture.variantId,
+      productName: "Order Race Product",
+      sku: fixture.sku,
+      triggerStock: 19,
+    });
+
+    const firstWave = await Promise.all(
+      Array.from({ length: 3 }, () => repo.create(orderFor(fixture, 3)))
+    );
+    expect(firstWave).toHaveLength(3);
+    expect(await stockOf(fixture.variantId)).toBe(10);
+
+    await expect(repo.create(orderFor(fixture, 1))).rejects.toThrow(
+      /Not enough stock/
+    );
+    expect(await stockOf(fixture.variantId)).toBe(10);
+  });
+
+  it("blocks shipping while an order variant is quarantined", async () => {
+    const fixture = await createMutableFixture(5);
+    const created = await repo.create(orderFor(fixture, 1, "stripe"));
+    await repo.markAsPaid(created.id);
+    const [request] = await db
+      .insert(inventoryAdjustmentRequests)
+      .values({
+        variantId: fixture.variantId,
+        requesterId: fixture.userId,
+        productName: "Order Race Product",
+        sku: fixture.sku,
+        category: "damaged",
+        requestedQuantity: 1,
+        explanation: "Fixture quarantine",
+        stockAtRequest: 4,
+        requesterName: "Order Race Fixture",
+      })
+      .returning();
+
+    await expect(
+      repo.updateStatus(created.id, "shipped")
+    ).rejects.toMatchObject({
+      name: "InventoryQuarantineError",
+      message: expect.stringContaining(fixture.sku),
+    });
+
+    await db
+      .update(inventoryAdjustmentRequests)
+      .set({ status: "rejected", decisionExplanation: "Checked" })
+      .where(eq(inventoryAdjustmentRequests.id, request.id));
+    await expect(
+      repo.updateStatus(created.id, "shipped")
+    ).resolves.toMatchObject({
+      status: "shipped",
+    });
+  });
+
+  it("credits stock only once across concurrent cancellations", async () => {
+    const fixture = await createMutableFixture(5);
+    const created = await repo.create(orderFor(fixture, 1));
+
+    const results = await Promise.allSettled([
+      repo.updateStatus(created.id, "cancelled"),
+      repo.updateStatus(created.id, "cancelled"),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled")
+    ).toHaveLength(1);
+    expect(await stockOf(fixture.variantId)).toBe(5);
+    const credited = await db
+      .select({ id: inventoryLogs.id })
+      .from(inventoryLogs)
+      .where(
+        and(
+          eq(inventoryLogs.variantId, fixture.variantId),
+          eq(inventoryLogs.changeType, "adjustment"),
+          gt(inventoryLogs.quantityChange, 0)
+        )
+      );
+    expect(credited).toHaveLength(1);
+  });
+
+  it("credits a concurrently returned unit only once", async () => {
+    const fixture = await createMutableFixture(5);
+    const created = await repo.create(orderFor(fixture, 1, "stripe"));
+    await repo.markAsPaid(created.id);
+    const item = (await repo.findById(created.id))!.items[0];
+    const request = {
+      lines: [{ orderItemId: item.id, returned: 1, restocked: 1 }],
+    };
+
+    const results = await Promise.allSettled([
+      repo.refund(created.id, request),
+      repo.refund(created.id, request),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled")
+    ).toHaveLength(1);
+    expect(await stockOf(fixture.variantId)).toBe(5);
+    const [line] = await db
+      .select({ refunded: orderItems.refundedQuantity })
+      .from(orderItems)
+      .where(eq(orderItems.id, item.id));
+    expect(line.refunded).toBe(1);
+  });
+
+  it("cannot credit the same unit through cancellation and return", async () => {
+    const fixture = await createMutableFixture(5);
+    const created = await repo.create(orderFor(fixture, 1, "stripe"));
+    await repo.markAsPaid(created.id);
+    await repo.updateStatus(created.id, "shipped");
+    const item = (await repo.findById(created.id))!.items[0];
+
+    const results = await Promise.allSettled([
+      repo.updateStatus(created.id, "cancelled"),
+      repo.refund(created.id, {
+        lines: [{ orderItemId: item.id, returned: 1, restocked: 1 }],
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled")
+    ).toHaveLength(1);
+    expect(await stockOf(fixture.variantId)).toBe(5);
   });
 });

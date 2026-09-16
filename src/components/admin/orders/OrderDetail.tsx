@@ -35,6 +35,9 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
   // Cancelling and refunding both close the order and move stock, so they go
   // through a confirmation that captures the reason and the restock split.
   const [closeAction, setCloseAction] = useState<CloseAction | null>(null);
+  const [shippingBlockMessage, setShippingBlockMessage] = useState<
+    string | null
+  >(null);
   const [deliveryAddress, setDeliveryAddress] = useState<
     OrderAddress | null | undefined
   >();
@@ -54,6 +57,7 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
   const updateStatusMutation = trpc.admin.orders.updateStatus.useMutation({
     onSuccess: () => {
       toast.success("Order status updated");
+      setShippingBlockMessage(null);
       setCloseAction(null);
       utils.admin.orders.getById.invalidate({ id: orderId, supportAccessId });
       utils.admin.orders.list.invalidate();
@@ -62,6 +66,9 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
       utils.public.products.getStock.invalidate();
     },
     onError: (error) => {
+      if (error.data?.code === "CONFLICT") {
+        setShippingBlockMessage(error.message);
+      }
       toast.error(error.message || "Failed to update status");
     },
   });
@@ -85,6 +92,7 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
   });
 
   const handleStatusChange = (newStatus: string) => {
+    if (newStatus !== "shipped") setShippingBlockMessage(null);
     // Closing an order needs the reason/restock dialog first.
     if (newStatus === "cancelled" || newStatus === "refunded") {
       setCloseAction(newStatus);
@@ -157,6 +165,7 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
       <UpdateStatusCard
         order={order}
         isPending={updateStatusMutation.isPending}
+        shippingBlockMessage={shippingBlockMessage}
         onStatusChange={handleStatusChange}
       />
 

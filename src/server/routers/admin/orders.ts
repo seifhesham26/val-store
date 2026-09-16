@@ -14,6 +14,9 @@ import {
 import { redactOrderListForRole } from "@/application/customer-access/staff-order-access.service";
 import { TRPCError } from "@trpc/server";
 import { CustomerAccessDeniedError } from "@/domain/customer-access/customer-access-denied.error";
+import { InventoryQuarantineError } from "@/domain/orders/exceptions/inventory-quarantine.error";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
+import { revalidateAfterExpiredCheckoutSweep } from "@/server/utils/revalidate-expired-checkout-sweep";
 
 /**
  * Orders Router - Thin Adapter
@@ -89,7 +92,9 @@ export const ordersRouter = router({
     // makes Stripe API calls, and awaiting them put a third-party round trip in
     // front of every admin page load. Throttled to once a minute per process
     // and error-swallowing, so firing and forgetting is safe.
-    void container.getCancelExpiredCheckoutsUseCase().execute();
+    revalidateAfterExpiredCheckoutSweep(
+      container.getCancelExpiredCheckoutsUseCase().execute()
+    );
 
     const useCase = container.getListOrdersUseCase();
     const page = input?.cursor ?? 1;
@@ -193,7 +198,9 @@ export const ordersRouter = router({
     .input(refundOrderSchema)
     .mutation(async ({ input }) => {
       const useCase = container.getRefundOrderUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCatalogue();
+      return result;
     }),
 
   // Update order status
@@ -201,6 +208,18 @@ export const ordersRouter = router({
     .input(updateOrderStatusSchema)
     .mutation(async ({ input }) => {
       const useCase = container.getUpdateOrderStatusUseCase();
-      return useCase.execute(input);
+      try {
+        const result = await useCase.execute(input);
+        if (input.status === "cancelled") revalidateCatalogue();
+        return result;
+      } catch (error) {
+        if (!(error instanceof InventoryQuarantineError)) throw error;
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            error.message +
+            ". Resolve the inventory request before marking this order shipped.",
+        });
+      }
     }),
 });
