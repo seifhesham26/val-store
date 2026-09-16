@@ -45,7 +45,7 @@ async function withCardData(pageProducts: ProductCatalogueRecord[]) {
 
   const [imageMap, variantMap] = await Promise.all([
     imageRepo.findFirstTwoByProducts(productIds),
-    variantRepo.findByProducts(productIds),
+    variantRepo.findSellableByProducts(productIds),
   ]);
 
   return pageProducts.map((p) => ({
@@ -63,12 +63,12 @@ async function withCardData(pageProducts: ProductCatalogueRecord[]) {
     // unisex garment shown on a second model. Null leaves the card static.
     secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
     variants: (variantMap.get(p.id) ?? [])
-      .filter((v) => v.isAvailable)
-      .map((v) => ({
-        id: v.id,
-        size: v.size,
-        color: v.color,
-        inStock: v.stockQuantity > 0,
+      .filter(({ variant }) => variant.isAvailable)
+      .map(({ variant, sellableStock }) => ({
+        id: variant.id,
+        size: variant.size,
+        color: variant.color,
+        inStock: sellableStock > 0,
       })),
   }));
 }
@@ -195,17 +195,28 @@ export const publicProductsRouter = router({
     .input(z.object({ variantIds: z.array(z.string().uuid()).max(500) }))
     .query(async ({ input }) => {
       if (input.variantIds.length === 0) {
-        return { stock: {} as Record<string, number> };
+        return {
+          stock: {} as Record<string, number>,
+          states: {} as Record<
+            string,
+            import("@/domain/inventory/inventory-policy").InventoryAvailabilityState
+          >,
+        };
       }
 
       const repo = container.getProductVariantRepository();
-      const variants = await repo.findByIds(input.variantIds);
+      const variants = await repo.findSellableByIds(input.variantIds);
 
       const stock: Record<string, number> = {};
-      for (const variant of variants) {
-        stock[variant.id] = variant.isAvailable ? variant.stockQuantity : 0;
+      const states: Record<
+        string,
+        import("@/domain/inventory/inventory-policy").InventoryAvailabilityState
+      > = {};
+      for (const { variant, sellableStock, availabilityState } of variants) {
+        stock[variant.id] = sellableStock;
+        states[variant.id] = availabilityState;
       }
 
-      return { stock };
+      return { stock, states };
     }),
 });

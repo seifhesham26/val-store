@@ -43,6 +43,7 @@ export function transformProductForDetail(product: CachedProduct) {
       color: v.color,
       inStock: v.inStock,
       availableStock: v.availableStock,
+      availabilityState: v.availabilityState,
     })),
     isOnSale:
       product.salePrice !== null && product.salePrice < product.basePrice,

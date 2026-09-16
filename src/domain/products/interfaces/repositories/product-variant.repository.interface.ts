@@ -5,6 +5,13 @@
  */
 
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
+
+export interface SellableProductVariant {
+  variant: ProductVariantEntity;
+  sellableStock: number;
+  availabilityState: InventoryAvailabilityState;
+}
 
 export interface VariantFilter {
   productId?: string;
@@ -40,6 +47,17 @@ export interface ProductVariantRepositoryInterface {
   findByProducts(
     productIds: string[]
   ): Promise<Map<string, ProductVariantEntity[]>>;
+
+  /** Read variants with the server-owned sellable stock calculation. */
+  findSellableByIds(variantIds: string[]): Promise<SellableProductVariant[]>;
+
+  /** Read every variant for a product with derived stock and state. */
+  findSellableByProduct(productId: string): Promise<SellableProductVariant[]>;
+
+  /** Batch-read product variants with derived stock and state. */
+  findSellableByProducts(
+    productIds: string[]
+  ): Promise<Map<string, SellableProductVariant[]>>;
 
   /**
    * Find variants with filters

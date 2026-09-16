@@ -212,7 +212,7 @@ export const getCachedFeaturedProducts = unstable_cache(
     // Batch-fetch primary images and variants (2 queries instead of 2N)
     const [imageMap, variantMap] = await Promise.all([
       imageRepo.findFirstTwoByProducts(productIds),
-      variantRepo.findByProducts(productIds),
+      variantRepo.findSellableByProducts(productIds),
     ]);
 
     return products.map((p) => ({
@@ -227,12 +227,12 @@ export const getCachedFeaturedProducts = unstable_cache(
       // Needed by Quick Add: without these the card cannot record which variant
       // was bought, and the order would skip stock entirely.
       variants: (variantMap.get(p.id) ?? [])
-        .filter((v) => v.isAvailable)
-        .map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          inStock: v.stockQuantity > 0,
+        .filter(({ variant }) => variant.isAvailable)
+        .map(({ variant, sellableStock }) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          inStock: sellableStock > 0,
         })),
     }));
   },
@@ -418,7 +418,7 @@ export const getCachedProductBySlug = unstable_cache(
     // and they cost roughly one.
     const [images, variants] = await Promise.all([
       imageRepo.findByProduct(product.id),
-      variantRepo.findByProduct(product.id),
+      variantRepo.findSellableByProduct(product.id),
     ]);
 
     return {
@@ -439,16 +439,17 @@ export const getCachedProductBySlug = unstable_cache(
         displayOrder: img.displayOrder,
       })),
       variants: variants
-        .filter((v) => v.isAvailable)
-        .map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          priceAdjustment: v.priceAdjustment,
-          inStock: v.stockQuantity > 0,
+        .filter(({ variant }) => variant.isAvailable)
+        .map(({ variant, sellableStock, availabilityState }) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          priceAdjustment: variant.priceAdjustment,
+          inStock: sellableStock > 0,
           // Exposed so the product page can cap the quantity stepper at what
           // can actually be fulfilled.
-          availableStock: v.stockQuantity,
+          availableStock: sellableStock,
+          availabilityState,
         })),
     };
   },
@@ -504,7 +505,7 @@ export const getCachedRelatedProducts = unstable_cache(
 
     const [imageMap, variantMap] = await Promise.all([
       imageRepo.findFirstTwoByProducts(productIds),
-      variantRepo.findByProducts(productIds),
+      variantRepo.findSellableByProducts(productIds),
     ]);
 
     return products.map((p) => ({
@@ -516,12 +517,12 @@ export const getCachedRelatedProducts = unstable_cache(
       primaryImage: imageMap.get(p.id)?.[0]?.imageUrl ?? null,
       secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
       variants: (variantMap.get(p.id) ?? [])
-        .filter((v) => v.isAvailable)
-        .map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          inStock: v.stockQuantity > 0,
+        .filter(({ variant }) => variant.isAvailable)
+        .map(({ variant, sellableStock }) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          inStock: sellableStock > 0,
         })),
     }));
   },

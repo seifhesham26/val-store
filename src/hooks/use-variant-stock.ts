@@ -27,6 +27,7 @@ import {
   useSharedVariantStock,
   type VariantStockLookup,
 } from "@/components/providers/variant-stock-provider";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
 
 /**
  * How long a cached stock figure is trusted before a background refresh.
@@ -83,6 +84,13 @@ export function useVariantStock(
         if (!variantId) return null;
         const value = data?.stock?.[variantId];
         return typeof value === "number" ? value : null;
+      },
+      state: (variantId) => {
+        if (!variantId) return null;
+        const value = data?.states?.[variantId];
+        return typeof value === "string"
+          ? (value as InventoryAvailabilityState)
+          : null;
       },
       isLoading,
       refresh: () => {

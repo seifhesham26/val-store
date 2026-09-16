@@ -5,13 +5,19 @@
  */
 
 import { db } from "@/db";
-import { productVariants } from "@/db/schema";
-import { eq, and, sql, gt, inArray } from "drizzle-orm";
+import {
+  inventoryAdjustmentRequests,
+  inventoryInspections,
+  productVariants,
+} from "@/db/schema";
+import { eq, and, sql, gt, inArray, type SQL } from "drizzle-orm";
 import {
   ProductVariantRepositoryInterface,
+  SellableProductVariant,
   VariantFilter,
 } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
+import { resolveInventoryAvailability } from "@/domain/inventory/inventory-policy";
 
 export class DrizzleProductVariantRepository implements ProductVariantRepositoryInterface {
   /**
@@ -78,6 +84,36 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
       result.set(variant.productId, list);
     }
 
+    return result;
+  }
+
+  async findSellableByIds(
+    variantIds: string[]
+  ): Promise<SellableProductVariant[]> {
+    if (variantIds.length === 0) return [];
+    return this.findSellable(inArray(productVariants.id, variantIds));
+  }
+
+  async findSellableByProduct(
+    productId: string
+  ): Promise<SellableProductVariant[]> {
+    return this.findSellable(eq(productVariants.productId, productId));
+  }
+
+  async findSellableByProducts(
+    productIds: string[]
+  ): Promise<Map<string, SellableProductVariant[]>> {
+    const result = new Map<string, SellableProductVariant[]>();
+    if (productIds.length === 0) return result;
+
+    const variants = await this.findSellable(
+      inArray(productVariants.productId, productIds)
+    );
+    for (const sellable of variants) {
+      const list = result.get(sellable.variant.productId) ?? [];
+      list.push(sellable);
+      result.set(sellable.variant.productId, list);
+    }
     return result;
   }
 
@@ -204,6 +240,52 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
       .where(eq(productVariants.productId, productId));
 
     return Number(result[0]?.total ?? 0);
+  }
+
+  private async findSellable(
+    where: SQL<unknown>
+  ): Promise<SellableProductVariant[]> {
+    const rows = await db
+      .select({
+        id: productVariants.id,
+        productId: productVariants.productId,
+        sku: productVariants.sku,
+        size: productVariants.size,
+        color: productVariants.color,
+        stockQuantity: productVariants.stockQuantity,
+        priceAdjustment: productVariants.priceAdjustment,
+        isAvailable: productVariants.isAvailable,
+        createdAt: productVariants.createdAt,
+        updatedAt: productVariants.updatedAt,
+        pendingInspection: sql<boolean>`exists (
+          select 1 from ${inventoryInspections} as inspection
+          where inspection.variant_id = product_variants.id
+            and inspection.cycle_ended_at is null
+            and inspection.status = 'pending'
+        )`,
+        pendingFlaw: sql<boolean>`exists (
+          select 1 from ${inventoryAdjustmentRequests} as request
+          where request.variant_id = product_variants.id
+            and request.status = 'pending'
+            and request.category in ('damaged', 'missing')
+        )`,
+      })
+      .from(productVariants)
+      .where(where);
+
+    return rows.map((row) => {
+      const availability = resolveInventoryAvailability({
+        stockQuantity: row.stockQuantity,
+        isAvailable: row.isAvailable,
+        hasPendingInspection: row.pendingInspection,
+        hasPendingFlaw: row.pendingFlaw,
+      });
+      return {
+        variant: this.mapToEntity(row),
+        sellableStock: availability.sellableStock,
+        availabilityState: availability.state,
+      };
+    });
   }
 
   /**
