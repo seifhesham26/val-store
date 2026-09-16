@@ -37,12 +37,14 @@ import { toast } from "sonner";
 import { useVariantStock } from "@/hooks/use-variant-stock";
 import { quantityInCart, remainingCapacity } from "@/lib/cart-stock-limit";
 import { resolveColorHex } from "@/lib/colors";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
 
 export interface QuickAddVariant {
   id: string;
   size: string | null;
   color: string | null;
   inStock: boolean;
+  availabilityState?: InventoryAvailabilityState;
 }
 
 interface QuickAddBarProps {
@@ -108,6 +110,8 @@ export function QuickAddBar({
   const sizeStates = sizes.map((size) => {
     const variant = variantFor(size, selectedColor);
     const live = stock.get(variant?.id);
+    const availabilityState =
+      stock.state(variant?.id) ?? variant?.availabilityState ?? null;
     const inStock = live !== null ? live > 0 : (variant?.inStock ?? false);
     const inCart = quantityInCart(items, productId, variant?.id ?? null);
 
@@ -115,6 +119,7 @@ export function QuickAddBar({
       size,
       variantId: variant?.id ?? null,
       inStock,
+      availabilityState,
       inCart,
       atCeiling: inStock && remainingCapacity(live, inCart) === 0,
       remaining: remainingCapacity(live, inCart),
@@ -166,12 +171,19 @@ export function QuickAddBar({
   const addWhole = (e: React.MouseEvent) => {
     const variant = variantFor(null, selectedColor);
     const live = stock.get(variant?.id);
+    const availabilityState =
+      stock.state(variant?.id) ?? variant?.availabilityState ?? null;
     const inStock = live !== null ? live > 0 : (variant?.inStock ?? false);
 
     if (!inStock) {
       e.preventDefault();
       e.stopPropagation();
-      toast.error("This combination is out of stock");
+      toast.error(
+        availabilityState === "inspection_pending" ||
+          availabilityState === "quarantined"
+          ? "Temporarily unavailable"
+          : "This combination is out of stock"
+      );
       return;
     }
 
@@ -283,6 +295,10 @@ export function QuickAddBar({
         {sizeStates.map((state) => {
           const showCount = state.size === lastAddedSize && pendingAdded > 0;
           const stopped = !state.inStock || state.atCeiling;
+          const temporarilyUnavailable =
+            !state.inStock &&
+            (state.availabilityState === "inspection_pending" ||
+              state.availabilityState === "quarantined");
 
           return (
             <button
@@ -291,7 +307,7 @@ export function QuickAddBar({
               disabled={stopped}
               title={
                 !state.inStock
-                  ? `${state.size} — sold out`
+                  ? `${state.size} - ${temporarilyUnavailable ? "Temporarily unavailable" : "Out of stock"}`
                   : state.atCeiling
                     ? `${state.size} — all ${state.inCart} in cart`
                     : `Add ${state.size} to cart`

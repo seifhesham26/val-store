@@ -14,7 +14,10 @@
  */
 
 import { CartRepositoryInterface } from "@/domain/cart/interfaces/repositories/cart.repository.interface";
-import { ProductVariantRepositoryInterface } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
+import {
+  ProductVariantRepositoryInterface,
+  type SellableProductVariant,
+} from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
 import { CartItemEntity } from "@/domain/cart/entities/cart-item.entity";
 import {
   mergeGuestCartItems,
@@ -117,11 +120,6 @@ export class MergeGuestCartItemsUseCase {
       ),
     ];
 
-    const variants = variantIds.length
-      ? await this.variantRepository.findByIds(variantIds)
-      : [];
-    const variantById = new Map(variants.map((v) => [v.id, v]));
-
     const productIdsNeedingTotalStock = [
       ...new Set(
         guestLines
@@ -129,20 +127,33 @@ export class MergeGuestCartItemsUseCase {
           .map((line) => line.productId)
       ),
     ];
-    const totalStockEntries = await Promise.all(
-      productIdsNeedingTotalStock.map(
-        async (productId) =>
-          [
-            productId,
-            await this.variantRepository.getTotalStockByProduct(productId),
-          ] as const
-      )
+    const [variants, variantsByProduct] = await Promise.all([
+      variantIds.length
+        ? this.variantRepository.findSellableByIds(variantIds)
+        : Promise.resolve([] as SellableProductVariant[]),
+      productIdsNeedingTotalStock.length
+        ? this.variantRepository.findSellableByProducts(
+            productIdsNeedingTotalStock
+          )
+        : Promise.resolve(new Map<string, SellableProductVariant[]>()),
+    ]);
+    const variantById = new Map(
+      variants.map((entry) => [entry.variant.id, entry])
     );
-    const totalStockByProduct = new Map(totalStockEntries);
+    const totalStockByProduct = new Map(
+      productIdsNeedingTotalStock.map((productId) => [
+        productId,
+        (variantsByProduct.get(productId) ?? []).reduce(
+          (total, entry) => total + entry.sellableStock,
+          0
+        ),
+      ])
+    );
 
     return (line: CartLineIdentity): number => {
       if (line.variantId) {
-        const variant = variantById.get(line.variantId);
+        const sellable = variantById.get(line.variantId);
+        const variant = sellable?.variant;
         // A crafted or stale variant id — wrong product, deleted, or since
         // made unavailable — resolves to zero rather than being trusted.
         if (
@@ -152,7 +163,7 @@ export class MergeGuestCartItemsUseCase {
         ) {
           return 0;
         }
-        return variant.stockQuantity;
+        return sellable.sellableStock;
       }
       return totalStockByProduct.get(line.productId) ?? 0;
     };

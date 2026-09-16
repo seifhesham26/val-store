@@ -1,6 +1,7 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
 
 interface ProductVariantSelectorProps {
   colors?: { name: string; hex: string }[];
@@ -13,6 +14,7 @@ interface ProductVariantSelectorProps {
   onChangeQuantity: (quantity: number) => void;
   /** Stock ceiling for the chosen variant; null when nothing is chosen yet. */
   maxQuantity?: number | null;
+  availabilityState?: InventoryAvailabilityState | null;
 }
 
 export function ProductVariantSelector({
@@ -25,7 +27,13 @@ export function ProductVariantSelector({
   onSelectSize,
   onChangeQuantity,
   maxQuantity = null,
+  availabilityState = null,
 }: ProductVariantSelectorProps) {
+  const temporarilyUnavailable =
+    maxQuantity === 0 &&
+    (availabilityState === "inspection_pending" ||
+      availabilityState === "quarantined");
+
   return (
     <>
       {/* Color Selection */}
@@ -174,6 +182,11 @@ export function ProductVariantSelector({
           {maxQuantity !== null && maxQuantity > 0 && maxQuantity <= 5 && (
             <span className="text-sm text-amber-400">
               Only {maxQuantity} left
+            </span>
+          )}
+          {temporarilyUnavailable && (
+            <span className="text-sm text-white/60">
+              Temporarily unavailable
             </span>
           )}
         </div>

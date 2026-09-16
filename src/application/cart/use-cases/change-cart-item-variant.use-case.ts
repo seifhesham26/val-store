@@ -46,17 +46,20 @@ export class ChangeCartItemVariantUseCase {
       return { quantity: item.quantity, reduced: false };
     }
 
-    const variant = await this.variantRepository.findById(variantId);
+    const [sellable] = await this.variantRepository.findSellableByIds([
+      variantId,
+    ]);
+    const variant = sellable?.variant;
     if (!variant || variant.productId !== item.productId) {
       throw new Error("That option is not available for this product");
     }
 
-    if (!variant.isInStock()) {
+    if (!variant.isAvailable || sellable.sellableStock <= 0) {
       throw new Error("That option is out of stock");
     }
 
     // The replacement may itself hold fewer units than the original line.
-    const quantity = Math.min(item.quantity, variant.stockQuantity);
+    const quantity = Math.min(item.quantity, sellable.sellableStock);
 
     // Add first, remove second. If the add is rejected the customer still has
     // their original line; the reverse order would lose it on any failure.
@@ -69,7 +72,7 @@ export class ChangeCartItemVariantUseCase {
         item.productPrice,
         item.productImage,
         quantity,
-        variant.stockQuantity,
+        sellable.sellableStock,
         new Date(),
         new Date(),
         variantId,
