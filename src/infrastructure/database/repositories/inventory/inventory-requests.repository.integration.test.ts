@@ -551,6 +551,26 @@ describe("inventory inspection cycles", () => {
     ]);
   });
 
+  it("closes the cycle from 10 to 25 without changing manual availability", async () => {
+    await client`update product_variants
+      set stock_quantity = 21, is_available = false
+      where id = ${fixture.variantId}`;
+    await adjust(10);
+    const [opened] = await cycles();
+    expect(opened).toMatchObject({ status: "pending", cycleEndedAt: null });
+
+    await adjust(25);
+
+    expect((await cycles())[0].cycleEndedAt).not.toBeNull();
+    const [variant] = await client<
+      { stockQuantity: number; isAvailable: boolean }[]
+    >`
+      select stock_quantity as "stockQuantity", is_available as "isAvailable"
+      from product_variants where id = ${fixture.variantId}
+    `;
+    expect(variant).toEqual({ stockQuantity: 25, isAvailable: false });
+  });
+
   it.each([true, false])(
     "keeps manual availability %s through zero and positive writes",
     async (available) => {

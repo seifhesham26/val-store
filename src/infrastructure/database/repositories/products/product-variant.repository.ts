@@ -18,6 +18,10 @@ import {
 } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
 import { resolveInventoryAvailability } from "@/domain/inventory/inventory-policy";
+import {
+  lockVariantStockState,
+  reconcileLowStockCycle,
+} from "@/infrastructure/database/repositories/inventory/inventory-stock-state";
 
 export class DrizzleProductVariantRepository implements ProductVariantRepositoryInterface {
   /**
@@ -164,20 +168,31 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
    * Create a new variant
    */
   async create(variant: ProductVariantEntity): Promise<ProductVariantEntity> {
-    const [newVariant] = await db
-      .insert(productVariants)
-      .values({
-        productId: variant.productId,
-        sku: variant.sku,
-        size: variant.size,
-        color: variant.color,
-        stockQuantity: variant.stockQuantity,
-        priceAdjustment: variant.priceAdjustment.toString(),
-        isAvailable: variant.isAvailable,
-      })
-      .returning();
+    return db.transaction(async (tx) => {
+      const [newVariant] = await tx
+        .insert(productVariants)
+        .values({
+          productId: variant.productId,
+          sku: variant.sku,
+          size: variant.size,
+          color: variant.color,
+          stockQuantity: variant.stockQuantity,
+          priceAdjustment: variant.priceAdjustment.toString(),
+          isAvailable: variant.isAvailable,
+        })
+        .returning();
 
-    return this.mapToEntity(newVariant);
+      const locked = await lockVariantStockState(tx, newVariant.id);
+      if (!locked)
+        throw new Error(`Variant with ID "${newVariant.id}" not found`);
+      await reconcileLowStockCycle(tx, {
+        variant: locked,
+        previousStock: 0,
+        stockQuantity: newVariant.stockQuantity,
+      });
+
+      return this.mapToEntity(newVariant);
+    });
   }
 
   /**

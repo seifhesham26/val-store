@@ -19,7 +19,7 @@
 - [x] Task 6: Use sellable stock in public catalogue and live scrolling data
 - [x] Task 7: Enforce the same ceiling in cart controls and cart writes
 - [x] Task 8: Make checkout, cancellation, returns, and shipping race-safe
-- [ ] Task 9: Reconcile variant creation and every admin stock write
+- [x] Task 9: Reconcile variant creation and every admin stock write
 - [ ] Task 10: Build the staff request, inspection, and review interface
 - [ ] Task 11: Zero fake inventory safely
 - [ ] Task 12: Complete regression verification and durable handoff
@@ -96,3 +96,6 @@
 - Task 8: order-side catalogue invalidation is wired for checkout creation, admin cancellation/returns, Stripe expiry cancellation, and settled lazy expiry sweeps. The admin route maps quarantine to a conflict and the detail UI shows a red operational notice without exposing it through customer routes.
 - Task 8 verification: order integration tests 16/16, cache/error presentation tests 7/7, full unit suite 821/821 across 78 files, lint clean, type-check clean, production build successful, formatting clean, and `git diff --check` clean.
 - [x] Task 8: Make checkout, cancellation, returns, and shipping race-safe
+- Task 9: opening stock now reconciles low-stock inspection cycles inside both single-variant and batched product creation transactions; opening balances create no inventory log, while admin adjustments retain the existing lock/log/reconcile path and preserve manual availability.
+- Task 9 verification: focused unit and gating tests 10/10, inventory integration tests 32/32, type-check clean, formatting clean, and `git diff --check` clean. Existing catalogue invalidation is present on product, variant, and inventory write routes; no additional router changes were needed.
+- [x] Task 9: Reconcile variant creation and every admin stock write

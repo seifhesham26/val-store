@@ -19,6 +19,10 @@ import {
   LIKE_ESCAPE_CHAR,
 } from "@/domain/shared/like-pattern";
 import type { ProductSort } from "@/lib/collection-sort";
+import {
+  lockVariantStockState,
+  reconcileLowStockCycle,
+} from "@/infrastructure/database/repositories/inventory/inventory-stock-state";
 
 const CATALOGUE_COLUMNS = {
   id: true,
@@ -267,17 +271,32 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
 
       const variants = relations?.variants ?? [];
       if (variants.length > 0) {
-        await tx.insert(productVariants).values(
-          variants.map((variant) => ({
-            productId: created.id,
-            sku: variant.sku,
-            size: variant.size ?? null,
-            color: variant.color ?? null,
-            stockQuantity: variant.stockQuantity,
-            priceAdjustment: variant.priceAdjustment.toString(),
-            isAvailable: true,
-          }))
-        );
+        const createdVariants = await tx
+          .insert(productVariants)
+          .values(
+            variants.map((variant) => ({
+              productId: created.id,
+              sku: variant.sku,
+              size: variant.size ?? null,
+              color: variant.color ?? null,
+              stockQuantity: variant.stockQuantity,
+              priceAdjustment: variant.priceAdjustment.toString(),
+              isAvailable: true,
+            }))
+          )
+          .returning();
+
+        for (const createdVariant of createdVariants) {
+          const locked = await lockVariantStockState(tx, createdVariant.id);
+          if (!locked) {
+            throw new Error(`Variant with ID "${createdVariant.id}" not found`);
+          }
+          await reconcileLowStockCycle(tx, {
+            variant: locked,
+            previousStock: 0,
+            stockQuantity: createdVariant.stockQuantity,
+          });
+        }
       }
 
       return created;
