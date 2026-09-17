@@ -1,136 +1,143 @@
-# Refunds — recorded now, paid later
+# Refund authorization, evidence, and payout
 
-**Status** Deliberate and deferred, **not a defect**. Waiting on the payment
-gateway decision — Stripe is not settled, so the code that moves money has no
-provider to move it through yet.
-**Decided** 2026-09-03
+**Status:** Approved product design, implementation pending. This supersedes
+the earlier “recorded now, paid later” note. **Decided:** 2026-09-17.
 
-## Approved launch refund policy
+The inventory adjustment phase is separate and already implemented. This phase
+adds a customer return request, staff inspection, admin approval/rejection,
+customer read-and-OTP authorization, private evidence, and verified payout.
 
-**Policy decision** 2026-09-15. This policy applies only to refunds. It is
-hardcoded in the application; it is not editable configuration and must not be
-stored in a settings table. Changing it requires a code change, tests, review,
-and deployment. The inventory-adjustment design is unchanged.
+## What is implemented today
 
-The refund calculation uses the amount actually paid for the returned item
-after the existing proportional coupon allocation. It never exceeds the
-captured payment and never refunds a coupon twice.
+The existing order model can record partial, per-line returns. It scales refund
+amounts by the amount actually paid after proportional coupon allocation, guards
+quantities inside a transaction, and keeps restocking separate from the refund.
+Those facts are useful foundations, but the current direct admin refund path is
+not the approved launch workflow and must be replaced before launch.
 
-- An unworn or try-on-only change-of-mind return receives 100% of the actual
-  item amount paid. The original outbound delivery fee is not refunded and
-  Valkyrie pays one return pickup.
-- A worn but still resellable change-of-mind item may receive a 70% goodwill
-  refund of the actual item amount paid. The original outbound delivery fee is
-  not refunded and Valkyrie pays one return pickup. This is a goodwill policy,
-  not a statutory percentage.
-- A defective, wrong, or misdescribed item receives 100% of the actual item
-  amount paid plus the applicable original delivery fee. Valkyrie pays the
-  return pickup, including when the item was normally worn before the defect
-  was discovered.
+## Approved hardcoded policy
+
+Refund rules are application constants, not Settings or database data. Changing
+them requires a code change, tests, review, and deployment.
+
+- Normal change-of-mind requests are eligible for 14 days; defective, wrong, or
+  misdescribed items for 30 days.
+- Unworn or try-on-only change-of-mind items receive 100% of the actual paid item
+  amount. Worn but still resellable items may receive 70% goodwill.
+- Defective, wrong, or misdescribed items receive 100% of the actual paid item
+  amount. Original outbound delivery is refunded only when the whole delivered
+  order is returned because of Valkyrie’s objective fault. A partial
+  merchant-fault return refunds the item and Valkyrie-paid pickup, not outbound
+  delivery; if the remaining items later complete a full merchant-fault return,
+  outbound delivery is refunded once at most.
+- Accurate product with subjective dislike, fit, look, or feel is change of mind.
+  The delivery service is separate from product quality; its fee is refunded
+  only for Valkyrie fault or misleading representation.
 - Customer-caused damage, washing, alteration, stains, odor, missing tags, or
-  other loss of resellable condition rejects a change-of-mind return. No
-  refund is issued; the original delivery fee remains charged and the
-  customer pays the return collection fee.
+  other loss of resellable condition rejects that line. The original delivery
+  remains charged and the customer pays the actual collection fee if they want
+  the rejected item shipped back. Free in-store pickup is always available.
+- Coupon discounts are allocated proportionally. Refunds never exceed captured
+  money and coupons are not restored.
 
-Every customer-facing outcome displays its line-item calculation and delivery
-responsibility. A ten-second read gate and acknowledgment are required for
-every outcome. Positive refund outcomes then require the existing one-minute,
-single-use, five-attempt OTP gate; a changed amount, condition, fee, or COD
-destination resets the read gate and OTP. A rejected outcome requires the
-acknowledgment but no OTP.
+## Operational workflow
 
-Before pickup, the customer uploads a product-condition photograph and a
-photograph of the resealed package and label. On receipt, staff records an
-unboxing and inspection video showing the seal, label, opening, item, tags,
-quantity, and condition before the final decision. A media failure creates an
-exception/re-inspection path and is not an automatic rejection.
+1. The customer selects one or more lines and gives a detailed reason. Multiple
+   attempts are allowed after rejection, but each is a new request with fresh
+   evidence and a new reason.
+2. The customer uploads exactly two private photos: the item condition, and the
+   safely sealed package/label with declared package count. Photos are limited to
+   JPG/PNG/WebP and 10 MB each. Browser compression is allowed; originals and
+   metadata remain private. The photo deadline is 48 hours.
+3. An admin authorizes pickup or in-store return. After authorization the customer
+   has seven days to hand the parcel to the courier or bring it to the store;
+   expiry releases the pending reservation and allows a later fresh attempt.
+4. Packages should be consolidated where practical; three units per package is
+   guidance, not a hard block. The customer declares the count and confirms the
+   seal. At handoff, one continuous courier video starts with the order/return
+   reference and declared count, then shows the sealed packages and handoff.
+5. The courier records the actual package count and reference manually at launch.
+   Receiving staff verifies the count before opening, then records one continuous
+   unboxing/inspection video. A second receiving worker verifies the count. Open,
+   damaged, or broken-seal packages are quarantined for admin review.
+6. Package mismatches are investigated before fault is assigned. Workers record
+   observed facts, counts, condition, and evidence only. Admins classify customer,
+   carrier, Valkyrie, or unresolved fault; super-admins open actual media and
+   handle final appeals, missing evidence, and carrier exceptions.
+7. A proposal is built per line and quantity. Physical disposition (resellable,
+   damaged quarantine, or missing) is separate from financial refund and payout.
+   Resellable stock may become sellable after an accepted return even while an
+   electronic payout is pending; damaged and missing units are never restocked.
+8. Every customer outcome requires a server-recorded ten-second read gate and
+   acknowledgment. A positive refund additionally requires a one-minute OTP to
+   the verified account phone. OTPs expire after 60 seconds, resend after 60
+   seconds, invalidate the prior code, allow five wrong attempts, and have phone
+   and IP abuse protection. Proposal changes invalidate the acknowledgment and
+   OTP. Rejections require the read gate but no OTP.
+9. A customer may dispute a judgment with a detailed explanation. Payout stays
+   paused and the item quarantined; one admin review is allowed, then super-admin
+   is final. A dispute does not silently expire. Untouched customer actions move
+   to `customer_action_required` after seven days with reminders and no automatic
+   refund, rejection, restock, or disposal.
+10. Physical, evidence, payout, and carrier-claim statuses remain separate. The
+    final customer summary is sent through WhatsApp with an in-app mirror; the
+    system never says money was paid before verified provider success.
 
-Refunds use the original payment method unless a COD customer agrees to an
-alternative destination. The operational target is completion within seven
-days of the return reaching the required inspection point. Provider-side money
-movement remains blocked until the payment provider is available.
+## Missing packages and carrier claims
 
-## What works today
+- Refund verified received quantities first. For a missing remainder, open the
+  carrier investigation after the first refund and refund the unresolved amount
+  after three calendar days without an outcome. For an all-missing return, open
+  the claim immediately and apply the same three-day rule.
+- If Valkyrie confirms its own fault, refund immediately. If evidence is
+  unavailable, the customer is not penalized. If the courier count was wrong or
+  the carrier loses a matched handoff, classify the carrier fault and pursue a
+  claim; a later carrier decision never claws back a completed customer refund.
 
-The whole return model, and it is the harder half:
+## Payout and fallback
 
-- Returns are **per line and partial**. `order_items.refunded_quantity` is the
-  only stored fact; everything else is derived from it, so nothing can drift.
-- Refunded value is **scaled by what the customer actually paid**
-  (`OrderEntity.paidFraction()`), so a coupon order returns the discounted
-  price rather than the list price.
-- Restocking is **per line and separate from the refund** — a damaged return
-  gets the customer their money without putting the item back on sale.
-- The bound is enforced **inside the transaction**, so two admins refunding the
-  same line at once cannot together return more units than were bought.
-- The order reaches `refunded` only when every unit has come back; a partial
-  return leaves it open and still returnable.
-- Dashboard revenue is already **net of returns** (`revenue.ts`), using the
-  same `paidFraction` arithmetic as the entity, with an integration test
-  asserting the two agree.
+OPay is the approved launch provider, but merchant access, API documentation,
+credentials, webhook behavior, and testing are external blockers today.
 
-## What does not work
+- OPay refunds only the original payment source and uses an idempotency key.
+  Pending or unknown responses remain locked for reconciliation, never a fresh
+  payout. Only a definitive failure permits up to three retries over 24 hours.
+- COD that was never delivered has no captured payment to refund. COD already
+  collected may be refunded as cash in-store; a worker may hand over the exact
+  approved amount because workers run the cash registry, but cannot alter the
+  decision or amount. A receipt closes the payout.
+- After confirmed OPay failure, a fresh proposal, read gate, and OTP are required
+  for an offline cash or Egyptian e-wallet fallback. Wallet numbers are never
+  entered on the website; the customer/admin agree offline. The private wallet
+  screenshot must show provider, success, exact amount, date, and masked recipient.
+  Manual fallback may link to the verified order even when the customer has no
+  receipt. In-store identity uses OTP plus receipt, or admin/super-admin manual
+  verification with two matching order details.
 
-**No money is sent anywhere.** There is no call to any payment provider's
-refund API in the codebase — `StripeService` has no refund method, and nothing
-else does either. `refund()` updates `refunded_quantity`, restocks, appends an
-admin note, sets `payments.payment_status = 'refunded'` and notifies the
-customer. The card is never credited.
+## Evidence and privacy
 
-For cash on delivery this is close to correct already: money was collected by
-hand and is returned by hand, and the record is the point. For card orders it
-is a genuine gap.
+Customer photos, courier/receiving videos, and payout screenshots are private
+evidence, never public upload URLs. Store metadata, hashes, validation state, and
+audit events. Ordinary staff see structured findings; only super-admins may open
+actual media through short-lived signed URLs. Retain media for 12 months after
+closure, then delete it while retaining financial and decision notes without
+unnecessary personal data. Corrupt, blurry, or non-continuous video triggers a
+retry/re-record or audited exception; it never alone rejects the customer. If
+Valkyrie lacks evidence, the customer receives the applicable refund protection.
 
-## The interim exposure, stated plainly
+## Launch gates and current blockers
 
-This is deferred, not harmless, and whoever operates the store should know:
+The workflow may be implemented and tested with provider adapters, but launch
+requires live, tested WhatsApp notifications/OTP and OPay payment/refund
+execution with reconciliation. Resend’s verified sending domain is also a launch
+requirement. SMS is later work. No provider is allowed to be represented as
+successful from a timeout, client claim, or database status alone.
 
-- The admin button reads **"Refund EGP 750"**.
-- The customer receives an **"order refunded"** notification.
-- `payments.payment_status` becomes **`refunded`**.
-- The dashboard **deducts it from revenue**.
+Do not run `pnpm db:migrate` on the current development database. Additive schema
+work, if approved for implementation, uses `pnpm db:push`.
 
-Nothing in that chain is qualified with "recorded, not yet paid". An admin who
-has not read this file will reasonably believe the customer has their money
-back, and the customer will believe it too.
+## Related source of truth
 
-Until the gateway lands, refunds must be **issued by hand in the payment
-provider's own dashboard**, and this system treated as the record of what was
-returned rather than the thing that returns it.
-
-If that hand-off is likely to be missed, the cheapest mitigation is wording:
-change the button to "Record a return" and the notification to say the refund
-is being processed. That is a one-line change in `CloseOrderDialog.tsx` and
-`NotificationService.orderRefunded()`, and it costs nothing to reverse once
-money actually moves.
-
-## What to build once the gateway is chosen
-
-1. **A refund call on the payment service.** The provider needs the original
-   transaction id, which is already stored: `payments.transaction_id` holds the
-   Stripe Checkout Session id, and the payment intent id is in
-   `payment_gateway_response`. Whatever replaces Stripe needs the equivalent
-   captured at payment time — check this when picking a provider.
-2. **Partial refunds must be supported.** The return model is partial by
-   design, so a provider that only refunds whole payments would force a rewrite
-   of the half that already works. This is a selection criterion, not an
-   implementation detail.
-3. **Idempotency.** Follow `markAsPaid`: a conditional write that reports
-   whether it actually transitioned, so a retried request cannot pay twice.
-   Money out deserves at least the care money in already gets.
-4. **Order the writes so a failure is safe.** Call the provider first and
-   record only on success. The reverse — recording, then failing to send —
-   produces an order that says it was refunded when it was not, which is
-   precisely today's state made permanent.
-5. **Reconciliation.** A refund that fails at the provider must leave the units
-   returnable, not silently consumed.
-6. **Then remove the wording caveat above**, if it was applied.
-
-## Related
-
-- Loyalty clawback assumes refunds are real: points are returned as
-  `floor(cash returned)`. See `docs/LOYALTY-POINTS.md` section 4. That is
-  consistent today because the clawback is a record too — both halves become
-  real together.
-- COD payments are marked `completed` on delivery, not at checkout, so a COD
-  refund's "captured payment" precondition is already correct.
+- `docs/superpowers/specs/2026-09-15-refund-authorization-evidence-design.md`
+- `docs/superpowers/plans/2026-09-15-refund-authorization-evidence.md`
+- `docs/PRELAUNCH-HANDOFF.md`
