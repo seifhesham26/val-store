@@ -436,6 +436,8 @@ smoke remains a manual follow-up.
   — approved-but-unbuilt refund policy, confirmation, and inspection-evidence design
 - `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`
   — task-by-task implementation and verification record for that phase
+- `docs/EXTERNAL-INTEGRATIONS-ROADMAP.md` — remaining OPay, WhatsApp, Resend,
+  production, and later marketing-integration roadmap
 - `docs/superpowers/plans/2026-09-14-customer-data-access-and-audit.md` —
   implementation plan and verification record for that phase
 - `docs/ISSUES.md` — defect catalogue and resolved-history details
