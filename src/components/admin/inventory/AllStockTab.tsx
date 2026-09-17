@@ -21,6 +21,7 @@ export interface InventoryVariant {
   size: string | null;
   color: string | null;
   stockQuantity: number;
+  isAvailable: boolean;
   availabilityState?: InventoryAvailabilityState;
 }
 

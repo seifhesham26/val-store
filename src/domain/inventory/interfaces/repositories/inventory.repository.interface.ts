@@ -56,6 +56,7 @@ export interface VariantWithStock {
   size: string | null;
   color: string | null;
   stockQuantity: number;
+  isAvailable: boolean;
   productId: string;
   productName: string;
   productSlug: string;

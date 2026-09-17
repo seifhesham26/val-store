@@ -35,11 +35,12 @@ import type {
 } from "@/components/admin/inventory/inventory-work-ui";
 
 function resolveInternalState(
-  variant: { stockQuantity: number },
+  variant: { stockQuantity: number; isAvailable: boolean },
   hasPendingInspection: boolean,
   hasPendingFlaw: boolean
 ): InventoryAvailabilityState {
   if (hasPendingFlaw) return "quarantined";
+  if (!variant.isAvailable) return "manually_unavailable";
   if (hasPendingInspection) return "inspection_pending";
   if (variant.stockQuantity <= 0) return "out_of_stock";
   return "available";
