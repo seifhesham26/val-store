@@ -20,8 +20,8 @@
 - [x] Task 7: Enforce the same ceiling in cart controls and cart writes
 - [x] Task 8: Make checkout, cancellation, returns, and shipping race-safe
 - [x] Task 9: Reconcile variant creation and every admin stock write
-- [ ] Task 10: Build the staff request, inspection, and review interface
-- [ ] Task 11: Zero fake inventory safely
+- [x] Task 10: Build the staff request, inspection, and review interface
+- [x] Task 11: Zero fake inventory safely
 - [ ] Task 12: Complete regression verification and durable handoff
 
 ## Preflight consistency scan
@@ -99,3 +99,10 @@
 - Task 9: opening stock now reconciles low-stock inspection cycles inside both single-variant and batched product creation transactions; opening balances create no inventory log, while admin adjustments retain the existing lock/log/reconcile path and preserve manual availability.
 - Task 9 verification: focused unit and gating tests 10/10, inventory integration tests 32/32, type-check clean, formatting clean, and `git diff --check` clean. Existing catalogue invalidation is present on product, variant, and inventory write routes; no additional router changes were needed.
 - [x] Task 9: Reconcile variant creation and every admin stock write
+- Task 10: implemented the staff inventory workspace. The Requests tab groups pending inspections and requests, workers can submit immutable damaged/missing/extra reports or complete all-fine inspections, and admins/super admins can review requests with stale-stock projections, corrected-quantity explanations, and rejection explanations. Low-stock display now uses the approved 20-unit inspection threshold; the sidebar polls `pendingCount` every 30 seconds. The admin inventory read model also carries manual availability so the internal badge can distinguish manually unavailable variants from ordinary stock.
+- Task 10 verification: focused UI policy tests 7/7, targeted ESLint clean, type-check clean, full unit suite 831/831 across 80 files, production build successful, formatting clean. Authenticated browser smoke was attempted through `/admin/inventory` but redirected to `/login?redirect=%2Fadmin%2Finventory&error=unauthorized`; no signed-in staff session was available, so the three-role smoke remains open.
+- [x] Task 10: Build the staff request, inspection, and review interface
+- Task 11: added zero-stock seed fixtures and `pnpm inventory:reset-development`. The command defaults to a dry run, requires `--apply` to write, refuses production, updates only recorded stock and timestamps, and leaves manual availability and inspection history untouched. The apply run on September 17, 2026 reset 29 development variants to zero; a follow-up dry run reported `0 -> 0` for every variant.
+- Task 11 verification: reset helper tests 3/3, targeted ESLint clean, type-check clean, full unit suite 831/831 across 80 files, integration suite 94/94 across 8 files, production build successful, and `git diff --check` clean.
+- [x] Task 11: Zero fake inventory safely
+- Task 12 automated verification: focused inventory/storefront/order checks passed, clean-`.next` type-check passed, lint reported 0 problems, full unit tests passed 831/831 across 80 files, integration tests passed 94/94 across 8 files, build generated 72 pages successfully, and the branch diff was reviewed. Authenticated worker/admin/super-admin browser smoke remains the only required check not completed.

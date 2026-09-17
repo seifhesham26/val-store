@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-09-15, after the customer-data access and audit foundation): `type-check` clean, `lint` **0 problems**, **768** unit tests passing across 72 files, `build` succeeds, and `pnpm test:integration`, which needs a database, is **54/54** across five files.
+Baseline as of last check (2026-09-17, after the inventory adjustment request/review phase): `type-check` clean from a fresh `.next`, `lint` **0 problems**, **831** unit tests passing across 80 files, `build` succeeds, and `pnpm test:integration`, which needs a database, is **94/94** across eight files.
 
 Two things this file previously claimed that were not true, corrected here because they cost time to re-derive: lint reports **no warnings at all** — the three `@next/next/no-location-assign-relative-destination` warnings described in earlier versions do not fire — and the test count was 270 before the audit added 60.
 
@@ -160,6 +160,22 @@ Some of `OrderEntity` is resolved by the repository rather than carried on the r
 Returns are **partial and derived**: `order_items.refundedQuantity` is the only stored fact, and `refundedAmount()` / `getRefundedItems()` compute from it, scaled by `paidFraction()` so a coupon order refunds what the customer actually paid. Nothing caches a refund total that could drift.
 
 Status changes go through the `OrderStatus` value object's transition table — the repository rejects invalid transitions, so a new status must be added to the DB enum, the entity's `OrderStatus` union, the value object's `transitions` map, and the admin dropdown together.
+
+### Inventory requests and sellability
+
+Workers never overwrite recorded stock. They can complete a pending low-stock
+inspection as all fine or submit an immutable damaged/missing/extra request;
+admins and super admins review requests and apply signed deltas under the
+variant lock. The Inventory Requests tab groups pending work, preserves
+resolved history snapshots, and shows a pending count in the staff sidebar.
+
+Recorded stock entering 1–20 opens one inspection cycle and protects the final
+10 units while pending. Damaged/missing requests quarantine the variant;
+extra requests do not. Product cards, live stock, product detail, cart and
+checkout use the derived sellable quantity, while checkout remains authoritative
+under lock. `pnpm inventory:reset-development` is the explicit dry-run/default
+and `--apply` development-only command for zeroing fictional stock; it refuses
+`NODE_ENV=production` and never changes manual availability.
 
 ## Known gaps
 

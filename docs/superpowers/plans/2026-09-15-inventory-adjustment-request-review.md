@@ -828,13 +828,13 @@ rtk git commit -m "feat(inventory): Reconcile every stock-changing path"
 - Consumes: `admin.inventory.listWork`, `pendingCount`, `submitRequest`, `completeInspection`, and `reviewRequest`.
 - Produces: worker/admin role-correct actions and pending-count cache invalidation.
 
-- [ ] **Step 1: Add the Requests tab and query state**
+- [x] **Step 1: Add the Requests tab and query state**
 
 Fetch list work and pending count. Render pending inspections first, pending requests grouped by variant second, and resolved history last. Add the Requests tab count and an empty state. Keep all staff able to read every row.
 Change the existing Low Stock query/display threshold from 10 to the approved
 inspection threshold of 20; the protected floor remains 10.
 
-- [ ] **Step 2: Implement role-correct inventory actions**
+- [x] **Step 2: Implement role-correct inventory actions**
 
 Use `useAdminWriteAccess()`:
 
@@ -845,23 +845,23 @@ Use `useAdminWriteAccess()`:
 
 Do not render a direct edit icon to workers.
 
-- [ ] **Step 3: Implement the worker request dialog**
+- [x] **Step 3: Implement the worker request dialog**
 
 Require category, positive integer quantity, and concrete explanation. Accept an optional inspection id when launched from pending inspection. On success close, toast, and invalidate `listWork`, `pendingCount`, `listVariants`, `getLowStock`, `getLogs`, public `getStock`, and cart stock queries.
 
-- [ ] **Step 4: Implement green all-fine completion**
+- [x] **Step 4: Implement green all-fine completion**
 
 Use a deliberate confirmation action labelled **Checked all units — everything is fine**. On success show green state immediately through optimistic React Query cache update, then invalidate the authoritative queries. Roll back the optimistic cache and show the server error on conflict.
 
-- [ ] **Step 5: Implement admin review**
+- [x] **Step 5: Implement admin review**
 
 Show original quantity/explanation, requester snapshot, request-time stock, current stock, projected result, and sibling pending requests. Approval defaults to the requested quantity. A changed quantity reveals and requires explanation; rejection always requires explanation. Disable repeated submission while pending.
 
-- [ ] **Step 6: Add internal status styling**
+- [x] **Step 6: Add internal status styling**
 
 `InventoryAvailabilityBadge` maps `all_fine` to muted emerald/green, flaw/quarantine to destructive red, pending inspection to amber, and ordinary availability to neutral styling. Use paired background/foreground classes that work in the light admin theme.
 
-- [ ] **Step 7: Add the sidebar count**
+- [x] **Step 7: Add the sidebar count**
 
 Query `pendingCount` from `AdminSidebar` with a 30-second refetch interval and window-focus refresh. Render a compact badge beside Inventory for counts above zero. Mutations invalidate the same key so the submitting browser updates immediately; polling handles another staff session without realtime infrastructure.
 
@@ -895,19 +895,19 @@ rtk git commit -m "feat(admin): Add inventory request and inspection workspace"
 
 - Produces: `pnpm inventory:reset-development` as an explicit development-only stock reset.
 
-- [ ] **Step 1: Add a dry-run mode to the reset script first**
+- [x] **Step 1: Add a dry-run mode to the reset script first**
 
 The script must refuse to run when `NODE_ENV === "production"`. Default behavior prints variant id, SKU, current stock, and projected zero without writing. Require `--apply` for the transaction that sets only `stock_quantity = 0` and `updated_at`; do not change `is_available`, delete users/orders, or run migrations.
 
-- [ ] **Step 2: Add zero-stock seed assertions**
+- [x] **Step 2: Add zero-stock seed assertions**
 
 Extract or export the generated variant rows where necessary and add a script-level test or validation that every seeded `stockQuantity` is zero. `scripts/seed.ts` already uses zero and should remain so.
 
-- [ ] **Step 3: Remove fictional stock from catalogue fixtures**
+- [x] **Step 3: Remove fictional stock from catalogue fixtures**
 
 Remove `stockPerSize` from `content/products.json` and `ProductSeed`. Make `seed-products.ts` insert zero. Change all `seed-basic.ts` variant quantities to zero and update its summary; leave `isAvailable` true where a future real restock should make the variant sellable.
 
-- [ ] **Step 4: Exercise the reset safely**
+- [x] **Step 4: Exercise the reset safely**
 
 Run: `rtk pnpm inventory:reset-development`
 
@@ -917,13 +917,13 @@ Run: `rtk pnpm inventory:reset-development -- --apply`
 
 Expected: current fake variant stock becomes zero, manual availability remains unchanged, and no inspection is created because the reset is explicitly fixture maintenance rather than an operational stock movement.
 
-- [ ] **Step 5: Verify zero-stock behavior**
+- [x] **Step 5: Verify zero-stock behavior**
 
 Run: `rtk pnpm vitest run src/domain/inventory/inventory-policy.test.ts src/infrastructure/database/repositories/inventory/inventory-requests.repository.integration.test.ts`
 
 Expected: PASS, including zero creates no inspection.
 
-- [ ] **Step 6: Commit development-data changes**
+- [x] **Step 6: Commit development-data changes**
 
 ```bash
 rtk git add scripts/seed.ts scripts/seed-products.ts scripts/seed-basic.ts scripts/reset-development-inventory.ts content/products.json package.json
@@ -945,7 +945,7 @@ rtk git commit -m "chore(seed): Reset fictional inventory to zero"
 - Consumes: every prior task.
 - Produces: verified repository baseline and an implementation handoff that distinguishes shipped, approved-unbuilt, and externally blocked work.
 
-- [ ] **Step 1: Run focused inventory/storefront/order suites together**
+- [x] **Step 1: Run focused inventory/storefront/order suites together**
 
 Run:
 
@@ -955,7 +955,7 @@ rtk pnpm vitest run src/domain/inventory/inventory-policy.test.ts src/applicatio
 
 Expected: PASS with no skipped concurrency cases.
 
-- [ ] **Step 2: Run the complete static and unit-test baseline**
+- [x] **Step 2: Run the complete static and unit-test baseline**
 
 Run:
 
@@ -968,13 +968,13 @@ rtk pnpm test
 
 Expected: lint has 0 problems, type-check succeeds from a clean `.next`, and every unit test passes.
 
-- [ ] **Step 3: Run the complete database integration suite**
+- [x] **Step 3: Run the complete database integration suite**
 
 Run: `rtk pnpm test:integration`
 
 Expected: all database integration files pass against the development database after `db:push`; do not run `db:migrate`.
 
-- [ ] **Step 4: Run the production build**
+- [x] **Step 4: Run the production build**
 
 Run: `rtk pnpm build`
 
@@ -984,11 +984,11 @@ Expected: successful production build with admin inventory and storefront produc
 
 With worker, admin, and super-admin accounts, exercise the complete flow and the 20/10 thresholds. In a second browser/session, verify pending sidebar counts appear within 30 seconds. Confirm stale product pages and simultaneous checkout attempts cannot cross the server floor. Confirm quarantined order lines block shipping and the block clears after review.
 
-- [ ] **Step 6: Update durable documentation with measured results**
+- [x] **Step 6: Update durable documentation with measured results**
 
 Record the new exact test/file counts, migration state, implemented inventory behavior, remaining external blockers, and the commit range. Mark this phase implemented only after every required check passes. Keep refund OTP/OPay, identity/messaging, media buyer/leads, and production cutover in their existing states.
 
-- [ ] **Step 7: Review the complete branch diff**
+- [x] **Step 7: Review the complete branch diff**
 
 Run:
 
@@ -1001,7 +1001,7 @@ git log --oneline 7c4c778..HEAD
 
 Expected: only inventory-phase files are changed, no whitespace errors, and commits follow the planned boundaries.
 
-- [ ] **Step 8: Commit the final verification record**
+- [x] **Step 8: Commit the final verification record**
 
 ```bash
 rtk git add AGENTS.md docs/PRELAUNCH-HANDOFF.md docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md
