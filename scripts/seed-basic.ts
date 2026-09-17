@@ -21,6 +21,7 @@ import {
   orderItems,
 } from "../src/db/schema";
 import { sql } from "drizzle-orm";
+import { DEVELOPMENT_SEED_STOCK_QUANTITY } from "../src/lib/seed-inventory";
 
 async function seed() {
   console.log("🌱 Starting basic seed...\n");
@@ -184,7 +185,7 @@ async function seed() {
         sku: `${product.sku}-S`,
         size: "S",
         color: "Black",
-        stockQuantity: 25,
+        stockQuantity: DEVELOPMENT_SEED_STOCK_QUANTITY,
         isAvailable: true,
       },
       {
@@ -192,7 +193,7 @@ async function seed() {
         sku: `${product.sku}-M`,
         size: "M",
         color: "Black",
-        stockQuantity: 50,
+        stockQuantity: DEVELOPMENT_SEED_STOCK_QUANTITY,
         isAvailable: true,
       },
       {
@@ -200,7 +201,7 @@ async function seed() {
         sku: `${product.sku}-L`,
         size: "L",
         color: "Black",
-        stockQuantity: 30,
+        stockQuantity: DEVELOPMENT_SEED_STOCK_QUANTITY,
         isAvailable: true,
       },
       {
@@ -208,7 +209,7 @@ async function seed() {
         sku: `${product.sku}-LOW`,
         size: "XL",
         color: "Black",
-        stockQuantity: 5, // Low stock for dashboard testing
+        stockQuantity: DEVELOPMENT_SEED_STOCK_QUANTITY,
         isAvailable: true,
       },
     ]);
@@ -305,7 +306,7 @@ async function seed() {
     console.log("  - 1 admin user (admin@valkyrie.com)");
     console.log("  - 3 categories");
     console.log("  - 5 products");
-    console.log("  - 20 product variants (including low stock items)");
+    console.log("  - 20 product variants (zero recorded stock)");
     console.log("  - 3 orders with items");
     console.log("\n🔑 Admin Login:");
     console.log("  Email: admin@valkyrie.com");

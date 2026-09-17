@@ -21,6 +21,7 @@
     "seed:legal": "tsx scripts/seed-legal.ts",
     "seed:shipping": "tsx scripts/seed-shipping.ts",
     "seed:products": "tsx scripts/seed-products.ts",
+    "inventory:reset-development": "tsx scripts/reset-development-inventory.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "icons": "tsx scripts/generate-icons.ts"
   },
