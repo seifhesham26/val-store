@@ -29,6 +29,7 @@ import {
 } from "react";
 import { trpc } from "@/lib/trpc";
 import { createVariantStockRegistry } from "@/lib/variant-stock-registry";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
 
 /**
  * How often the shared copy refreshes.
@@ -51,6 +52,10 @@ const REGISTRATION_FLUSH_MS = 50;
 export interface VariantStockLookup {
   /** Units available for a variant, or null while unknown. */
   get: (variantId: string | null | undefined) => number | null;
+  /** Server-derived availability state, or null while unknown. */
+  state: (
+    variantId: string | null | undefined
+  ) => InventoryAvailabilityState | null;
   isLoading: boolean;
   /** Force an immediate refresh — call after anything that consumes stock. */
   refresh: () => void;
@@ -130,6 +135,13 @@ export function VariantStockProvider({
         if (!variantId) return null;
         const value = data?.stock?.[variantId];
         return typeof value === "number" ? value : null;
+      },
+      state: (variantId) => {
+        if (!variantId) return null;
+        const value = data?.states?.[variantId];
+        return typeof value === "string"
+          ? (value as InventoryAvailabilityState)
+          : null;
       },
       refresh: () => {
         utils.public.products.getStock.invalidate();

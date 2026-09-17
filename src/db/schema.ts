@@ -1,4 +1,5 @@
 import {
+  check,
   pgEnum,
   pgTable,
   uuid,
@@ -9,10 +10,12 @@ import {
   integer,
   decimal,
   date,
+  foreignKey,
   index,
   uniqueIndex,
   jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ============================================
 // ENUMS
@@ -75,6 +78,19 @@ export const inventoryChangeTypeEnum = pgEnum("inventory_change_type", [
   "return",
 ]);
 
+export const inventoryAdjustmentCategoryEnum = pgEnum(
+  "inventory_adjustment_category",
+  ["damaged", "missing", "extra"]
+);
+export const inventoryAdjustmentStatusEnum = pgEnum(
+  "inventory_adjustment_status",
+  ["pending", "approved", "rejected"]
+);
+export const inventoryInspectionStatusEnum = pgEnum(
+  "inventory_inspection_status",
+  ["pending", "all_fine", "flaw_reported"]
+);
+
 // Admin notification type enum
 export const notificationTypeEnum = pgEnum("notification_type", [
   "new_order",
@@ -82,6 +98,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "new_review",
   "failed_payment",
   "new_customer",
+  "inventory_request",
 ]);
 
 // User notification type enum
@@ -139,33 +156,105 @@ export const userProfiles = pgTable("user_profiles", {
 });
 
 // ============================================
+// CUSTOMER-DATA ACCESS AUDIT
+// ============================================
+
+/**
+ * Append-only record of staff access to customer data.
+ *
+ * Actor identity is snapshotted so a later account rename or deletion cannot
+ * make an investigation unreadable. Customer values are deliberately absent:
+ * this table records access to a field group, never the phone/address itself.
+ */
+export const customerDataAccessAudits = pgTable(
+  "customer_data_access_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: text("actor_user_id").notNull(),
+    actorName: varchar("actor_name", { length: 255 }),
+    actorEmail: varchar("actor_email", { length: 255 }).notNull(),
+    actorRole: userRoleEnum("actor_role").notNull(),
+    subjectUserId: text("subject_user_id"),
+    orderId: uuid("order_id"),
+    action: varchar("action", {
+      length: 32,
+      enum: [
+        "order_view",
+        "delivery_reveal",
+        "customer_lookup",
+        "customer_reveal",
+        "order_export",
+      ],
+    }).notNull(),
+    fieldGroup: varchar("field_group", {
+      length: 32,
+      enum: [
+        "order_summary",
+        "shipping_contact",
+        "customer_history",
+        "customer_contact",
+        "bulk_order_data",
+      ],
+    }).notNull(),
+    reason: varchar("reason", {
+      length: 32,
+      enum: [
+        "order_fulfillment",
+        "customer_support",
+        "delivery_issue",
+        "account_correction",
+        "order_status",
+        "delivery_problem",
+        "return_exchange",
+        "operations_export",
+        "other",
+      ],
+    }).notNull(),
+    reasonNote: text("reason_note"),
+    confirmedCustomerRequest: boolean("confirmed_customer_request")
+      .default(false)
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    actorCreatedIdx: index("idx_customer_access_actor_created").on(
+      table.actorUserId,
+      table.createdAt
+    ),
+    subjectCreatedIdx: index("idx_customer_access_subject_created").on(
+      table.subjectUserId,
+      table.createdAt
+    ),
+    orderCreatedIdx: index("idx_customer_access_order_created").on(
+      table.orderId,
+      table.createdAt
+    ),
+    createdAtIdx: index("idx_customer_access_created_at").on(table.createdAt),
+  })
+);
+
+// ============================================
 // CUSTOMERS TABLE (Real Human Identity)
 // ============================================
 
 /**
- * Customer represents a real human, identified by phone number.
- * Multiple user accounts can belong to the same customer.
+ * Customer represents a real human, identified by normalized phone number.
+ * The approved launch identity rule is one normalized phone per account.
  */
-export const customers = pgTable(
-  "customers",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    phone: varchar("phone", { length: 20 }).notNull().unique(),
-    preferredName: varchar("preferred_name", { length: 100 }),
-    isPhoneVerified: boolean("is_phone_verified").default(false).notNull(),
-    totalOrders: integer("total_orders").default(0).notNull(),
-    totalSpent: decimal("total_spent", { precision: 10, scale: 2 })
-      .default("0")
-      .notNull(),
-    loyaltyPoints: integer("loyalty_points").default(0).notNull(),
-    notes: text("notes"), // Admin notes
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (table) => ({
-    phoneIdx: uniqueIndex("idx_customers_phone").on(table.phone),
-  })
-);
+export const customers = pgTable("customers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  phone: varchar("phone", { length: 20 }).notNull().unique(),
+  preferredName: varchar("preferred_name", { length: 100 }),
+  isPhoneVerified: boolean("is_phone_verified").default(false).notNull(),
+  totalOrders: integer("total_orders").default(0).notNull(),
+  totalSpent: decimal("total_spent", { precision: 10, scale: 2 })
+    .default("0")
+    .notNull(),
+  loyaltyPoints: integer("loyalty_points").default(0).notNull(),
+  notes: text("notes"), // Admin notes
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 // ============================================
 // ADDRESSES TABLE
@@ -217,7 +306,6 @@ export const categories = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    slugIdx: index("idx_categories_slug").on(table.slug),
     parentIdIdx: index("idx_categories_parent_id").on(table.parentId),
     isActiveIdx: index("idx_categories_is_active").on(table.isActive),
   })
@@ -252,8 +340,6 @@ export const products = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    slugIdx: index("idx_products_slug").on(table.slug),
-    skuIdx: index("idx_products_sku").on(table.sku),
     categoryIdIdx: index("idx_products_category_id").on(table.categoryId),
     isActiveIdx: index("idx_products_is_active").on(table.isActive),
     isFeaturedIdx: index("idx_products_is_featured").on(table.isFeatured),
@@ -295,7 +381,6 @@ export const productVariants = pgTable(
   },
   (table) => ({
     productIdIdx: index("idx_variants_product_id").on(table.productId),
-    skuIdx: index("idx_variants_sku").on(table.sku),
     isAvailableIdx: index("idx_variants_is_available").on(table.isAvailable),
   })
 );
@@ -403,9 +488,15 @@ export const orders = pgTable(
   },
   (table) => ({
     userIdIdx: index("idx_orders_user_id").on(table.userId),
-    orderNumberIdx: index("idx_orders_order_number").on(table.orderNumber),
     statusIdx: index("idx_orders_status").on(table.status),
     createdAtIdx: index("idx_orders_created_at").on(table.createdAt),
+    couponIdIdx: index("idx_orders_coupon_id").on(table.couponId),
+    shippingAddressIdIdx: index("idx_orders_shipping_address_id").on(
+      table.shippingAddressId
+    ),
+    billingAddressIdIdx: index("idx_orders_billing_address_id").on(
+      table.billingAddressId
+    ),
     // "My orders" pages `WHERE user_id = ? ORDER BY created_at DESC`, which the
     // single-column user_id index cannot satisfy without a sort.
     userCreatedIdx: index("idx_orders_user_created").on(
@@ -447,6 +538,7 @@ export const orderItems = pgTable(
   (table) => ({
     orderIdIdx: index("idx_order_items_order_id").on(table.orderId),
     productIdIdx: index("idx_order_items_product_id").on(table.productId),
+    variantIdIdx: index("idx_order_items_variant_id").on(table.variantId),
   })
 );
 
@@ -458,26 +550,32 @@ export const orderItems = pgTable(
 // creates a unique btree, and every lookup in the cart repository is
 // keyed on it. A second index would be the same tree maintained twice on
 // every write.
-export const carts = pgTable("carts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // Unique for now, which preserves exactly the current "one cart per
-  // user" behaviour. Dropping this constraint is what would later allow
-  // saved or multiple carts; nothing else needs to change for that.
-  userId: text("user_id")
-    .notNull()
-    .unique()
-    .references(() => user.id, { onDelete: "cascade" }),
-  // SET NULL, deliberately not cascade: deleting a coupon must not delete
-  // the carts that referenced it.
-  couponId: uuid("coupon_id").references(() => coupons.id, {
-    onDelete: "set null",
-  }),
-  // These three move together. Either all are set or all are null.
-  couponAppliedAt: timestamp("coupon_applied_at"),
-  couponCheckedAt: timestamp("coupon_checked_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const carts = pgTable(
+  "carts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Unique for now, which preserves exactly the current "one cart per
+    // user" behaviour. Dropping this constraint is what would later allow
+    // saved or multiple carts; nothing else needs to change for that.
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // SET NULL, deliberately not cascade: deleting a coupon must not delete
+    // the carts that referenced it.
+    couponId: uuid("coupon_id").references(() => coupons.id, {
+      onDelete: "set null",
+    }),
+    // These three move together. Either all are set or all are null.
+    couponAppliedAt: timestamp("coupon_applied_at"),
+    couponCheckedAt: timestamp("coupon_checked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    couponIdIdx: index("idx_carts_coupon_id").on(table.couponId),
+  })
+);
 
 export const cartItems = pgTable(
   "cart_items",
@@ -499,6 +597,7 @@ export const cartItems = pgTable(
   (table) => ({
     cartIdIdx: index("idx_cart_items_cart_id").on(table.cartId),
     productIdIdx: index("idx_cart_product_id").on(table.productId),
+    variantIdIdx: index("idx_cart_items_variant_id").on(table.variantId),
   })
 );
 
@@ -595,7 +694,6 @@ export const coupons = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    codeIdx: index("idx_coupons_code").on(table.code),
     isActiveIdx: index("idx_coupons_is_active").on(table.isActive),
   })
 );
@@ -622,6 +720,7 @@ export const couponUsages = pgTable(
   (table) => ({
     couponIdIdx: index("idx_coupon_usages_coupon_id").on(table.couponId),
     userIdIdx: index("idx_coupon_usages_user_id").on(table.userId),
+    orderIdIdx: index("idx_coupon_usages_order_id").on(table.orderId),
     uniqueUsageIdx: uniqueIndex("idx_coupon_usages_unique").on(
       table.couponId,
       table.userId,
@@ -700,7 +799,125 @@ export const inventoryLogs = pgTable(
   },
   (table) => ({
     variantIdIdx: index("idx_inventory_variant_id").on(table.variantId),
+    createdByIdx: index("idx_inventory_created_by").on(table.createdBy),
     createdAtIdx: index("idx_inventory_created_at").on(table.createdAt),
+  })
+);
+
+// ============================================
+// INVENTORY INSPECTIONS TABLE
+// ============================================
+
+export const inventoryInspections = pgTable(
+  "inventory_inspections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    variantId: uuid("variant_id").references(() => productVariants.id, {
+      onDelete: "set null",
+    }),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    sku: varchar("sku", { length: 100 }).notNull(),
+    size: varchar("size", { length: 50 }),
+    color: varchar("color", { length: 50 }),
+    triggerStock: integer("trigger_stock").notNull(),
+    status: inventoryInspectionStatusEnum("status")
+      .default("pending")
+      .notNull(),
+    completedBy: text("completed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    completedByName: varchar("completed_by_name", { length: 255 }),
+    completedAt: timestamp("completed_at"),
+    cycleEndedAt: timestamp("cycle_ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    variantIdx: index("idx_inventory_inspections_variant").on(table.variantId),
+    completedByIdx: index("idx_inventory_inspections_completed_by").on(
+      table.completedBy
+    ),
+    openVariantIdx: uniqueIndex("idx_inventory_inspections_open_variant")
+      .on(table.variantId)
+      .where(
+        sql`${table.cycleEndedAt} IS NULL AND ${table.variantId} IS NOT NULL`
+      ),
+  })
+);
+
+// ============================================
+// INVENTORY ADJUSTMENT REQUESTS TABLE
+// ============================================
+
+export const inventoryAdjustmentRequests = pgTable(
+  "inventory_adjustment_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    variantId: uuid("variant_id").references(() => productVariants.id, {
+      onDelete: "set null",
+    }),
+    inspectionId: uuid("inspection_id"),
+    requesterId: text("requester_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewerId: text("reviewer_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    inventoryLogId: uuid("inventory_log_id"),
+    productName: varchar("product_name", { length: 255 }).notNull(),
+    sku: varchar("sku", { length: 100 }).notNull(),
+    size: varchar("size", { length: 50 }),
+    color: varchar("color", { length: 50 }),
+    category: inventoryAdjustmentCategoryEnum("category").notNull(),
+    requestedQuantity: integer("requested_quantity").notNull(),
+    explanation: text("explanation").notNull(),
+    stockAtRequest: integer("stock_at_request").notNull(),
+    status: inventoryAdjustmentStatusEnum("status")
+      .default("pending")
+      .notNull(),
+    approvedQuantity: integer("approved_quantity"),
+    decisionExplanation: text("decision_explanation"),
+    requesterName: varchar("requester_name", { length: 255 }).notNull(),
+    reviewerName: varchar("reviewer_name", { length: 255 }),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    inspectionReference: foreignKey({
+      name: "inventory_requests_inspection_id_fk",
+      columns: [table.inspectionId],
+      foreignColumns: [inventoryInspections.id],
+    }).onDelete("set null"),
+    inventoryLogReference: foreignKey({
+      name: "inventory_requests_inventory_log_id_fk",
+      columns: [table.inventoryLogId],
+      foreignColumns: [inventoryLogs.id],
+    }).onDelete("set null"),
+    statusCreatedIdx: index(
+      "idx_inventory_adjustment_requests_status_created"
+    ).on(table.status, table.createdAt),
+    variantStatusIdx: index(
+      "idx_inventory_adjustment_requests_variant_status"
+    ).on(table.variantId, table.status),
+    requesterIdx: index("idx_inventory_adjustment_requests_requester").on(
+      table.requesterId
+    ),
+    reviewerIdx: index("idx_inventory_adjustment_requests_reviewer").on(
+      table.reviewerId
+    ),
+    inspectionIdx: index("idx_inventory_adjustment_requests_inspection").on(
+      table.inspectionId
+    ),
+    inventoryLogIdx: index(
+      "idx_inventory_adjustment_requests_inventory_log"
+    ).on(table.inventoryLogId),
+    requestedQuantityPositive: check(
+      "inventory_adjustment_requests_requested_quantity_positive",
+      sql`${table.requestedQuantity} > 0`
+    ),
+    approvedQuantityPositive: check(
+      "inventory_adjustment_requests_approved_quantity_positive",
+      sql`${table.approvedQuantity} IS NULL OR ${table.approvedQuantity} > 0`
+    ),
   })
 );
 
@@ -850,9 +1067,6 @@ export const contentSections = pgTable(
     }),
   },
   (table) => ({
-    sectionTypeIdx: uniqueIndex("idx_content_sections_type").on(
-      table.sectionType
-    ),
     isActiveIdx: index("idx_content_sections_is_active").on(table.isActive),
   })
 );
@@ -895,26 +1109,20 @@ export const contentSectionsHistory = pgTable(
  * Legal pages (returns, terms, privacy, shipping, faq).
  * Slugs come from the closed set in `src/domain/legal/legal-slugs.ts`.
  */
-export const legalPages = pgTable(
-  "legal_pages",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    slug: varchar("slug", { length: 64 }).notNull().unique(),
-    title: varchar("title", { length: 200 }).notNull(),
-    bodyMarkdown: text("body_markdown").notNull(),
-    effectiveDate: date("effective_date").notNull(),
-    version: integer("version").default(1).notNull(),
-    isPublished: boolean("is_published").default(true).notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-    updatedBy: text("updated_by").references(() => user.id, {
-      onDelete: "set null",
-    }),
-  },
-  (table) => ({
-    slugIdx: uniqueIndex("idx_legal_pages_slug").on(table.slug),
-  })
-);
+export const legalPages = pgTable("legal_pages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(),
+  title: varchar("title", { length: 200 }).notNull(),
+  bodyMarkdown: text("body_markdown").notNull(),
+  effectiveDate: date("effective_date").notNull(),
+  version: integer("version").default(1).notNull(),
+  isPublished: boolean("is_published").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: text("updated_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
+});
 
 // ============================================
 // LEGAL PAGES HISTORY TABLE
@@ -983,6 +1191,11 @@ export const featuredItems = pgTable(
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type NewUserProfile = typeof userProfiles.$inferInsert;
 
+export type CustomerDataAccessAudit =
+  typeof customerDataAccessAudits.$inferSelect;
+export type NewCustomerDataAccessAudit =
+  typeof customerDataAccessAudits.$inferInsert;
+
 export type Address = typeof addresses.$inferSelect;
 export type NewAddress = typeof addresses.$inferInsert;
 
@@ -1027,6 +1240,14 @@ export type NewPayment = typeof payments.$inferInsert;
 
 export type InventoryLog = typeof inventoryLogs.$inferSelect;
 export type NewInventoryLog = typeof inventoryLogs.$inferInsert;
+
+export type InventoryInspection = typeof inventoryInspections.$inferSelect;
+export type NewInventoryInspection = typeof inventoryInspections.$inferInsert;
+
+export type InventoryAdjustmentRequest =
+  typeof inventoryAdjustmentRequests.$inferSelect;
+export type NewInventoryAdjustmentRequest =
+  typeof inventoryAdjustmentRequests.$inferInsert;
 
 export type AdminNotification = typeof adminNotifications.$inferSelect;
 export type NewAdminNotification = typeof adminNotifications.$inferInsert;
@@ -1097,7 +1318,6 @@ export const newsletterSubscribers = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    emailIdx: uniqueIndex("idx_newsletter_email").on(table.email),
     isActiveIdx: index("idx_newsletter_is_active").on(table.isActive),
   })
 );

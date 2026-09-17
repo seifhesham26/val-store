@@ -301,14 +301,32 @@ export class NotificationService {
     );
   }
 
-  /** One row per admin, in a single insert. */
+  /** A saved worker count needs an admin decision. */
+  async inventoryAdjustmentRequested(input: {
+    requestId: string;
+    sku: string;
+    category: "damaged" | "missing" | "extra";
+    quantity: number;
+  }): Promise<void> {
+    await this.safely("inventoryAdjustmentRequested", () =>
+      this.fanOutToAdmins({
+        notificationType: "inventory_request",
+        title: "Inventory request awaiting review",
+        message: `${input.sku}: ${input.category}, ${input.quantity} units reported.`,
+        relatedEntityId: input.requestId,
+      })
+    );
+  }
+
+  /** One row per admin or super admin, in a single insert. */
   private async fanOutToAdmins(notification: {
     notificationType:
       | "new_order"
       | "low_stock"
       | "new_review"
       | "failed_payment"
-      | "new_customer";
+      | "new_customer"
+      | "inventory_request";
     title: string;
     message: string;
     relatedEntityId?: string;

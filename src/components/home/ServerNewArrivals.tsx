@@ -12,9 +12,12 @@
  * interaction.
  */
 
-import { NewArrivals, NEW_ARRIVALS_LIMIT } from "@/components/home/NewArrivals";
+import { NewArrivals } from "@/components/home/NewArrivals";
 import { getCachedFirstProductPage, type ProductListPage } from "@/lib/cache";
-import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+import {
+  NEW_ARRIVALS_LIMIT,
+  NEW_ARRIVAL_WINDOW_DAYS,
+} from "@/domain/products/new-arrivals";
 
 interface ServerNewArrivalsProps {
   title?: string;

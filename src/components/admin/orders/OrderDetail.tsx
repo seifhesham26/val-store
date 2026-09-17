@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import Link from "next/link";
 
 import { SummaryCard } from "./detail/SummaryCard";
 import { PaymentCard } from "./detail/PaymentCard";
@@ -22,32 +23,52 @@ import { UpdateStatusCard } from "./detail/UpdateStatusCard";
 import { CloseOrderDialog, type CloseAction } from "./detail/CloseOrderDialog";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
 import { formatCurrency } from "@/lib/currency";
+import type { OrderAddress } from "@/domain/orders/entities/order.entity";
 
 interface OrderDetailProps {
   orderId: string;
+  supportAccessId?: string;
 }
 
-export function OrderDetail({ orderId }: OrderDetailProps) {
+export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
   const utils = trpc.useUtils();
   // Cancelling and refunding both close the order and move stock, so they go
   // through a confirmation that captures the reason and the restock split.
   const [closeAction, setCloseAction] = useState<CloseAction | null>(null);
+  const [shippingBlockMessage, setShippingBlockMessage] = useState<
+    string | null
+  >(null);
+  const [deliveryAddress, setDeliveryAddress] = useState<
+    OrderAddress | null | undefined
+  >();
 
-  const { data: order, isLoading } = trpc.admin.orders.getById.useQuery({
-    id: orderId,
+  const {
+    data: order,
+    isLoading,
+    error: orderError,
+  } = trpc.admin.orders.getById.useQuery({ id: orderId, supportAccessId });
+
+  const revealDeliveryMutation = trpc.admin.orders.revealDelivery.useMutation({
+    onSuccess: (address) => setDeliveryAddress(address),
+    onError: (error) =>
+      toast.error(error.message || "Failed to reveal delivery details"),
   });
 
   const updateStatusMutation = trpc.admin.orders.updateStatus.useMutation({
     onSuccess: () => {
       toast.success("Order status updated");
+      setShippingBlockMessage(null);
       setCloseAction(null);
-      utils.admin.orders.getById.invalidate({ id: orderId });
+      utils.admin.orders.getById.invalidate({ id: orderId, supportAccessId });
       utils.admin.orders.list.invalidate();
       // Stock may have moved, so drop the cached figures the storefront reads.
       utils.admin.inventory.invalidate();
       utils.public.products.getStock.invalidate();
     },
     onError: (error) => {
+      if (error.data?.code === "CONFLICT") {
+        setShippingBlockMessage(error.message);
+      }
       toast.error(error.message || "Failed to update status");
     },
   });
@@ -60,7 +81,7 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
           : `Refunded ${formatCurrency(result.amount)} — order stays open`
       );
       setCloseAction(null);
-      utils.admin.orders.getById.invalidate({ id: orderId });
+      utils.admin.orders.getById.invalidate({ id: orderId, supportAccessId });
       utils.admin.orders.list.invalidate();
       utils.admin.inventory.invalidate();
       utils.public.products.getStock.invalidate();
@@ -71,6 +92,7 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
   });
 
   const handleStatusChange = (newStatus: string) => {
+    if (newStatus !== "shipped") setShippingBlockMessage(null);
     // Closing an order needs the reason/restock dialog first.
     if (newStatus === "cancelled" || newStatus === "refunded") {
       setCloseAction(newStatus);
@@ -91,11 +113,25 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
     );
   }
 
-  if (!order) {
+  if (orderError || !order) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <p className="text-muted-foreground">Order not found</p>
+        <CardContent className="space-y-3 p-8 text-center">
+          <p
+            className={
+              orderError ? "text-destructive" : "text-muted-foreground"
+            }
+          >
+            {orderError?.message ?? "Order not found"}
+          </p>
+          {orderError && (
+            <Link
+              href="/admin/customers"
+              className="text-sm font-medium underline underline-offset-4"
+            >
+              Return to customer support
+            </Link>
+          )}
         </CardContent>
       </Card>
     );
@@ -116,12 +152,20 @@ export function OrderDetail({ orderId }: OrderDetailProps) {
       <ItemsCard order={order} />
 
       {/* Addresses */}
-      <AddressesCard order={order} />
+      <AddressesCard
+        hasShippingAddress={order.hasShippingAddress}
+        address={deliveryAddress}
+        isRevealing={revealDeliveryMutation.isPending}
+        onReveal={() =>
+          revealDeliveryMutation.mutate({ id: orderId, supportAccessId })
+        }
+      />
 
       {/* Actions */}
       <UpdateStatusCard
         order={order}
         isPending={updateStatusMutation.isPending}
+        shippingBlockMessage={shippingBlockMessage}
         onStatusChange={handleStatusChange}
       />
 

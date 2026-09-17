@@ -13,6 +13,54 @@ wrong place.
 Everything in Tiers A–D is now implemented except two items that are not code —
 see [Still outstanding](#still-outstanding).
 
+## 2026-09-14 follow-up — lightweight catalogue reads
+
+Public product lists previously called `findAll()`, which materialized every
+selected product as a full entity with its complete image and variant
+relations. The router then fetched the two card images and card variants again
+through its purpose-built batched projections. Product detail and homepage
+caches repeated the same pattern, while static route generation loaded full
+entities merely to read each slug.
+
+Storefront callers now use lightweight catalogue repository methods that
+select only scalar product columns. Card images and variants remain the two
+bounded batch queries, full entity reads remain available to admin and business
+logic, and static route generation selects only active slugs. The public API
+shape and four-query pipelining behavior are unchanged; the duplicated relation
+payload and unnecessary mapping work are gone.
+
+## 2026-09-14 follow-up — duplicate index cleanup
+
+Ten standalone btree indexes duplicated UNIQUE constraint-backed indexes on
+the same table and column. Their declarations were removed from
+`src/db/schema.ts`, and `drizzle/0006_drop_duplicate_indexes.sql` was applied to
+the development database. All ten constraint indexes remain, so uniqueness and
+lookup support are unchanged while future writes maintain one index instead of
+two.
+
+`src/db/index-hygiene.integration.test.ts` detects duplicate public indexes by
+their table, access method, keys, expressions, and predicate rather than by a
+hardcoded list of redundant names. It separately verifies the ten identifier
+constraints remain. Migration `0006` is intentionally not journalled, matching
+the current out-of-band migration state; its change must be folded into the
+planned canonical baseline.
+
+## 2026-09-14 follow-up — foreign-key index coverage
+
+The live schema has 41 foreign keys. Twenty-five already had a supporting index;
+eight more now cover the growing or operationally important child columns used
+when variants, coupons, addresses, orders, or users are changed or deleted:
+`cart_items.variant_id`, `carts.coupon_id`, `coupon_usages.order_id`,
+`inventory_logs.created_by`, `order_items.variant_id`, and the orders table's
+coupon, shipping-address, and billing-address columns.
+
+`drizzle/0007_add_foreign_key_indexes.sql` was applied to the development
+database and is intentionally not journalled. The integration invariant now
+discovers every uncovered foreign key from PostgreSQL's catalog. Its eight
+documented exceptions are bounded configuration tables or columns with neither
+a reverse lookup nor a hard-delete path; a new uncovered foreign key therefore
+requires an explicit indexing decision instead of passing silently.
+
 ---
 
 ## Ground truth

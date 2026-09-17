@@ -1,7 +1,22 @@
 import { container } from "@/application/container";
 import { z } from "zod";
-import { router, adminProcedure, adminWriteProcedure } from "../../trpc";
+import {
+  router,
+  adminProcedure,
+  adminWriteProcedure,
+  customerDirectoryProcedure,
+} from "../../trpc";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
+import {
+  ACTIVE_FULFILLMENT_STATUSES,
+  isActiveFulfillmentStatus,
+} from "@/domain/customer-access/customer-access-policy";
+import { redactOrderListForRole } from "@/application/customer-access/staff-order-access.service";
+import { TRPCError } from "@trpc/server";
+import { CustomerAccessDeniedError } from "@/domain/customer-access/customer-access-denied.error";
+import { InventoryQuarantineError } from "@/domain/orders/exceptions/inventory-quarantine.error";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
+import { revalidateAfterExpiredCheckoutSweep } from "@/server/utils/revalidate-expired-checkout-sweep";
 
 /**
  * Orders Router - Thin Adapter
@@ -32,6 +47,7 @@ const listOrdersSchema = z
 
 const getOrderSchema = z.object({
   id: z.string().uuid(),
+  supportAccessId: z.string().uuid().optional(),
 });
 
 const updateOrderStatusSchema = z.object({
@@ -71,26 +87,107 @@ const refundOrderSchema = z.object({
 
 export const ordersRouter = router({
   // List orders with filtering and pagination
-  list: adminProcedure.input(listOrdersSchema).query(async ({ input }) => {
+  list: adminProcedure.input(listOrdersSchema).query(async ({ ctx, input }) => {
     // Release abandoned checkouts without blocking the list on it — the sweep
     // makes Stripe API calls, and awaiting them put a third-party round trip in
     // front of every admin page load. Throttled to once a minute per process
     // and error-swallowing, so firing and forgetting is safe.
-    void container.getCancelExpiredCheckoutsUseCase().execute();
+    revalidateAfterExpiredCheckoutSweep(
+      container.getCancelExpiredCheckoutsUseCase().execute()
+    );
 
     const useCase = container.getListOrdersUseCase();
     const page = input?.cursor ?? 1;
-    return useCase.execute({
+    if (
+      ctx.user.role === "worker" &&
+      input?.status &&
+      !isActiveFulfillmentStatus(input.status)
+    ) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Use customer-requested support lookup for historical orders",
+      });
+    }
+
+    const result = await useCase.execute({
       ...input,
+      statuses:
+        ctx.user.role === "worker" && !input?.status
+          ? [...ACTIVE_FULFILLMENT_STATUSES]
+          : undefined,
+      includeCustomerEmail: ctx.user.role !== "worker",
       page,
       limit: input?.limit ?? 10,
     });
+
+    return redactOrderListForRole(result, ctx.user.role);
   }),
 
   // Get single order by ID
-  getById: adminProcedure.input(getOrderSchema).query(async ({ input }) => {
-    const useCase = container.getGetOrderUseCase();
-    return useCase.execute(input);
+  getById: adminProcedure
+    .input(getOrderSchema)
+    .query(async ({ ctx, input }) => {
+      try {
+        return await container.getOpenStaffOrderUseCase().execute({
+          actor: {
+            id: ctx.user.id,
+            name: ctx.user.name,
+            email: ctx.user.email,
+            role: ctx.user.role,
+          },
+          orderId: input.id,
+          supportAccessId: input.supportAccessId ?? null,
+        });
+      } catch (error) {
+        if (!(error instanceof CustomerAccessDeniedError)) throw error;
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: error.message,
+        });
+      }
+    }),
+
+  /** Reveal delivery data only after authorization and audit persistence. */
+  revealDelivery: adminProcedure
+    .input(getOrderSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await container.getRevealOrderDeliveryUseCase().execute({
+          actor: {
+            id: ctx.user.id,
+            name: ctx.user.name,
+            email: ctx.user.email,
+            role: ctx.user.role,
+          },
+          orderId: input.id,
+          supportAccessId: input.supportAccessId ?? null,
+        });
+      } catch (error) {
+        if (!(error instanceof CustomerAccessDeniedError)) throw error;
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: error.message,
+        });
+      }
+    }),
+
+  /** Record authorization before the browser creates a portable CSV copy. */
+  recordExport: customerDirectoryProcedure.mutation(async ({ ctx }) => {
+    await container.getRecordCustomerAccessUseCase().execute({
+      actorUserId: ctx.user.id,
+      actorName: ctx.user.name,
+      actorEmail: ctx.user.email,
+      actorRole: ctx.user.role,
+      subjectUserId: null,
+      orderId: null,
+      action: "order_export",
+      fieldGroup: "bulk_order_data",
+      reason: "operations_export",
+      reasonNote: null,
+      confirmedCustomerRequest: false,
+    });
+
+    return { authorized: true as const };
   }),
 
   /**
@@ -101,7 +198,9 @@ export const ordersRouter = router({
     .input(refundOrderSchema)
     .mutation(async ({ input }) => {
       const useCase = container.getRefundOrderUseCase();
-      return useCase.execute(input);
+      const result = await useCase.execute(input);
+      revalidateCatalogue();
+      return result;
     }),
 
   // Update order status
@@ -109,6 +208,18 @@ export const ordersRouter = router({
     .input(updateOrderStatusSchema)
     .mutation(async ({ input }) => {
       const useCase = container.getUpdateOrderStatusUseCase();
-      return useCase.execute(input);
+      try {
+        const result = await useCase.execute(input);
+        if (input.status === "cancelled") revalidateCatalogue();
+        return result;
+      } catch (error) {
+        if (!(error instanceof InventoryQuarantineError)) throw error;
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            error.message +
+            ". Resolve the inventory request before marking this order shipped.",
+        });
+      }
     }),
 });

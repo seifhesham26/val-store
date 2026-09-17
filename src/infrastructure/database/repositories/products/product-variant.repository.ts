@@ -5,13 +5,23 @@
  */
 
 import { db } from "@/db";
-import { productVariants } from "@/db/schema";
-import { eq, and, sql, gt, inArray } from "drizzle-orm";
+import {
+  inventoryAdjustmentRequests,
+  inventoryInspections,
+  productVariants,
+} from "@/db/schema";
+import { eq, and, sql, gt, inArray, type SQL } from "drizzle-orm";
 import {
   ProductVariantRepositoryInterface,
+  SellableProductVariant,
   VariantFilter,
 } from "@/domain/products/interfaces/repositories/product-variant.repository.interface";
 import { ProductVariantEntity } from "@/domain/products/entities/product-variant.entity";
+import { resolveInventoryAvailability } from "@/domain/inventory/inventory-policy";
+import {
+  lockVariantStockState,
+  reconcileLowStockCycle,
+} from "@/infrastructure/database/repositories/inventory/inventory-stock-state";
 
 export class DrizzleProductVariantRepository implements ProductVariantRepositoryInterface {
   /**
@@ -81,6 +91,36 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
     return result;
   }
 
+  async findSellableByIds(
+    variantIds: string[]
+  ): Promise<SellableProductVariant[]> {
+    if (variantIds.length === 0) return [];
+    return this.findSellable(inArray(productVariants.id, variantIds));
+  }
+
+  async findSellableByProduct(
+    productId: string
+  ): Promise<SellableProductVariant[]> {
+    return this.findSellable(eq(productVariants.productId, productId));
+  }
+
+  async findSellableByProducts(
+    productIds: string[]
+  ): Promise<Map<string, SellableProductVariant[]>> {
+    const result = new Map<string, SellableProductVariant[]>();
+    if (productIds.length === 0) return result;
+
+    const variants = await this.findSellable(
+      inArray(productVariants.productId, productIds)
+    );
+    for (const sellable of variants) {
+      const list = result.get(sellable.variant.productId) ?? [];
+      list.push(sellable);
+      result.set(sellable.variant.productId, list);
+    }
+    return result;
+  }
+
   async findMany(filter: VariantFilter): Promise<ProductVariantEntity[]> {
     const conditions = [];
 
@@ -128,20 +168,31 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
    * Create a new variant
    */
   async create(variant: ProductVariantEntity): Promise<ProductVariantEntity> {
-    const [newVariant] = await db
-      .insert(productVariants)
-      .values({
-        productId: variant.productId,
-        sku: variant.sku,
-        size: variant.size,
-        color: variant.color,
-        stockQuantity: variant.stockQuantity,
-        priceAdjustment: variant.priceAdjustment.toString(),
-        isAvailable: variant.isAvailable,
-      })
-      .returning();
+    return db.transaction(async (tx) => {
+      const [newVariant] = await tx
+        .insert(productVariants)
+        .values({
+          productId: variant.productId,
+          sku: variant.sku,
+          size: variant.size,
+          color: variant.color,
+          stockQuantity: variant.stockQuantity,
+          priceAdjustment: variant.priceAdjustment.toString(),
+          isAvailable: variant.isAvailable,
+        })
+        .returning();
 
-    return this.mapToEntity(newVariant);
+      const locked = await lockVariantStockState(tx, newVariant.id);
+      if (!locked)
+        throw new Error(`Variant with ID "${newVariant.id}" not found`);
+      await reconcileLowStockCycle(tx, {
+        variant: locked,
+        previousStock: 0,
+        stockQuantity: newVariant.stockQuantity,
+      });
+
+      return this.mapToEntity(newVariant);
+    });
   }
 
   /**
@@ -160,62 +211,6 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
         updatedAt: new Date(),
       })
       .where(eq(productVariants.id, variant.id))
-      .returning();
-
-    return this.mapToEntity(updated);
-  }
-
-  /**
-   * Update stock quantity to an absolute value.
-   *
-   * This is a genuine "set stock to N" (the caller, `UpdateVariantStockUseCase`'s
-   * "set" mode, means an absolute target, not a delta) so it cannot become
-   * `adjustStock`'s atomic `GREATEST(0, stock + delta)` single statement below
-   * — there is no delta to add. Instead the row is locked `FOR UPDATE` inside
-   * a transaction before the write, which serialises this call against any
-   * other transaction taking the same lock (the checkout's stock reservation
-   * in `order.repository.ts`, `InventoryRepository.adjustStockWithLog`)
-   * rather than letting it land between an unlocked read and write and erase
-   * a concurrent decrement — the same hazard `AdjustStockUseCase` had.
-   */
-  async updateStock(
-    variantId: string,
-    quantity: number
-  ): Promise<ProductVariantEntity> {
-    return db.transaction(async (tx) => {
-      await tx
-        .select({ id: productVariants.id })
-        .from(productVariants)
-        .where(eq(productVariants.id, variantId))
-        .for("update");
-
-      const [updated] = await tx
-        .update(productVariants)
-        .set({
-          stockQuantity: quantity,
-          updatedAt: new Date(),
-        })
-        .where(eq(productVariants.id, variantId))
-        .returning();
-
-      return this.mapToEntity(updated);
-    });
-  }
-
-  /**
-   * Adjust stock by delta
-   */
-  async adjustStock(
-    variantId: string,
-    delta: number
-  ): Promise<ProductVariantEntity> {
-    const [updated] = await db
-      .update(productVariants)
-      .set({
-        stockQuantity: sql`GREATEST(0, ${productVariants.stockQuantity} + ${delta})`,
-        updatedAt: new Date(),
-      })
-      .where(eq(productVariants.id, variantId))
       .returning();
 
     return this.mapToEntity(updated);
@@ -260,6 +255,52 @@ export class DrizzleProductVariantRepository implements ProductVariantRepository
       .where(eq(productVariants.productId, productId));
 
     return Number(result[0]?.total ?? 0);
+  }
+
+  private async findSellable(
+    where: SQL<unknown>
+  ): Promise<SellableProductVariant[]> {
+    const rows = await db
+      .select({
+        id: productVariants.id,
+        productId: productVariants.productId,
+        sku: productVariants.sku,
+        size: productVariants.size,
+        color: productVariants.color,
+        stockQuantity: productVariants.stockQuantity,
+        priceAdjustment: productVariants.priceAdjustment,
+        isAvailable: productVariants.isAvailable,
+        createdAt: productVariants.createdAt,
+        updatedAt: productVariants.updatedAt,
+        pendingInspection: sql<boolean>`exists (
+          select 1 from ${inventoryInspections} as inspection
+          where inspection.variant_id = product_variants.id
+            and inspection.cycle_ended_at is null
+            and inspection.status = 'pending'
+        )`,
+        pendingFlaw: sql<boolean>`exists (
+          select 1 from ${inventoryAdjustmentRequests} as request
+          where request.variant_id = product_variants.id
+            and request.status = 'pending'
+            and request.category in ('damaged', 'missing')
+        )`,
+      })
+      .from(productVariants)
+      .where(where);
+
+    return rows.map((row) => {
+      const availability = resolveInventoryAvailability({
+        stockQuantity: row.stockQuantity,
+        isAvailable: row.isAvailable,
+        hasPendingInspection: row.pendingInspection,
+        hasPendingFlaw: row.pendingFlaw,
+      });
+      return {
+        variant: this.mapToEntity(row),
+        sellableStock: availability.sellableStock,
+        availabilityState: availability.state,
+      };
+    });
   }
 
   /**

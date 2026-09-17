@@ -13,8 +13,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  */
 const sessionCalls = { count: 0 };
 const roleCalls = { count: 0 };
-let currentSession: { user: { id: string; email: string; name: string } } | null =
-  null;
+let currentSession: {
+  user: { id: string; email: string; name: string };
+} | null = null;
 let sessionThrows = false;
 
 vi.mock("@/lib/auth", () => ({
@@ -29,10 +30,6 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-vi.mock("next/headers", () => ({
-  headers: async () => new Headers(),
-}));
-
 // Mocked outright rather than partially: the real module imports `@/db`,
 // which throws without DATABASE_URL, and the unit suite must never need one.
 vi.mock("./utils/auth-helpers", () => ({
@@ -43,14 +40,31 @@ vi.mock("./utils/auth-helpers", () => ({
   requireAuth: (user: unknown) => {
     if (!user) throw new Error("UNAUTHORIZED");
   },
-  requireAdmin: () => {},
+  requireAdmin: (user: { role: string }) => {
+    if (user.role !== "admin" && user.role !== "super_admin") {
+      throw new Error("FORBIDDEN");
+    }
+  },
+  requireAdminArea: (user: { role: string }) => {
+    if (!["worker", "admin", "super_admin"].includes(user.role)) {
+      throw new Error("FORBIDDEN");
+    }
+  },
+  requireSuperAdmin: (user: { role: string }) => {
+    if (user.role !== "super_admin") throw new Error("FORBIDDEN");
+  },
   isAdmin: () => false,
   requireRole: () => {},
   invalidateUserRole: () => {},
   clearRoleCache: () => {},
 }));
 
-const { createContext, createDirectContext } = await import("./trpc");
+const {
+  createContext,
+  createDirectContext,
+  customerDirectoryProcedure,
+  router,
+} = await import("./trpc");
 
 const SESSION = {
   user: { id: "u1", email: "a@b.c", name: "Ada" },
@@ -74,6 +88,18 @@ describe("createContext is lazy", () => {
 
   it("reports that it has not touched auth", () => {
     expect(createContext().touchedAuth()).toBe(false);
+  });
+
+  it("resolves the client IP from the request without touching auth", () => {
+    const request = new Request("https://example.test/api/trpc", {
+      headers: { "x-real-ip": "203.0.113.42" },
+    });
+
+    const ctx = createContext({ req: request });
+
+    expect(ctx.clientIp).toBe("203.0.113.42");
+    expect(sessionCalls.count).toBe(0);
+    expect(roleCalls.count).toBe(0);
   });
 
   it("resolves the user only when asked", async () => {
@@ -172,4 +198,39 @@ describe("createDirectContext", () => {
     // request by the caching layer.
     expect(createDirectContext(null).touchedAuth()).toBe(true);
   });
+});
+
+describe("customerDirectoryProcedure", () => {
+  const testRouter = router({
+    directory: customerDirectoryProcedure.query(({ ctx }) => ctx.user.role),
+  });
+
+  it("rejects a worker from the browsable customer directory", async () => {
+    const caller = testRouter.createCaller(
+      createDirectContext({
+        id: "worker-1",
+        email: "worker@example.com",
+        name: "Worker",
+        role: "worker",
+      })
+    );
+
+    await expect(caller.directory()).rejects.toThrow("FORBIDDEN");
+  });
+
+  it.each(["admin", "super_admin"] as const)(
+    "admits %s to the browsable customer directory",
+    async (role) => {
+      const caller = testRouter.createCaller(
+        createDirectContext({
+          id: `${role}-1`,
+          email: `${role}@example.com`,
+          name: role,
+          role,
+        })
+      );
+
+      await expect(caller.directory()).resolves.toBe(role);
+    }
+  );
 });

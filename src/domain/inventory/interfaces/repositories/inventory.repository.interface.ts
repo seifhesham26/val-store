@@ -2,7 +2,45 @@
  * Inventory Repository Interface
  */
 
-import { InventoryLog, NewInventoryLog } from "@/db/schema";
+import type { VariantSellability } from "@/domain/inventory/inventory-operations";
+
+export type InventoryChangeType =
+  | "restock"
+  | "sale"
+  | "adjustment"
+  | "damaged"
+  | "return";
+
+export interface InventoryLog {
+  id: string;
+  variantId: string;
+  changeType: InventoryChangeType;
+  quantityChange: number;
+  previousQuantity: number;
+  newQuantity: number;
+  reason: string | null;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
+export interface InventoryLogInput {
+  variantId: string;
+  changeType: InventoryChangeType;
+  quantityChange: number;
+  previousQuantity: number;
+  newQuantity: number;
+  reason?: string | null;
+  createdBy?: string | null;
+}
+
+export interface StockAdjustmentResult {
+  previousQuantity: number;
+  newQuantity: number;
+  /** Effective sellable quantity or availability state changed. */
+  sellabilityChanged: boolean;
+  /** Validation failure: quantities are unchanged and nothing was written. */
+  error?: "Stock cannot be negative" | "Stock must be a whole number";
+}
 
 export interface InventoryLogWithDetails extends InventoryLog {
   variantSku: string | null;
@@ -18,13 +56,15 @@ export interface VariantWithStock {
   size: string | null;
   color: string | null;
   stockQuantity: number;
+  isAvailable: boolean;
   productId: string;
   productName: string;
   productSlug: string;
 }
 
 export interface InventoryRepositoryInterface {
-  createLog(log: NewInventoryLog): Promise<InventoryLog>;
+  getVariantSellability(variantIds: string[]): Promise<VariantSellability[]>;
+  createLog(log: InventoryLogInput): Promise<InventoryLog>;
   getLogsByVariant(
     variantId: string,
     limit?: number
@@ -55,16 +95,6 @@ export interface InventoryRepositoryInterface {
    */
   countAllVariants(): Promise<number>;
   /**
-   * Unlocked, unconditional absolute write — no row lock, no audit log.
-   * Nothing in the codebase calls this today. Do not use it for a
-   * read-then-write stock change (read the level, decide a new one, write
-   * it): that shape is exactly the race `adjustStockWithLog` exists to
-   * close. Kept only as a low-level primitive.
-   */
-  updateVariantStock(variantId: string, newStock: number): Promise<void>;
-  /** Unlocked read. See the warning on `updateVariantStock`. */
-  getVariantStock(variantId: string): Promise<number | null>;
-  /**
    * Atomically sets a variant's stock to an absolute quantity and writes
    * the matching `inventory_logs` row in one transaction, with the variant
    * row locked `FOR UPDATE` before either write.
@@ -77,13 +107,15 @@ export interface InventoryRepositoryInterface {
    * stock reservation instead of racing it.
    *
    * Returns null if the variant does not exist — nothing is written, no log
-   * row is created.
+   * row is created. Invalid quantities return the locked current quantity
+   * and an error. Successful writes preserve manual availability and
+   * reconcile the low-stock inspection cycle in the same transaction.
    */
   adjustStockWithLog(
     variantId: string,
     newQuantity: number,
-    log: Pick<NewInventoryLog, "changeType" | "reason" | "createdBy">
-  ): Promise<{ previousQuantity: number; newQuantity: number } | null>;
+    log: Pick<InventoryLogInput, "changeType" | "reason" | "createdBy">
+  ): Promise<StockAdjustmentResult | null>;
   /**
    * Stock and SKU for several variants at once.
    *

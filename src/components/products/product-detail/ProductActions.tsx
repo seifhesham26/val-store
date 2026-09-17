@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { LogIn, Truck, RefreshCw, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
 
 interface ProductActionsProps {
   isAuthenticated: boolean;
@@ -11,6 +12,7 @@ interface ProductActionsProps {
   atCeiling?: boolean;
   /** How many are already in the cart, for the at-ceiling label. */
   inCartQuantity?: number;
+  availabilityState?: InventoryAvailabilityState | null;
   onAddToCart: () => void;
   details?: string[];
 }
@@ -20,9 +22,15 @@ export function ProductActions({
   inStock,
   atCeiling = false,
   inCartQuantity = 0,
+  availabilityState = null,
   onAddToCart,
   details,
 }: ProductActionsProps) {
+  const temporarilyUnavailable =
+    !inStock &&
+    (availabilityState === "inspection_pending" ||
+      availabilityState === "quarantined");
+
   return (
     <>
       {/* Add to Cart */}
@@ -52,17 +60,26 @@ export function ProductActions({
           // No pending state: the press is a local write, so there is no round
           // trip to spin for and no reason the button should ever go dead
           // between presses. The stock ceiling is the only thing that stops it.
-          <Button
-            onClick={onAddToCart}
-            className="flex-1 bg-white text-black hover:bg-val-silver py-6 text-lg font-medium"
-            disabled={!inStock || atCeiling}
-          >
-            {!inStock
-              ? "Out of Stock"
-              : atCeiling
-                ? `All ${inCartQuantity} in cart`
-                : "Add to Cart"}
-          </Button>
+          <div className="flex-1">
+            <Button
+              onClick={onAddToCart}
+              className="w-full bg-white text-black hover:bg-val-silver py-6 text-lg font-medium"
+              disabled={!inStock || atCeiling}
+            >
+              {!inStock
+                ? temporarilyUnavailable
+                  ? "Temporarily unavailable"
+                  : "Out of Stock"
+                : atCeiling
+                  ? `All ${inCartQuantity} in cart`
+                  : "Add to Cart"}
+            </Button>
+            {temporarilyUnavailable && (
+              <p className="mt-2 text-sm text-white/60">
+                We&apos;re confirming availability. Check back soon.
+              </p>
+            )}
+          </div>
         )}
       </div>
 

@@ -12,7 +12,8 @@ import {
   user,
   orderItems,
 } from "@/db/schema";
-import { sql, desc, gte, eq, and } from "drizzle-orm";
+import { sql, desc, gte, eq, and, inArray } from "drizzle-orm";
+import type { OrderStatusValue } from "@/domain/orders/value-objects/order-status.value-object";
 import {
   startOfWindow,
   toDenseDailySeries,
@@ -142,7 +143,10 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
   /**
    * Get recent orders for the dashboard
    */
-  async getRecentOrders(limit: number = 5): Promise<RecentOrder[]> {
+  async getRecentOrders(
+    limit: number = 5,
+    statuses?: OrderStatusValue[]
+  ): Promise<RecentOrder[]> {
     // One query with a join, not one per row. There is no `orders → user`
     // relation to lean on, so the join is explicit — but it is still a join.
     const rows = await db
@@ -156,6 +160,7 @@ export class DrizzleDashboardRepository implements DashboardRepositoryInterface 
       })
       .from(orders)
       .leftJoin(user, eq(orders.userId, user.id))
+      .where(statuses?.length ? inArray(orders.status, statuses) : undefined)
       .orderBy(desc(orders.createdAt))
       .limit(limit);
 

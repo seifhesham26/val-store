@@ -14,6 +14,7 @@ import { orders } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { stripeService } from "@/infrastructure/services/stripe.service";
 import { TRPCError } from "@trpc/server";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
 
 export const checkoutRouter = router({
   /**
@@ -39,13 +40,15 @@ export const checkoutRouter = router({
       const useCase = container.getCreateCheckoutSessionUseCase();
 
       try {
-        return await useCase.execute({
+        const result = await useCase.execute({
           userId: ctx.user.id,
           email: ctx.user.email,
           shippingAddressId: input.shippingAddressId,
           billingAddressId: input.billingAddressId,
           couponCode: held?.code,
         });
+        revalidateCatalogue();
+        return result;
       } catch (error) {
         // The use case throws rather than silently charging full price when
         // the coupon cannot be honoured — but the throw says nothing about
@@ -101,6 +104,7 @@ export const checkoutRouter = router({
           customerEmail: ctx.user.email,
         });
 
+        revalidateCatalogue();
         return { orderId: order.id };
       } catch (error) {
         // See createSession: the throw says nothing about why the coupon

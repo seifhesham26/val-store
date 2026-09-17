@@ -1,6 +1,7 @@
 import { router, adminProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { z } from "zod";
+import { ACTIVE_FULFILLMENT_STATUSES } from "@/domain/customer-access/customer-access-policy";
 
 /**
  * Dashboard Router - Admin Dashboard Metrics
@@ -36,9 +37,13 @@ export const dashboardRouter = router({
     }),
 
   // Get recent orders
-  getRecentOrders: adminProcedure.query(async () => {
+  getRecentOrders: adminProcedure.query(async ({ ctx }) => {
     const useCase = container.getGetRecentOrdersUseCase();
-    return useCase.execute();
+    return useCase.execute(
+      ctx.user.role === "worker"
+        ? { statuses: [...ACTIVE_FULFILLMENT_STATUSES] }
+        : undefined
+    );
   }),
 
   // Get analytics data

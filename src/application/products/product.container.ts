@@ -15,7 +15,6 @@ import { DeleteProductUseCase } from "./use-cases/delete-product.use-case";
 import { ToggleProductStatusUseCase } from "./use-cases/toggle-product-status.use-case";
 import { UpdateProductUseCase } from "./use-cases/update-product.use-case";
 import { AddProductVariantUseCase } from "./use-cases/add-product-variant.use-case";
-import { UpdateVariantStockUseCase } from "./use-cases/update-variant-stock.use-case";
 import { AddProductImageUseCase } from "./use-cases/add-product-image.use-case";
 import { RemoveProductImageUseCase } from "./use-cases/remove-product-image.use-case";
 
@@ -38,7 +37,6 @@ export function createProductModule() {
   let toggleProductStatus: ToggleProductStatusUseCase | undefined;
   let updateProduct: UpdateProductUseCase | undefined;
   let addVariant: AddProductVariantUseCase | undefined;
-  let updateVariantStock: UpdateVariantStockUseCase | undefined;
   let addImage: AddProductImageUseCase | undefined;
   let removeImage: RemoveProductImageUseCase | undefined;
 
@@ -65,10 +63,6 @@ export function createProductModule() {
       (addVariant ??= new AddProductVariantUseCase(
         getProductVariantRepository(),
         getProductRepository()
-      )),
-    getUpdateVariantStockUseCase: () =>
-      (updateVariantStock ??= new UpdateVariantStockUseCase(
-        getProductVariantRepository()
       )),
     getAddProductImageUseCase: () =>
       (addImage ??= new AddProductImageUseCase(

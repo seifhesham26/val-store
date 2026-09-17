@@ -13,6 +13,7 @@ import { ProductActions } from "@/components/products/product-detail/ProductActi
 import { quantityInCart, remainingCapacity } from "@/lib/cart-stock-limit";
 import { useVariantStock } from "@/hooks/use-variant-stock";
 import { useReveal } from "@/hooks/use-reveal";
+import type { InventoryAvailabilityState } from "@/domain/inventory/inventory-policy";
 
 interface ProductDetailProps {
   product: {
@@ -32,6 +33,7 @@ interface ProductDetailProps {
       color: string | null;
       inStock: boolean;
       availableStock: number;
+      availabilityState: InventoryAvailabilityState;
     }[];
     isNew?: boolean;
     isOnSale?: boolean;
@@ -53,8 +55,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
   const revealRef = useReveal<HTMLDivElement>();
 
-  // One shared, self-refreshing stock source. The server-rendered numbers below
-  // are a 60s-cached snapshot; this keeps the ceiling current without a reload.
+  // One shared, self-refreshing stock source. The server-rendered catalogue is
+  // deliberately long-lived; this keeps the quantity ceiling current without
+  // coupling product metadata caching to inventory freshness.
   const stock = useVariantStock(product.variants.map((v) => v.id));
 
   const hasSizes = product.sizes.length > 0;
@@ -73,6 +76,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
   // variant is resolved, so nothing is claimed before the customer has chosen.
   const variantStock = selectedVariant
     ? (stock.get(selectedVariant.id) ?? selectedVariant.availableStock)
+    : null;
+  const availabilityState = selectedVariant
+    ? (stock.state(selectedVariant.id) ?? selectedVariant.availabilityState)
     : null;
 
   // How many *more* may be added, which is not the same number: the server
@@ -194,6 +200,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
               onSelectSize={setSelectedSize}
               onChangeQuantity={setQuantity}
               maxQuantity={maxQuantity}
+              availabilityState={availabilityState}
             />
 
             <ProductActions
@@ -201,6 +208,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
               inStock={isSelectionInStock}
               atCeiling={atCeiling}
               inCartQuantity={inCartQuantity}
+              availabilityState={availabilityState}
               onAddToCart={handleAddToCart}
               details={product.details}
             />

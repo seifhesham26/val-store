@@ -5,6 +5,51 @@ gateway decision — Stripe is not settled, so the code that moves money has no
 provider to move it through yet.
 **Decided** 2026-09-03
 
+## Approved launch refund policy
+
+**Policy decision** 2026-09-15. This policy applies only to refunds. It is
+hardcoded in the application; it is not editable configuration and must not be
+stored in a settings table. Changing it requires a code change, tests, review,
+and deployment. The inventory-adjustment design is unchanged.
+
+The refund calculation uses the amount actually paid for the returned item
+after the existing proportional coupon allocation. It never exceeds the
+captured payment and never refunds a coupon twice.
+
+- An unworn or try-on-only change-of-mind return receives 100% of the actual
+  item amount paid. The original outbound delivery fee is not refunded and
+  Valkyrie pays one return pickup.
+- A worn but still resellable change-of-mind item may receive a 70% goodwill
+  refund of the actual item amount paid. The original outbound delivery fee is
+  not refunded and Valkyrie pays one return pickup. This is a goodwill policy,
+  not a statutory percentage.
+- A defective, wrong, or misdescribed item receives 100% of the actual item
+  amount paid plus the applicable original delivery fee. Valkyrie pays the
+  return pickup, including when the item was normally worn before the defect
+  was discovered.
+- Customer-caused damage, washing, alteration, stains, odor, missing tags, or
+  other loss of resellable condition rejects a change-of-mind return. No
+  refund is issued; the original delivery fee remains charged and the
+  customer pays the return collection fee.
+
+Every customer-facing outcome displays its line-item calculation and delivery
+responsibility. A ten-second read gate and acknowledgment are required for
+every outcome. Positive refund outcomes then require the existing one-minute,
+single-use, five-attempt OTP gate; a changed amount, condition, fee, or COD
+destination resets the read gate and OTP. A rejected outcome requires the
+acknowledgment but no OTP.
+
+Before pickup, the customer uploads a product-condition photograph and a
+photograph of the resealed package and label. On receipt, staff records an
+unboxing and inspection video showing the seal, label, opening, item, tags,
+quantity, and condition before the final decision. A media failure creates an
+exception/re-inspection path and is not an automatic rejection.
+
+Refunds use the original payment method unless a COD customer agrees to an
+alternative destination. The operational target is completion within seven
+days of the return reaching the required inspection point. Provider-side money
+movement remains blocked until the payment provider is available.
+
 ## What works today
 
 The whole return model, and it is the harder half:

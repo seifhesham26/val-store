@@ -1,7 +1,7 @@
-import { OrderData } from "./types";
-import { MapPin } from "lucide-react";
+import { Loader2, MapPin, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { OrderAddress } from "@/domain/orders/entities/order.entity";
+import { Button } from "@/components/ui/button";
 
 function AddressBlock({ address }: { address: OrderAddress | null }) {
   if (!address) {
@@ -35,32 +35,44 @@ function AddressBlock({ address }: { address: OrderAddress | null }) {
   );
 }
 
-export function AddressesCard({ order }: { order: OrderData }) {
+export function AddressesCard({
+  hasShippingAddress,
+  address,
+  isRevealing,
+  onReveal,
+}: {
+  hasShippingAddress: boolean;
+  address: OrderAddress | null | undefined;
+  isRevealing: boolean;
+  onReveal: () => void;
+}) {
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <Card>
-        <CardHeader className="flex flex-row items-center gap-3">
-          <MapPin className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle>Shipping Address</CardTitle>
+    <Card>
+      <CardHeader className="flex flex-row items-center gap-3">
+        <MapPin className="h-5 w-5 text-primary" />
+        <CardTitle>Delivery details</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {address !== undefined ? (
+          <AddressBlock address={address} />
+        ) : hasShippingAddress ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                Address and phone are hidden. Revealing them is recorded in your
+                access history.
+              </p>
+            </div>
+            <Button onClick={onReveal} disabled={isRevealing}>
+              {isRevealing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Show delivery details
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <AddressBlock address={order.shippingAddress} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center gap-3">
-          <MapPin className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle>Billing Address</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <AddressBlock address={order.billingAddress} />
-        </CardContent>
-      </Card>
-    </div>
+        ) : (
+          <AddressBlock address={null} />
+        )}
+      </CardContent>
+    </Card>
   );
 }

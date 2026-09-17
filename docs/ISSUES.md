@@ -78,9 +78,11 @@ created_at DESC` is not a total order and a seeded catalogue writes 35
 > 8. **Three mobile-menu links were hard 404s** — "Summer 2025", "Essentials",
 >    "Best Sellers", categories that have never existed in any seed.
 > 9. **`pnpm test:integration` was 21/41 green and nobody knew**, because it is
->    excluded from CI. Now 38/41; the remaining three are a harness limitation
->    (`products.search` calling `headers()` outside a request scope through the
->    in-process caller), not a product bug.
+>    excluded from CI. It later reached 38/41 with three `products.search`
+>    failures: the router called Next's request-scoped `headers()` API through
+>    an in-process caller. The tRPC context now carries request headers and a
+>    resolved client IP, so the real search behavior runs under both HTTP and
+>    integration callers; the expanded suite is 54/54.
 >
 > ### Deliberately not fixed
 >
@@ -1234,8 +1236,7 @@ tool's output, is the argument for re-measuring rather than reading this file.
 **What is actually left**, verified 2026-09-03: CSP `script-src` cannot be
 enforced without giving up prerendering (measured — see the status block at the
 top and the comment in `next.config.ts`); refunds move no money, deferred to
-the payment gateway decision (`docs/REFUNDS.md`); three integration tests fail
-on a harness limitation rather than a product bug; and #34's `worker` role,
+the payment gateway decision (`docs/REFUNDS.md`); and #34's `worker` role,
 #39's palette and #P2-6/#P2-7's portalled surfaces are all still open. The
 largest unexamined area is not in this file at all: the admin screens, the
 light/dark contrast family, accessibility and the email templates were never

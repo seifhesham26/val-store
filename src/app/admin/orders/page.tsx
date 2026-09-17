@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 import {
   OrdersListHeader,
   type OrderFilters,
@@ -10,6 +11,8 @@ import {
   OrdersTable,
   type OrdersTableHandle,
 } from "@/components/admin/orders/list/OrdersTable";
+import { useAdminWriteAccess } from "@/hooks/use-admin-write-access";
+import { canExportOrders } from "@/domain/customer-access/customer-access-policy";
 
 export default function OrdersPage() {
   const [filters, setFilters] = useState<OrderFilters>({
@@ -19,11 +22,23 @@ export default function OrdersPage() {
     returnedOnly: false,
   });
   const tableRef = useRef<OrdersTableHandle | null>(null);
+  const { role } = useAdminWriteAccess();
+  const recordExport = trpc.admin.orders.recordExport.useMutation();
+  const canExport = role ? canExportOrders(role) : false;
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     const orders = tableRef.current?.getOrders();
     if (!orders || orders.length === 0) {
       toast.error("No orders to export");
+      return;
+    }
+
+    try {
+      await recordExport.mutateAsync();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Export authorization failed"
+      );
       return;
     }
 
@@ -82,14 +97,18 @@ export default function OrdersPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, []);
+    toast.success("Orders exported");
+  }, [recordExport]);
 
   return (
     <div className="space-y-6">
       <OrdersListHeader
         filters={filters}
         onFiltersChange={setFilters}
-        onExport={handleExport}
+        onExport={() => void handleExport()}
+        canExport={canExport}
+        isExporting={recordExport.isPending}
+        workerMode={role === "worker"}
       />
       <OrdersTable filters={filters} tableRef={tableRef} />
     </div>

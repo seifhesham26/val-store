@@ -7,8 +7,15 @@
 
 import {
   OrderEntity,
+  type OrderAddress,
   type RefundLine,
 } from "@/domain/orders/entities/order.entity";
+import type { OrderStatusValue } from "@/domain/orders/value-objects/order-status.value-object";
+
+// `updateStatus(..., "shipped")` may throw InventoryQuarantineError when an
+// ordered variant has a pending damaged/missing request. Callers must expose
+// that only as an operational shipping block, never as a customer-facing
+// quality allegation.
 
 /** How much of each line to return to stock when closing an order. */
 export interface RestockLine {
@@ -37,7 +44,11 @@ export interface UpdateOrderStatusOptions {
 
 export interface OrderFilters {
   status?: string; // Changed to string for compatibility with use cases
+  /** Match any of these statuses. Used to keep worker browsing fulfilment-only. */
+  statuses?: OrderStatusValue[];
   userId?: string;
+  /** Staff lists can exclude customer email at the SQL projection boundary. */
+  includeCustomerEmail?: boolean;
   startDate?: Date;
   endDate?: Date;
   /** Inclusive lower bound on `orders.total_amount`. */
@@ -66,6 +77,18 @@ export interface OrderRepositoryInterface {
    * Find an order by ID
    */
   findById(orderId: string): Promise<OrderEntity | null>;
+
+  /**
+   * Staff-safe detail read. It never hydrates either address, either address
+   * snapshot, or customer/admin notes. Customer email is opt-in.
+   */
+  findByIdForStaff(
+    orderId: string,
+    includeCustomerEmail: boolean
+  ): Promise<{ order: OrderEntity; hasShippingAddress: boolean } | null>;
+
+  /** Shipping-only reveal read. Billing data is deliberately unreachable. */
+  findShippingAddress(orderId: string): Promise<OrderAddress | null>;
 
   /**
    * Find all orders with optional filters

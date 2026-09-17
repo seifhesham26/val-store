@@ -43,22 +43,15 @@ const CACHE_TAGS = {
 // Default revalidation time (60 seconds)
 const DEFAULT_REVALIDATE = 60;
 
-/**
- * Revalidation for catalogue data, which is tag-invalidated.
- *
- * Every admin write that changes what a product card shows now calls
- * `revalidateCatalogue()` — including the variant and image mutations, which
- * previously called nothing at all and left the storefront stale after an
- * edit. The tags are therefore the correctness mechanism and this TTL is only
- * a backstop for a write path nobody remembered to announce.
- *
- * Five minutes rather than the hour it could be: this audit found two write
- * paths with no invalidation at all, so the demonstrated rate of missed tags
- * in this codebase is not zero, and a stale-for-an-hour storefront is a much
- * worse failure than a stale-for-five-minutes one. Raise it once the tag
- * coverage has stayed complete through a few more features.
- */
+/** Short recovery backstop for category and legal-page caches. */
 const CATALOGUE_REVALIDATE = 300;
+
+/**
+ * Product metadata and image URLs are rare-write data. Product, variant, and
+ * image mutations all call `revalidateCatalogue`, so this one-day TTL is only
+ * a recovery backstop if a future write path forgets to announce itself.
+ */
+const PRODUCT_CATALOGUE_REVALIDATE = 60 * 60 * 24;
 
 /**
  * Get hero section content with caching
@@ -219,7 +212,7 @@ export const getCachedFeaturedProducts = unstable_cache(
     // Batch-fetch primary images and variants (2 queries instead of 2N)
     const [imageMap, variantMap] = await Promise.all([
       imageRepo.findFirstTwoByProducts(productIds),
-      variantRepo.findByProducts(productIds),
+      variantRepo.findSellableByProducts(productIds),
     ]);
 
     return products.map((p) => ({
@@ -234,17 +227,20 @@ export const getCachedFeaturedProducts = unstable_cache(
       // Needed by Quick Add: without these the card cannot record which variant
       // was bought, and the order would skip stock entirely.
       variants: (variantMap.get(p.id) ?? [])
-        .filter((v) => v.isAvailable)
-        .map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          inStock: v.stockQuantity > 0,
+        .filter(({ variant }) => variant.isAvailable)
+        .map(({ variant, sellableStock }) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          inStock: sellableStock > 0,
         })),
     }));
   },
   [CACHE_TAGS.FEATURED_PRODUCTS],
-  { revalidate: DEFAULT_REVALIDATE, tags: [CACHE_TAGS.FEATURED_PRODUCTS] }
+  {
+    revalidate: PRODUCT_CATALOGUE_REVALIDATE,
+    tags: [CACHE_TAGS.FEATURED_PRODUCTS],
+  }
 );
 
 /**
@@ -271,10 +267,14 @@ async function resolveFeaturedProducts(
     .map((item) => item.itemId);
 
   if (curatedIds.length === 0) {
-    return repo.findFeatured(limit);
+    return repo.findCatalogue({
+      isActive: true,
+      isFeatured: true,
+      limit,
+    });
   }
 
-  const products = await repo.findByIds(curatedIds);
+  const products = await repo.findCatalogueByIds(curatedIds);
   const byId = new Map(products.map((product) => [product.id, product]));
 
   // Re-apply the admin's order, and drop ids whose product has since been
@@ -289,7 +289,9 @@ async function resolveFeaturedProducts(
   // A curation can outlive its products: archive or delete every item on the
   // list and this resolves to nothing. Fall back rather than render a titled
   // section with an empty grid under it.
-  return resolved.length > 0 ? resolved : repo.findFeatured(limit);
+  return resolved.length > 0
+    ? resolved
+    : repo.findCatalogue({ isActive: true, isFeatured: true, limit });
 }
 
 /**
@@ -381,20 +383,18 @@ export const getCachedCategories = unstable_cache(
 export const getCachedProductsByCategory = unstable_cache(
   async (categoryId: string) => {
     const repo = container.getProductRepository();
-    const products = await repo.findByCategory(categoryId);
+    const products = await repo.findCatalogue({ categoryId, isActive: true });
 
-    return products
-      .filter((p) => p.isActive)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        basePrice: p.basePrice,
-        salePrice: p.salePrice,
-      }));
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      basePrice: p.basePrice,
+      salePrice: p.salePrice,
+    }));
   },
   ["products-by-category"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -403,7 +403,7 @@ export const getCachedProductsByCategory = unstable_cache(
 export const getCachedProductBySlug = unstable_cache(
   async (slug: string) => {
     const productRepo = container.getProductRepository();
-    const product = await productRepo.findBySlug(slug);
+    const product = await productRepo.findCatalogueBySlug(slug);
 
     if (!product || !product.isActive) {
       return null;
@@ -418,7 +418,7 @@ export const getCachedProductBySlug = unstable_cache(
     // and they cost roughly one.
     const [images, variants] = await Promise.all([
       imageRepo.findByProduct(product.id),
-      variantRepo.findByProduct(product.id),
+      variantRepo.findSellableByProduct(product.id),
     ]);
 
     return {
@@ -439,21 +439,22 @@ export const getCachedProductBySlug = unstable_cache(
         displayOrder: img.displayOrder,
       })),
       variants: variants
-        .filter((v) => v.isAvailable)
-        .map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          priceAdjustment: v.priceAdjustment,
-          inStock: v.stockQuantity > 0,
+        .filter(({ variant }) => variant.isAvailable)
+        .map(({ variant, sellableStock, availabilityState }) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          priceAdjustment: variant.priceAdjustment,
+          inStock: sellableStock > 0,
           // Exposed so the product page can cap the quantity stepper at what
           // can actually be fulfilled.
-          availableStock: v.stockQuantity,
+          availableStock: sellableStock,
+          availabilityState,
         })),
     };
   },
   ["product-by-slug"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -464,7 +465,7 @@ export const getCachedAllProducts = unstable_cache(
   async (limit: number = 50) => {
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
-    const products = await repo.findAll({ isActive: true, limit });
+    const products = await repo.findCatalogue({ isActive: true, limit });
 
     // Batch-fetch primary images (1 query instead of N)
     const imageMap = await imageRepo.findFirstTwoByProducts(
@@ -483,7 +484,7 @@ export const getCachedAllProducts = unstable_cache(
     }));
   },
   ["all-products"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -495,7 +496,7 @@ export const getCachedRelatedProducts = unstable_cache(
     const repo = container.getProductRepository();
     const imageRepo = container.getProductImageRepository();
     const variantRepo = container.getProductVariantRepository();
-    const products = await repo.findAll({
+    const products = await repo.findCatalogue({
       isActive: true,
       excludeId,
       limit,
@@ -504,7 +505,7 @@ export const getCachedRelatedProducts = unstable_cache(
 
     const [imageMap, variantMap] = await Promise.all([
       imageRepo.findFirstTwoByProducts(productIds),
-      variantRepo.findByProducts(productIds),
+      variantRepo.findSellableByProducts(productIds),
     ]);
 
     return products.map((p) => ({
@@ -516,17 +517,17 @@ export const getCachedRelatedProducts = unstable_cache(
       primaryImage: imageMap.get(p.id)?.[0]?.imageUrl ?? null,
       secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
       variants: (variantMap.get(p.id) ?? [])
-        .filter((v) => v.isAvailable)
-        .map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          inStock: v.stockQuantity > 0,
+        .filter(({ variant }) => variant.isAvailable)
+        .map(({ variant, sellableStock }) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          inStock: sellableStock > 0,
         })),
     }));
   },
   ["related-products"],
-  { revalidate: DEFAULT_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /**
@@ -539,11 +540,10 @@ export const getCachedRelatedProducts = unstable_cache(
 export const getCachedProductSlugs = unstable_cache(
   async () => {
     const repo = container.getProductRepository();
-    const products = await repo.findAll({ isActive: true });
-    return products.map((p) => p.slug);
+    return repo.findActiveSlugs();
   },
   ["product-slugs"],
-  { revalidate: CATALOGUE_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /** Every active category slug, for `generateStaticParams`. */
@@ -597,7 +597,7 @@ export const getCachedFirstProductPage = unstable_cache(
     });
   },
   ["product-list-first-page"],
-  { revalidate: CATALOGUE_REVALIDATE, tags: ["all-products"] }
+  { revalidate: PRODUCT_CATALOGUE_REVALIDATE, tags: ["all-products"] }
 );
 
 /** The exact payload shape `InfiniteProductGrid` seeds its query cache with. */

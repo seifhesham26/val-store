@@ -82,11 +82,13 @@ export class CheckCartStockUseCase {
       .map((item) => item.variantId)
       .filter((id): id is string => id !== null);
 
-    const variants =
+    const sellableVariants =
       variantIds.length > 0
-        ? await this.variantRepository.findByIds(variantIds)
+        ? await this.variantRepository.findSellableByIds(variantIds)
         : [];
-    const variantById = new Map(variants.map((v) => [v.id, v]));
+    const variantById = new Map(
+      sellableVariants.map((entry) => [entry.variant.id, entry])
+    );
 
     const lines: CartStockLine[] = items.map((item) => {
       const variant = item.variantId
@@ -98,8 +100,8 @@ export class CheckCartStockUseCase {
       // variant fall back to the product's total stock, which the cart
       // repository already resolves.
       const available = item.variantId
-        ? variant && variant.isAvailable
-          ? variant.stockQuantity
+        ? variant && variant.variant.isAvailable
+          ? variant.sellableStock
           : 0
         : item.maxStock;
 
@@ -133,7 +135,7 @@ export class CheckCartStockUseCase {
     // common case this query never runs at all.
     const productIds = [...new Set(problemLines.map((l) => l.productId))];
     const siblingsByProduct =
-      await this.variantRepository.findByProducts(productIds);
+      await this.variantRepository.findSellableByProducts(productIds);
 
     for (const line of problemLines) {
       const item = items.find((i) => i.id === line.cartItemId);
@@ -141,15 +143,20 @@ export class CheckCartStockUseCase {
       const wantedColor = item?.variantColor ?? null;
 
       line.alternatives = (siblingsByProduct.get(line.productId) ?? [])
-        .filter((v) => v.id !== line.variantId && v.isInStock())
-        .map((v) => ({
-          variantId: v.id,
-          label: v.getDisplayName(),
-          size: v.size,
-          color: v.color,
-          available: v.stockQuantity,
-          sameSize: wantedSize !== null && v.size === wantedSize,
-          sameColor: wantedColor !== null && v.color === wantedColor,
+        .filter(
+          ({ variant, sellableStock }) =>
+            variant.id !== line.variantId &&
+            variant.isAvailable &&
+            sellableStock > 0
+        )
+        .map(({ variant, sellableStock }) => ({
+          variantId: variant.id,
+          label: variant.getDisplayName(),
+          size: variant.size,
+          color: variant.color,
+          available: sellableStock,
+          sameSize: wantedSize !== null && variant.size === wantedSize,
+          sameColor: wantedColor !== null && variant.color === wantedColor,
         }))
         // Same size in another colour is the nearest thing to what they wanted,
         // so it leads; then the same colour in another size; then whatever has

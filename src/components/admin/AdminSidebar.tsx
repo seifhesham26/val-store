@@ -16,7 +16,11 @@ import {
   Tag,
   Scale,
   ExternalLink,
+  History,
 } from "lucide-react";
+import { useAdminWriteAccess } from "@/hooks/use-admin-write-access";
+import { trpc } from "@/lib/trpc";
+import { Badge } from "@/components/ui/badge";
 
 const navItems = [
   {
@@ -74,10 +78,21 @@ const navItems = [
     href: "/admin/legal",
     icon: Scale,
   },
+  {
+    title: "My Access History",
+    href: "/admin/access-history",
+    icon: History,
+  },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { role } = useAdminWriteAccess();
+  const { data: pendingInventoryWork = 0 } =
+    trpc.admin.inventory.pendingCount.useQuery(undefined, {
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
+    });
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-background">
@@ -112,7 +127,19 @@ export function AdminSidebar() {
               )}
             >
               <Icon className="h-4 w-4" />
-              <span>{item.title}</span>
+              <span>
+                {role === "worker" && item.href === "/admin/customers"
+                  ? "Customer Support"
+                  : item.title}
+              </span>
+              {item.href === "/admin/inventory" && pendingInventoryWork > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="ml-auto min-w-5 justify-center px-1.5 py-0 text-[11px]"
+                >
+                  {pendingInventoryWork}
+                </Badge>
+              )}
             </Link>
           );
         })}

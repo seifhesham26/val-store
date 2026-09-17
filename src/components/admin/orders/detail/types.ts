@@ -1,4 +1,4 @@
-import { GetOrderOutput } from "@/application/orders/use-cases/get-order.use-case";
+import type { StaffOrderDetail } from "@/application/customer-access/staff-order-access.service";
 
 /**
  * The client's view of an order.
@@ -7,7 +7,7 @@ import { GetOrderOutput } from "@/application/orders/use-cases/get-order.use-cas
  * so dates arrive serialised.
  */
 export type OrderData = Omit<
-  GetOrderOutput,
+  StaffOrderDetail,
   | "createdAt"
   | "updatedAt"
   | "paidAt"

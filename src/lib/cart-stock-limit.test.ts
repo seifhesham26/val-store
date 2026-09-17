@@ -62,6 +62,11 @@ describe("remainingCapacity", () => {
     expect(remainingCapacity(5, 0)).toBe(5);
   });
 
+  it("allows the one sellable unit left above the protected floor", () => {
+    expect(remainingCapacity(1, 0)).toBe(1);
+    expect(remainingCapacity(1, 1)).toBe(0);
+  });
+
   it("returns zero once the cart holds all the stock", () => {
     expect(remainingCapacity(5, 5)).toBe(0);
   });

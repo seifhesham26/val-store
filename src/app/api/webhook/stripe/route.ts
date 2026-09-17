@@ -11,6 +11,7 @@ import { container } from "@/application/container";
 import { db } from "@/db";
 import { payments } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { revalidateCatalogue } from "@/server/utils/revalidate-catalogue";
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -159,6 +160,8 @@ export async function POST(request: NextRequest) {
             .update(payments)
             .set({ paymentStatus: "failed", updatedAt: new Date() })
             .where(eq(payments.orderId, orderId));
+
+          revalidateCatalogue();
         } catch (error) {
           console.error(
             JSON.stringify({

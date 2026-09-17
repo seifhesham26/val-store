@@ -23,6 +23,8 @@ import {
   addresses,
   payments,
   inventoryLogs,
+  inventoryInspections,
+  inventoryAdjustmentRequests,
   contentSections,
   contentSectionsHistory,
 } from "./schema";
@@ -63,11 +65,13 @@ export const productsRelations = relations(products, ({ one, many }) => ({
  */
 export const productVariantsRelations = relations(
   productVariants,
-  ({ one }) => ({
+  ({ one, many }) => ({
     product: one(products, {
       fields: [productVariants.productId],
       references: [products.id],
     }),
+    inventoryInspections: many(inventoryInspections),
+    inventoryAdjustmentRequests: many(inventoryAdjustmentRequests),
   })
 );
 
@@ -282,12 +286,60 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 /**
  * InventoryLog belongs to a variant
  */
-export const inventoryLogsRelations = relations(inventoryLogs, ({ one }) => ({
-  variant: one(productVariants, {
-    fields: [inventoryLogs.variantId],
-    references: [productVariants.id],
-  }),
-}));
+export const inventoryLogsRelations = relations(
+  inventoryLogs,
+  ({ one, many }) => ({
+    variant: one(productVariants, {
+      fields: [inventoryLogs.variantId],
+      references: [productVariants.id],
+    }),
+    adjustmentRequests: many(inventoryAdjustmentRequests),
+  })
+);
+
+export const inventoryInspectionsRelations = relations(
+  inventoryInspections,
+  ({ one, many }) => ({
+    variant: one(productVariants, {
+      fields: [inventoryInspections.variantId],
+      references: [productVariants.id],
+    }),
+    completedByUser: one(user, {
+      fields: [inventoryInspections.completedBy],
+      references: [user.id],
+      relationName: "inventoryInspectionCompleter",
+    }),
+    adjustmentRequests: many(inventoryAdjustmentRequests),
+  })
+);
+
+export const inventoryAdjustmentRequestsRelations = relations(
+  inventoryAdjustmentRequests,
+  ({ one }) => ({
+    variant: one(productVariants, {
+      fields: [inventoryAdjustmentRequests.variantId],
+      references: [productVariants.id],
+    }),
+    inspection: one(inventoryInspections, {
+      fields: [inventoryAdjustmentRequests.inspectionId],
+      references: [inventoryInspections.id],
+    }),
+    requester: one(user, {
+      fields: [inventoryAdjustmentRequests.requesterId],
+      references: [user.id],
+      relationName: "inventoryAdjustmentRequestRequester",
+    }),
+    reviewer: one(user, {
+      fields: [inventoryAdjustmentRequests.reviewerId],
+      references: [user.id],
+      relationName: "inventoryAdjustmentRequestReviewer",
+    }),
+    inventoryLog: one(inventoryLogs, {
+      fields: [inventoryAdjustmentRequests.inventoryLogId],
+      references: [inventoryLogs.id],
+    }),
+  })
+);
 
 // ============================================
 // CONTENT SECTION HISTORY RELATIONS

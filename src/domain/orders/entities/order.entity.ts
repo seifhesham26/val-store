@@ -83,7 +83,7 @@ export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 export interface OrderCustomer {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
 }
 
 export interface OrderAddress {

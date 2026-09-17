@@ -80,6 +80,28 @@ export interface ProductFilters {
   sort?: ProductSort;
 }
 
+/**
+ * Scalar product data used by public catalogue reads.
+ *
+ * Deliberately excludes images, variants, stock, cost price, and audit fields.
+ * Storefront callers attach their purpose-built image and variant projections
+ * in batches instead of loading full relations twice.
+ */
+export interface ProductCatalogueRecord {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  basePrice: number;
+  salePrice: number | null;
+  categoryId: string | null;
+  isActive: boolean;
+  isFeatured: boolean;
+  gender: "men" | "women" | "unisex" | "kids" | null;
+  material: string | null;
+  careInstructions: string | null;
+}
+
 export interface ProductRepositoryInterface {
   /**
    * Find a product by ID
@@ -103,6 +125,18 @@ export interface ProductRepositoryInterface {
    * Find all products with optional filters
    */
   findAll(filters?: ProductFilters): Promise<ProductEntity[]>;
+
+  /** Lightweight public-catalogue rows without images or variants. */
+  findCatalogue(filters?: ProductFilters): Promise<ProductCatalogueRecord[]>;
+
+  /** Lightweight catalogue rows for a curated set of product IDs. */
+  findCatalogueByIds(productIds: string[]): Promise<ProductCatalogueRecord[]>;
+
+  /** One lightweight catalogue row by its public slug. */
+  findCatalogueBySlug(slug: string): Promise<ProductCatalogueRecord | null>;
+
+  /** Active slugs only, for static route generation and the sitemap. */
+  findActiveSlugs(): Promise<string[]>;
 
   /**
    * Find products by category

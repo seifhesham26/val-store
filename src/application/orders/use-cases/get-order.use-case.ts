@@ -67,44 +67,44 @@ export class GetOrderUseCase {
       throw new OrderNotFoundException(input.id);
     }
 
-    return this.mapToDTO(order);
+    return mapOrderToOutput(order);
   }
+}
 
-  private mapToDTO(order: OrderEntity): GetOrderOutput {
-    return {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      userId: order.userId,
-      customer: order.customer,
-      status: order.status,
-      items: order.items,
-      subtotal: order.subtotal,
-      tax: order.tax,
-      shippingCost: order.shippingCost,
-      totalAmount: order.totalAmount,
-      discount: order.discount,
-      shippingAddressId: order.shippingAddressId,
-      billingAddressId: order.billingAddressId,
-      shippingAddress: order.shippingAddress,
-      billingAddress: order.billingAddress,
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      hasCapturedPayment: order.hasCapturedPayment(),
-      isPaid: order.isPaid(),
-      isShipped: order.isShipped(),
-      isDelivered: order.isDelivered(),
-      canCancel: order.canCancel(),
-      canRefund: order.canRefund(),
-      awaitingPayment: order.isAwaitingPayment(),
-      refundedAmount: order.refundedAmount(),
-      partiallyRefunded: order.isPartiallyRefunded(),
-      fullyRefunded: order.isFullyRefunded(),
-      paymentDeadline: order.paymentDeadline(),
-      paidAt: order.paidAt,
-      shippedAt: order.shippedAt,
-      deliveredAt: order.deliveredAt,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-    };
-  }
+export function mapOrderToOutput(order: OrderEntity): GetOrderOutput {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    userId: order.userId,
+    customer: order.customer,
+    status: order.status,
+    items: order.items,
+    subtotal: order.subtotal,
+    tax: order.tax,
+    shippingCost: order.shippingCost,
+    totalAmount: order.totalAmount,
+    discount: order.discount,
+    shippingAddressId: order.shippingAddressId,
+    billingAddressId: order.billingAddressId,
+    shippingAddress: order.shippingAddress,
+    billingAddress: order.billingAddress,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    hasCapturedPayment: order.hasCapturedPayment(),
+    isPaid: order.isPaid(),
+    isShipped: order.isShipped(),
+    isDelivered: order.isDelivered(),
+    canCancel: order.canCancel(),
+    canRefund: order.canRefund(),
+    awaitingPayment: order.isAwaitingPayment(),
+    refundedAmount: order.refundedAmount(),
+    partiallyRefunded: order.isPartiallyRefunded(),
+    fullyRefunded: order.isFullyRefunded(),
+    paymentDeadline: order.paymentDeadline(),
+    paidAt: order.paidAt,
+    shippedAt: order.shippedAt,
+    deliveredAt: order.deliveredAt,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
 }

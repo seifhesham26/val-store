@@ -8,6 +8,7 @@
 import { router, protectedProcedure } from "../../trpc";
 import { container } from "@/application/container";
 import { z } from "zod";
+import { revalidateAfterExpiredCheckoutSweep } from "@/server/utils/revalidate-expired-checkout-sweep";
 
 /**
  * Ceiling on a single cart line.
@@ -99,7 +100,9 @@ export const cartRouter = router({
     // checking their cart should not wait for it. The next poll, fifteen
     // seconds later, sees the result. The use case throttles itself and
     // swallows its own errors.
-    void container.getCancelExpiredCheckoutsUseCase().execute();
+    revalidateAfterExpiredCheckoutSweep(
+      container.getCancelExpiredCheckoutsUseCase().execute()
+    );
 
     const useCase = container.getCheckCartStockUseCase();
     return useCase.execute(ctx.user.id);

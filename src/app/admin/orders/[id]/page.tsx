@@ -11,12 +11,15 @@ import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 
 interface OrderDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ supportAccess?: string }>;
 }
 
 export default async function OrderDetailPage({
   params,
+  searchParams,
 }: OrderDetailPageProps) {
   const { id } = await params;
+  const { supportAccess } = await searchParams;
 
   return (
     <div className="space-y-6">
@@ -29,7 +32,11 @@ export default async function OrderDetailPage({
         <h1 className="text-3xl font-bold">Order Details</h1>
       </div>
 
-      <OrderDetail orderId={id} />
+      <OrderDetail
+        key={`${id}:${supportAccess ?? "direct"}`}
+        orderId={id}
+        supportAccessId={supportAccess}
+      />
     </div>
   );
 }

@@ -4,7 +4,12 @@
  * List registered users and their order history.
  */
 
-import { router, adminProcedure, adminSuperProcedure } from "@/server/trpc";
+import {
+  router,
+  adminProcedure,
+  adminSuperProcedure,
+  customerDirectoryProcedure,
+} from "@/server/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { db } from "@/db";
@@ -18,6 +23,11 @@ import { SUM_NET_REVENUE } from "@/infrastructure/database/queries/revenue";
 import { DrizzleUserProfileRepository } from "@/infrastructure/database/repositories/customers/user-profile.repository";
 import { UserProfileEntity } from "@/domain/customers/entities/user-profile.entity";
 import type { UserRole } from "@/domain/customers/value-objects/user-role";
+import { container } from "@/application/container";
+import {
+  customerContactRevealSchema,
+  workerSupportLookupSchema,
+} from "./customer-access-input";
 
 const userProfileRepository = new DrizzleUserProfileRepository();
 
@@ -32,7 +42,7 @@ export const adminCustomersRouter = router({
   /**
    * List all customers (users) with order stats
    */
-  list: adminProcedure
+  list: customerDirectoryProcedure
     .input(
       z
         .object({
@@ -107,7 +117,7 @@ export const adminCustomersRouter = router({
   /**
    * Get customer details with orders
    */
-  getById: adminProcedure
+  getById: customerDirectoryProcedure
     .input(
       z.object({
         id: z.string(),
@@ -125,7 +135,16 @@ export const adminCustomersRouter = router({
       // on anything else here; the "does this customer exist" check just
       // moves below the fetch instead of gating it.
       const [customer, customerOrders, [totals], profile] = await Promise.all([
-        db.query.user.findFirst({ where: eq(user.id, input.id) }),
+        db.query.user.findFirst({
+          where: eq(user.id, input.id),
+          columns: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            createdAt: true,
+          },
+        }),
         // Bounded. This used to load every order the customer had ever
         // placed, with every line item and every joined product row —
         // unbounded in the number of orders, on a dialog that renders a
@@ -135,11 +154,16 @@ export const adminCustomersRouter = router({
           orderBy: [desc(orders.createdAt)],
           limit,
           offset,
+          columns: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            createdAt: true,
+          },
           with: {
             items: {
-              with: {
-                product: true,
-              },
+              columns: { id: true },
             },
           },
         }),
@@ -170,7 +194,10 @@ export const adminCustomersRouter = router({
         role: profile?.role ?? "customer",
         orderCount: Number(totals?.orderCount ?? 0),
         totalSpent: totals?.totalSpent ? parseFloat(totals.totalSpent) : 0,
-        orders: customerOrders,
+        orders: customerOrders.map(({ items, ...order }) => ({
+          ...order,
+          itemCount: items.length,
+        })),
         orderLimit: limit,
         orderOffset: offset,
       };
@@ -179,10 +206,48 @@ export const adminCustomersRouter = router({
   /**
    * Get customer count
    */
-  getCount: adminProcedure.query(async () => {
+  getCount: customerDirectoryProcedure.query(async () => {
     const [{ total }] = await db.select({ total: count() }).from(user);
     return total;
   }),
+
+  /**
+   * Exceptional worker access to historical orders. There is intentionally no
+   * partial match or suggestion response: the customer must supply the full
+   * email, and the worker must affirm that request before this operation runs.
+   */
+  supportLookup: adminProcedure
+    .input(workerSupportLookupSchema)
+    .mutation(async ({ ctx, input }) => {
+      return container.getLookupCustomerSupportUseCase().execute({
+        actor: {
+          id: ctx.user.id,
+          name: ctx.user.name,
+          email: ctx.user.email,
+          role: ctx.user.role,
+        },
+        email: input.email,
+        reason: input.reason,
+        reasonNote: input.reasonNote,
+      });
+    }),
+
+  /** Return contact data only after the admin reveal has been recorded. */
+  revealContact: customerDirectoryProcedure
+    .input(customerContactRevealSchema)
+    .mutation(async ({ ctx, input }) => {
+      return container.getRevealCustomerContactUseCase().execute({
+        actor: {
+          id: ctx.user.id,
+          name: ctx.user.name,
+          email: ctx.user.email,
+          role: ctx.user.role,
+        },
+        customerId: input.customerId,
+        reason: input.reason,
+        reasonNote: input.reasonNote,
+      });
+    }),
 
   /**
    * Change a user's role. `super_admin` only — see `adminSuperProcedure`.

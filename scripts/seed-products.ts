@@ -31,6 +31,7 @@ import {
   productVariants,
   products,
 } from "../src/db/schema";
+import { DEVELOPMENT_SEED_STOCK_QUANTITY } from "../src/lib/seed-inventory";
 
 const MANIFEST = join(process.cwd(), "content", "products.json");
 const IMAGE_ROOT = join(process.cwd(), "temp");
@@ -55,7 +56,6 @@ interface ProductSeed {
   price: number;
   color: string;
   sizes: string[];
-  stockPerSize: number;
   material: string;
   careInstructions: string;
   featured: boolean;
@@ -234,7 +234,7 @@ async function main() {
         sku: `${p.sku}-${size.replace(/\s+/g, "").toUpperCase()}`,
         size,
         color: p.color,
-        stockQuantity: p.stockPerSize,
+        stockQuantity: DEVELOPMENT_SEED_STOCK_QUANTITY,
         isAvailable: true,
       }))
     );

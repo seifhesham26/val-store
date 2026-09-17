@@ -8,10 +8,12 @@ import { ProductCard } from "@/components/products/ProductCard";
 import { trpc } from "@/lib/trpc";
 import type { ProductListPage } from "@/lib/cache";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NEW_ARRIVAL_WINDOW_DAYS } from "@/domain/products/new-arrivals";
+import {
+  NEW_ARRIVALS_LIMIT,
+  NEW_ARRIVAL_WINDOW_DAYS,
+} from "@/domain/products/new-arrivals";
 import { useReveal } from "@/hooks/use-reveal";
-
-export const NEW_ARRIVALS_LIMIT = 8;
+import { CATALOGUE_QUERY_OPTIONS } from "@/lib/catalogue-query-policy";
 
 interface NewArrivalsProps {
   title?: string;
@@ -41,7 +43,7 @@ export function NewArrivals({
     // 8 }` — the eight newest, which was close enough to be right by accident
     // but agreed with nothing else that claimed to show new arrivals.
     { limit: NEW_ARRIVALS_LIMIT, createdWithinDays: NEW_ARRIVAL_WINDOW_DAYS },
-    { staleTime: 1000 * 60 * 5, initialData: initialPage }
+    { ...CATALOGUE_QUERY_OPTIONS, initialData: initialPage }
   );
 
   const items = products?.products ?? [];

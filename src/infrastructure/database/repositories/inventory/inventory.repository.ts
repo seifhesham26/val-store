@@ -9,14 +9,21 @@ import {
   products,
   user,
   InventoryLog,
-  NewInventoryLog,
 } from "@/db/schema";
 import { eq, desc, lte, inArray, sql } from "drizzle-orm";
 import {
   InventoryRepositoryInterface,
   InventoryLogWithDetails,
   VariantWithStock,
+  InventoryLogInput,
+  StockAdjustmentResult,
 } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
+
+import {
+  lockVariantStockState,
+  readVariantSellability,
+  reconcileLowStockCycle,
+} from "./inventory-stock-state";
 
 /**
  * Ceiling on the admin inventory table, which has no pagination or
@@ -26,7 +33,7 @@ import {
 export const DEFAULT_ADMIN_VARIANT_LIMIT = 500;
 
 export class DrizzleInventoryRepository implements InventoryRepositoryInterface {
-  async createLog(log: NewInventoryLog): Promise<InventoryLog> {
+  async createLog(log: InventoryLogInput): Promise<InventoryLog> {
     const [result] = await db.insert(inventoryLogs).values(log).returning();
     return result;
   }
@@ -153,6 +160,7 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
         size: productVariants.size,
         color: productVariants.color,
         stockQuantity: productVariants.stockQuantity,
+        isAvailable: productVariants.isAvailable,
         productId: products.id,
         productName: products.name,
         productSlug: products.slug,
@@ -185,6 +193,7 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
         size: productVariants.size,
         color: productVariants.color,
         stockQuantity: productVariants.stockQuantity,
+        isAvailable: productVariants.isAvailable,
         productId: products.id,
         productName: products.name,
         productSlug: products.slug,
@@ -213,66 +222,39 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
     return row?.total ?? 0;
   }
 
-  // Unlocked primitive — see the interface doc. `AdjustStockUseCase` used to
-  // pair this with `getVariantStock` as a read-then-write with nothing
-  // between them, which is exactly the lost-update race `adjustStockWithLog`
-  // below now closes. Nothing calls this method any more; kept as a
-  // low-level building block, not a safe default.
-  async updateVariantStock(variantId: string, newStock: number): Promise<void> {
-    await db
-      .update(productVariants)
-      .set({
-        stockQuantity: newStock,
-        isAvailable: newStock > 0,
-        updatedAt: new Date(),
-      })
-      .where(eq(productVariants.id, variantId));
-  }
-
-  async getVariantStock(variantId: string): Promise<number | null> {
-    const result = await db.query.productVariants.findFirst({
-      where: eq(productVariants.id, variantId),
-      columns: { stockQuantity: true },
-    });
-    return result?.stockQuantity ?? null;
+  async getVariantSellability(variantIds: string[]) {
+    return readVariantSellability(db, variantIds);
   }
 
   async adjustStockWithLog(
     variantId: string,
     newQuantity: number,
-    log: Pick<NewInventoryLog, "changeType" | "reason" | "createdBy">
-  ): Promise<{ previousQuantity: number; newQuantity: number } | null> {
+    log: Pick<InventoryLogInput, "changeType" | "reason" | "createdBy">
+  ): Promise<StockAdjustmentResult | null> {
     return db.transaction(async (tx) => {
-      // Lock the row before reading it. The read's result is what makes
-      // `previousQuantity` (and the logged row) truthful — without the lock,
-      // this is the same unguarded read-then-write `AdjustStockUseCase` used
-      // to do, just moved one layer down. Locking also serialises this
-      // absolute set against the checkout's own `FOR UPDATE` stock
-      // reservation (`order.repository.ts`) instead of racing it.
-      const [variant] = await tx
-        .select({ stockQuantity: productVariants.stockQuantity })
-        .from(productVariants)
-        .where(eq(productVariants.id, variantId))
-        .for("update")
-        .limit(1);
-
+      const variant = await lockVariantStockState(tx, variantId);
       if (!variant) return null;
-
       const previousQuantity = variant.stockQuantity;
+      if (newQuantity < 0 || !Number.isInteger(newQuantity)) {
+        return {
+          previousQuantity,
+          newQuantity: previousQuantity,
+          sellabilityChanged: false,
+          error:
+            newQuantity < 0
+              ? "Stock cannot be negative"
+              : "Stock must be a whole number",
+        };
+      }
 
       await tx
         .update(productVariants)
         .set({
           stockQuantity: newQuantity,
-          isAvailable: newQuantity > 0,
           updatedAt: new Date(),
         })
         .where(eq(productVariants.id, variantId));
 
-      // Same transaction as the stock write, so a failure between "set the
-      // number" and "log the movement" cannot happen — the whole point of
-      // an audit trail is that it cannot silently fall out of step with the
-      // thing it is auditing.
       await tx.insert(inventoryLogs).values({
         variantId,
         changeType: log.changeType,
@@ -282,8 +264,19 @@ export class DrizzleInventoryRepository implements InventoryRepositoryInterface 
         reason: log.reason,
         createdBy: log.createdBy,
       });
-
-      return { previousQuantity, newQuantity };
+      await reconcileLowStockCycle(tx, {
+        variant,
+        previousStock: previousQuantity,
+        stockQuantity: newQuantity,
+      });
+      const [after] = await readVariantSellability(tx, [variantId]);
+      return {
+        previousQuantity,
+        newQuantity,
+        sellabilityChanged:
+          variant.sellableStock !== after.sellableStock ||
+          variant.availabilityState !== after.availabilityState,
+      };
     });
   }
 

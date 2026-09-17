@@ -13,17 +13,12 @@
  */
 
 import { z } from "zod";
-import { headers } from "next/headers";
 import { router, publicProcedure } from "../../trpc";
 import { container } from "@/application/container";
-import type { ProductEntity } from "@/domain/products/entities/product.entity";
+import type { ProductCatalogueRecord } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { pageWindow, pageCount } from "@/domain/shared/pagination";
 import { genderFilterSchema } from "./gender-filter.schema";
-import {
-  apiRateLimiter,
-  enforceRateLimit,
-  getClientIp,
-} from "@/server/utils/rate-limiter";
+import { apiRateLimiter, enforceRateLimit } from "@/server/utils/rate-limiter";
 import { PRODUCT_SORTS, type ProductSort } from "@/lib/collection-sort";
 
 /**
@@ -41,7 +36,7 @@ const productSortSchema = z.enum(
  * The batched repository helpers already existed for the cached homepage; the
  * storefront routers were the callers that never adopted them.
  */
-async function withCardData(pageProducts: ProductEntity[]) {
+async function withCardData(pageProducts: ProductCatalogueRecord[]) {
   if (pageProducts.length === 0) return [];
 
   const imageRepo = container.getProductImageRepository();
@@ -50,7 +45,7 @@ async function withCardData(pageProducts: ProductEntity[]) {
 
   const [imageMap, variantMap] = await Promise.all([
     imageRepo.findFirstTwoByProducts(productIds),
-    variantRepo.findByProducts(productIds),
+    variantRepo.findSellableByProducts(productIds),
   ]);
 
   return pageProducts.map((p) => ({
@@ -68,12 +63,12 @@ async function withCardData(pageProducts: ProductEntity[]) {
     // unisex garment shown on a second model. Null leaves the card static.
     secondaryImage: imageMap.get(p.id)?.[1]?.imageUrl ?? null,
     variants: (variantMap.get(p.id) ?? [])
-      .filter((v) => v.isAvailable)
-      .map((v) => ({
-        id: v.id,
-        size: v.size,
-        color: v.color,
-        inStock: v.stockQuantity > 0,
+      .filter(({ variant }) => variant.isAvailable)
+      .map(({ variant, sellableStock }) => ({
+        id: variant.id,
+        size: variant.size,
+        color: variant.color,
+        inStock: sellableStock > 0,
       })),
   }));
 }
@@ -122,7 +117,7 @@ export const publicProductsRouter = router({
       };
 
       const [pageProducts, total] = await Promise.all([
-        repo.findAll({ ...filters, limit, offset }),
+        repo.findCatalogue({ ...filters, limit, offset }),
         repo.count(filters),
       ]);
 
@@ -154,17 +149,14 @@ export const publicProductsRouter = router({
         cursor: z.number().min(1).optional(),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       // The most expensive thing an anonymous caller can ask for: two
       // unindexed leading-wildcard scans per call, with no auth to slow anyone
       // down first. Reading the client IP is not an auth lookup, so this does
       // not mark the request as having touched auth and the response stays
       // publicly cacheable — which is also why the limiter only ever sees the
       // requests a shared cache could not answer.
-      await enforceRateLimit(
-        apiRateLimiter,
-        `search:${getClientIp(await headers())}`
-      );
+      await enforceRateLimit(apiRateLimiter, `search:${ctx.clientIp}`);
 
       const repo = container.getProductRepository();
       const page = input.cursor ?? 1;
@@ -175,7 +167,7 @@ export const publicProductsRouter = router({
       const filters = { isActive: true, search: input.query };
 
       const [pageProducts, total] = await Promise.all([
-        repo.findAll({ ...filters, limit, offset }),
+        repo.findCatalogue({ ...filters, limit, offset }),
         repo.count(filters),
       ]);
 
@@ -203,17 +195,28 @@ export const publicProductsRouter = router({
     .input(z.object({ variantIds: z.array(z.string().uuid()).max(500) }))
     .query(async ({ input }) => {
       if (input.variantIds.length === 0) {
-        return { stock: {} as Record<string, number> };
+        return {
+          stock: {} as Record<string, number>,
+          states: {} as Record<
+            string,
+            import("@/domain/inventory/inventory-policy").InventoryAvailabilityState
+          >,
+        };
       }
 
       const repo = container.getProductVariantRepository();
-      const variants = await repo.findByIds(input.variantIds);
+      const variants = await repo.findSellableByIds(input.variantIds);
 
       const stock: Record<string, number> = {};
-      for (const variant of variants) {
-        stock[variant.id] = variant.isAvailable ? variant.stockQuantity : 0;
+      const states: Record<
+        string,
+        import("@/domain/inventory/inventory-policy").InventoryAvailabilityState
+      > = {};
+      for (const { variant, sellableStock, availabilityState } of variants) {
+        stock[variant.id] = sellableStock;
+        states[variant.id] = availabilityState;
       }
 
-      return { stock };
+      return { stock, states };
     }),
 });

@@ -16,12 +16,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { ListOrdersUseCase } from "./list-orders.use-case";
 import type { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
+import type { OrderStatusValue } from "@/domain/orders/value-objects/order-status.value-object";
 
 function makeRepo(
   overrides: Partial<OrderRepositoryInterface> = {}
 ): OrderRepositoryInterface {
   return {
     findById: vi.fn(),
+    findByIdForStaff: vi.fn(),
+    findShippingAddress: vi.fn(),
     findAll: vi.fn().mockResolvedValue([]),
     findByUserId: vi.fn(),
     findByStatus: vi.fn(),
@@ -82,6 +85,37 @@ describe("ListOrdersUseCase", () => {
         minTotal: 100,
         maxTotal: 500,
       })
+    );
+  });
+
+  it("forwards the launch fulfilment status set to rows and count", async () => {
+    const repo = makeRepo();
+    const useCase = new ListOrdersUseCase(repo);
+    const statuses: OrderStatusValue[] = [
+      "pending",
+      "processing",
+      "paid",
+      "shipped",
+    ];
+
+    await useCase.execute({ statuses });
+
+    expect(repo.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ statuses })
+    );
+    expect(repo.count).toHaveBeenCalledWith(
+      expect.objectContaining({ statuses })
+    );
+  });
+
+  it("forwards the customer-email projection choice", async () => {
+    const repo = makeRepo();
+    const useCase = new ListOrdersUseCase(repo);
+
+    await useCase.execute({ includeCustomerEmail: false });
+
+    expect(repo.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ includeCustomerEmail: false })
     );
   });
 });

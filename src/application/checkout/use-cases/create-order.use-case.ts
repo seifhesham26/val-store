@@ -125,27 +125,6 @@ export class CreateOrderUseCase {
 
     const tax = 0;
 
-    // Priced from the destination governorate, server-side, against the
-    // subtotal computed above — never from anything the client sent. The rates
-    // are whatever the admin has configured; an unconfigured store ships free.
-    const shippingConfig = await this.shippingRateRepository.getConfig();
-    const quote = quoteShipping({
-      subtotal,
-      governorate: addressesById.get(input.shippingAddressId)?.state,
-      rates: shippingConfig.rates,
-      freeShippingThreshold: shippingConfig.freeShippingThreshold,
-    });
-
-    // Refusing here rather than at the door: a governorate switched off in the
-    // admin must not be able to reach a paid order in the first place.
-    if (!quote.isDeliverable) {
-      throw new Error(
-        "We do not currently deliver to that governorate. Please choose another address."
-      );
-    }
-
-    const shippingCost = quote.fee;
-
     // Re-validate the coupon server-side against the subtotal we just computed.
     // The client only ever sends a code; the discount amount is derived here so
     // a tampered request cannot invent its own discount.
@@ -168,6 +147,26 @@ export class CreateOrderUseCase {
       discount = result.discountAmount ?? 0;
       couponId = result.coupon?.id ?? null;
     }
+
+    // Evaluate free delivery against what the customer actually spends on
+    // merchandise after discounts. The checkout preview uses the same basis.
+    const discountedSubtotal = Math.max(0, subtotal - discount);
+    const shippingConfig = await this.shippingRateRepository.getConfig();
+    const quote = quoteShipping({
+      subtotal: discountedSubtotal,
+      governorate: addressesById.get(input.shippingAddressId)?.state,
+      rates: shippingConfig.rates,
+      freeShippingThreshold: shippingConfig.freeShippingThreshold,
+    });
+
+    // A governorate switched off in the admin must not reach a paid order.
+    if (!quote.isDeliverable) {
+      throw new Error(
+        "We do not currently deliver to that governorate. Please choose another address."
+      );
+    }
+
+    const shippingCost = quote.fee;
 
     const totalAmount = subtotal + tax + shippingCost - discount;
 

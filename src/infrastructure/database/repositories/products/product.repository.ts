@@ -10,6 +10,7 @@ import {
   ProductRepositoryInterface,
   ProductFilters,
   NewProductRelations,
+  ProductCatalogueRecord,
 } from "@/domain/products/interfaces/repositories/product.repository.interface";
 import { ProductEntity } from "@/domain/products/entities/product.entity";
 import { ProductNotFoundException } from "@/domain/products/exceptions/product-not-found.exception";
@@ -18,6 +19,25 @@ import {
   LIKE_ESCAPE_CHAR,
 } from "@/domain/shared/like-pattern";
 import type { ProductSort } from "@/lib/collection-sort";
+import {
+  lockVariantStockState,
+  reconcileLowStockCycle,
+} from "@/infrastructure/database/repositories/inventory/inventory-stock-state";
+
+const CATALOGUE_COLUMNS = {
+  id: true,
+  name: true,
+  slug: true,
+  description: true,
+  basePrice: true,
+  salePrice: true,
+  categoryId: true,
+  isActive: true,
+  isFeatured: true,
+  gender: true,
+  material: true,
+  careInstructions: true,
+} as const;
 
 /**
  * `ORDER BY` for a sort option.
@@ -108,6 +128,56 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
     });
 
     return productsList.map((p) => this.mapToEntity(p));
+  }
+
+  async findCatalogue(
+    filters?: ProductFilters
+  ): Promise<ProductCatalogueRecord[]> {
+    const conditions = this.buildFiltersConditions(filters);
+    const rows = await db.query.products.findMany({
+      columns: CATALOGUE_COLUMNS,
+      where: conditions.length > 0 ? and(...conditions) : undefined,
+      orderBy: orderForSort(filters?.sort),
+      limit: filters?.limit,
+      offset: filters?.offset,
+    });
+
+    return rows.map((row) => this.mapToCatalogueRecord(row));
+  }
+
+  async findCatalogueByIds(
+    productIds: string[]
+  ): Promise<ProductCatalogueRecord[]> {
+    const ids = [...new Set(productIds)];
+    if (ids.length === 0) return [];
+
+    const rows = await db.query.products.findMany({
+      columns: CATALOGUE_COLUMNS,
+      where: inArray(products.id, ids),
+    });
+
+    return rows.map((row) => this.mapToCatalogueRecord(row));
+  }
+
+  async findCatalogueBySlug(
+    slug: string
+  ): Promise<ProductCatalogueRecord | null> {
+    const row = await db.query.products.findFirst({
+      columns: CATALOGUE_COLUMNS,
+      where: eq(products.slug, slug),
+    });
+
+    return row ? this.mapToCatalogueRecord(row) : null;
+  }
+
+  async findActiveSlugs(): Promise<string[]> {
+    const rows = await db.query.products.findMany({
+      columns: { slug: true },
+      where: eq(products.isActive, true),
+      orderBy: [desc(products.createdAt), desc(products.id)],
+    });
+
+    return rows.map((row) => row.slug);
   }
 
   /**
@@ -201,17 +271,32 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
 
       const variants = relations?.variants ?? [];
       if (variants.length > 0) {
-        await tx.insert(productVariants).values(
-          variants.map((variant) => ({
-            productId: created.id,
-            sku: variant.sku,
-            size: variant.size ?? null,
-            color: variant.color ?? null,
-            stockQuantity: variant.stockQuantity,
-            priceAdjustment: variant.priceAdjustment.toString(),
-            isAvailable: true,
-          }))
-        );
+        const createdVariants = await tx
+          .insert(productVariants)
+          .values(
+            variants.map((variant) => ({
+              productId: created.id,
+              sku: variant.sku,
+              size: variant.size ?? null,
+              color: variant.color ?? null,
+              stockQuantity: variant.stockQuantity,
+              priceAdjustment: variant.priceAdjustment.toString(),
+              isAvailable: true,
+            }))
+          )
+          .returning();
+
+        for (const createdVariant of createdVariants) {
+          const locked = await lockVariantStockState(tx, createdVariant.id);
+          if (!locked) {
+            throw new Error(`Variant with ID "${createdVariant.id}" not found`);
+          }
+          await reconcileLowStockCycle(tx, {
+            variant: locked,
+            previousStock: 0,
+            stockQuantity: createdVariant.stockQuantity,
+          });
+        }
       }
 
       return created;
@@ -471,5 +556,27 @@ export class DrizzleProductRepository implements ProductRepositoryInterface {
       dbProduct.metaDescription ?? null
       // Note: createdBy and updatedBy would need to be added to schema
     );
+  }
+
+  private mapToCatalogueRecord(row: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    basePrice: string;
+    salePrice: string | null;
+    categoryId: string | null;
+    isActive: boolean;
+    isFeatured: boolean;
+    gender: "men" | "women" | "unisex" | "kids" | null;
+    material: string | null;
+    careInstructions: string | null;
+  }): ProductCatalogueRecord {
+    return {
+      ...row,
+      description: row.description ?? "",
+      basePrice: parseFloat(row.basePrice),
+      salePrice: row.salePrice ? parseFloat(row.salePrice) : null,
+    };
   }
 }

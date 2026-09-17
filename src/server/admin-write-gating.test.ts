@@ -46,6 +46,30 @@ const SELF_SCOPED_EXCEPTIONS = new Set([
  */
 const SUPER_ADMIN_EXCEPTIONS = new Set(["customers.ts::updateRole"]);
 
+/**
+ * Mutations whose side effect is the audit row for an authorized read. They
+ * intentionally do not grant a worker an admin-managed write.
+ */
+const AUDITED_ACCESS_MUTATIONS = new Map([
+  ["customers.ts::supportLookup", "adminProcedure"],
+  ["customers.ts::revealContact", "customerDirectoryProcedure"],
+  ["orders.ts::revealDelivery", "adminProcedure"],
+  ["orders.ts::recordExport", "customerDirectoryProcedure"],
+]);
+
+/** Inventory commands that workers alone may initiate. */
+const WORKER_ONLY_MUTATIONS = new Set([
+  "inventory.ts::submitRequest",
+  "inventory.ts::completeInspection",
+]);
+
+/** Customer-directory reads are intentionally narrower than the worker tier. */
+const CUSTOMER_DIRECTORY_QUERIES = new Set([
+  "customers.ts::list",
+  "customers.ts::getById",
+  "customers.ts::getCount",
+]);
+
 interface Procedure {
   file: string;
   name: string;
@@ -65,7 +89,7 @@ function collectProcedures(): Procedure[] {
 
       // `  name: someProcedure` … up to the next property at the same indent.
       const re =
-        /\n {2}(\w+): (admin\w*Procedure)((?:(?!\n {2}\w+: )[\s\S])*)/g;
+        /\n {2}(\w+): ((?:admin\w*|customerDirectory|worker)Procedure)((?:(?!\n {2}\w+: )[\s\S])*)/g;
       let m: RegExpExecArray | null;
       while ((m = re.exec(src)) !== null) {
         found.push({
@@ -97,16 +121,23 @@ describe("admin write gating", () => {
       .filter((p) => p.isMutation)
       .filter((p) => !SELF_SCOPED_EXCEPTIONS.has(`${p.file}::${p.name}`))
       .filter((p) => !SUPER_ADMIN_EXCEPTIONS.has(`${p.file}::${p.name}`))
+      .filter((p) => !AUDITED_ACCESS_MUTATIONS.has(`${p.file}::${p.name}`))
+      .filter((p) => !WORKER_ONLY_MUTATIONS.has(`${p.file}::${p.name}`))
       .filter((p) => p.procedure !== "adminWriteProcedure")
       .map((p) => `${p.file} :: ${p.name} uses ${p.procedure}`);
 
     expect(ungated).toEqual([]);
   });
 
-  it("leaves queries on the read tier, so a worker can see the screens", () => {
+  it("keeps ordinary queries on the read tier and customer queries narrower", () => {
     const overGated = procedures
       .filter((p) => !p.isMutation)
-      .filter((p) => p.procedure !== "adminProcedure")
+      .filter((p) => {
+        const key = `${p.file}::${p.name}`;
+        return CUSTOMER_DIRECTORY_QUERIES.has(key)
+          ? p.procedure !== "customerDirectoryProcedure"
+          : p.procedure !== "adminProcedure";
+      })
       .map((p) => `${p.file} :: ${p.name} uses ${p.procedure}`);
 
     expect(overGated).toEqual([]);
@@ -129,6 +160,26 @@ describe("admin write gating", () => {
       expect(proc, `${key} no longer exists`).toBeDefined();
       expect(proc!.isMutation).toBe(true);
       expect(proc!.procedure).toBe("adminSuperProcedure");
+    }
+  });
+
+  it("keeps audited data-access mutations on their exact read tiers", () => {
+    for (const [key, expectedProcedure] of AUDITED_ACCESS_MUTATIONS) {
+      const [file, name] = key.split("::");
+      const proc = procedures.find((p) => p.file === file && p.name === name);
+      expect(proc, `${key} no longer exists`).toBeDefined();
+      expect(proc!.isMutation).toBe(true);
+      expect(proc!.procedure).toBe(expectedProcedure);
+    }
+  });
+
+  it("keeps worker inventory commands on the worker-only tier", () => {
+    for (const key of WORKER_ONLY_MUTATIONS) {
+      const [file, name] = key.split("::");
+      const proc = procedures.find((p) => p.file === file && p.name === name);
+      expect(proc, `${key} no longer exists`).toBeDefined();
+      expect(proc!.isMutation).toBe(true);
+      expect(proc!.procedure).toBe("workerProcedure");
     }
   });
 });

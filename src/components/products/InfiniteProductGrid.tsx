@@ -25,6 +25,7 @@ import { useReveal } from "@/hooks/use-reveal";
 import { parseProductSort } from "@/lib/collection-sort";
 import { ChevronDown } from "lucide-react";
 import type { ProductListPage } from "@/lib/cache";
+import { CATALOGUE_QUERY_OPTIONS } from "@/lib/catalogue-query-policy";
 
 interface InfiniteProductGridProps {
   categoryId?: string;
@@ -119,6 +120,7 @@ export function InfiniteProductGrid({
         sort,
       },
       {
+        ...CATALOGUE_QUERY_OPTIONS,
         getNextPageParam: (lastPage) => {
           if (lastPage.page < lastPage.totalPages) {
             return lastPage.page + 1;
