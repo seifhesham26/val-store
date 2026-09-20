@@ -23,6 +23,14 @@ export interface RestockLine {
   quantity: number;
 }
 
+/** Stored, approved facts passed from return finalization to the order lock. */
+export interface AuthorizedReturnInput {
+  requestId: string;
+  lines: RefundLine[];
+  shippingRefund: number;
+  reason: string;
+}
+
 export interface UpdateOrderStatusOptions {
   /** Why the order was cancelled or refunded. Stored on the order and on each stock log. */
   reason?: string;

@@ -215,6 +215,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
           subtotal: true,
           taxAmount: true,
           shippingAmount: true,
+          refundedShippingAmount: true,
           discountAmount: true,
           totalAmount: true,
           couponId: true,
@@ -295,6 +296,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
         subtotal: true,
         taxAmount: true,
         shippingAmount: true,
+        refundedShippingAmount: true,
         discountAmount: true,
         totalAmount: true,
         couponId: true,
@@ -1406,6 +1408,7 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       subtotal: string;
       taxAmount: string;
       shippingAmount: string;
+      refundedShippingAmount?: string;
       totalAmount: string;
       shippingAddressId?: string | null;
       billingAddressId?: string | null;
@@ -1496,7 +1499,10 @@ export class DrizzleOrderRepository implements OrderRepositoryInterface {
       ),
       dbOrder.adminNotes ?? null,
       dbOrder.orderNumber ?? null,
-      customer
+      customer,
+      dbOrder.refundedShippingAmount
+        ? parseFloat(dbOrder.refundedShippingAmount)
+        : 0
     );
   }
 }

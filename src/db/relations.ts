@@ -27,6 +27,14 @@ import {
   inventoryAdjustmentRequests,
   contentSections,
   contentSectionsHistory,
+  returnRequests,
+  returnRequestItems,
+  returnProposals,
+  returnEvidence,
+  returnPackageEvents,
+  returnPayouts,
+  returnCarrierClaims,
+  returnOtpChallenges,
 } from "./schema";
 
 // ============================================
@@ -123,6 +131,7 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   items: many(orderItems),
   payments: many(payments),
+  returnRequests: many(returnRequests),
   shippingAddress: one(addresses, {
     fields: [orders.shippingAddressId],
     references: [addresses.id],
@@ -140,7 +149,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
 /**
  * OrderItem belongs to order and product
  */
-export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
   order: one(orders, {
     fields: [orderItems.orderId],
     references: [orders.id],
@@ -153,7 +162,138 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
     fields: [orderItems.variantId],
     references: [productVariants.id],
   }),
+  returnRequestItems: many(returnRequestItems),
 }));
+
+export const returnRequestsRelations = relations(
+  returnRequests,
+  ({ one, many }) => ({
+    order: one(orders, {
+      fields: [returnRequests.orderId],
+      references: [orders.id],
+    }),
+    customer: one(user, {
+      fields: [returnRequests.customerId],
+      references: [user.id],
+      relationName: "returnCustomer",
+    }),
+    reviewer: one(user, {
+      fields: [returnRequests.reviewerId],
+      references: [user.id],
+      relationName: "returnReviewer",
+    }),
+    items: many(returnRequestItems),
+    proposals: many(returnProposals),
+    evidence: many(returnEvidence),
+    packageEvents: many(returnPackageEvents),
+    payouts: many(returnPayouts),
+    carrierClaims: many(returnCarrierClaims),
+    otpChallenges: many(returnOtpChallenges),
+  })
+);
+
+export const returnRequestItemsRelations = relations(
+  returnRequestItems,
+  ({ one }) => ({
+    request: one(returnRequests, {
+      fields: [returnRequestItems.requestId],
+      references: [returnRequests.id],
+    }),
+    orderItem: one(orderItems, {
+      fields: [returnRequestItems.orderItemId],
+      references: [orderItems.id],
+    }),
+  })
+);
+
+export const returnProposalsRelations = relations(
+  returnProposals,
+  ({ one, many }) => ({
+    request: one(returnRequests, {
+      fields: [returnProposals.requestId],
+      references: [returnRequests.id],
+    }),
+    creator: one(user, {
+      fields: [returnProposals.createdBy],
+      references: [user.id],
+      relationName: "returnProposalCreator",
+    }),
+    payouts: many(returnPayouts),
+  })
+);
+
+export const returnEvidenceRelations = relations(returnEvidence, ({ one }) => ({
+  request: one(returnRequests, {
+    fields: [returnEvidence.requestId],
+    references: [returnRequests.id],
+  }),
+  uploader: one(user, {
+    fields: [returnEvidence.uploaderId],
+    references: [user.id],
+    relationName: "returnEvidenceUploader",
+  }),
+  validator: one(user, {
+    fields: [returnEvidence.validatedBy],
+    references: [user.id],
+    relationName: "returnEvidenceValidator",
+  }),
+}));
+
+export const returnPackageEventsRelations = relations(
+  returnPackageEvents,
+  ({ one }) => ({
+    request: one(returnRequests, {
+      fields: [returnPackageEvents.requestId],
+      references: [returnRequests.id],
+    }),
+    recorder: one(user, {
+      fields: [returnPackageEvents.recordedBy],
+      references: [user.id],
+      relationName: "returnPackageRecorder",
+    }),
+    correctionOf: one(returnPackageEvents, {
+      fields: [returnPackageEvents.correctionOfId],
+      references: [returnPackageEvents.id],
+      relationName: "returnPackageCorrection",
+    }),
+  })
+);
+
+export const returnPayoutsRelations = relations(returnPayouts, ({ one }) => ({
+  request: one(returnRequests, {
+    fields: [returnPayouts.requestId],
+    references: [returnRequests.id],
+  }),
+  proposal: one(returnProposals, {
+    fields: [returnPayouts.proposalId],
+    references: [returnProposals.id],
+  }),
+}));
+
+export const returnCarrierClaimsRelations = relations(
+  returnCarrierClaims,
+  ({ one }) => ({
+    request: one(returnRequests, {
+      fields: [returnCarrierClaims.requestId],
+      references: [returnRequests.id],
+    }),
+    creator: one(user, {
+      fields: [returnCarrierClaims.createdBy],
+      references: [user.id],
+      relationName: "returnCarrierClaimCreator",
+    }),
+  })
+);
+
+export const returnOtpChallengesRelations = relations(
+  returnOtpChallenges,
+  ({ one }) => ({
+    request: one(returnRequests, {
+      fields: [returnOtpChallenges.requestId],
+      references: [returnRequests.id],
+    }),
+  })
+);
 
 // ============================================
 // CART RELATIONS
