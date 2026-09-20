@@ -41,6 +41,14 @@ that manual check as complete based on the automated results.
 Run fresh verification before claiming a later change is complete. Clear `.next`
 before trusting `pnpm type-check`, as required by `AGENTS.md`.
 
+### Decision-ledger preservation
+
+The brand-owner Q&A ledger in this document is the latest approved product
+record (83 answered questions as of 2026-09-17). Later answers supersede older
+notes. `docs/REFUNDS.md` and the linked refund plan carry the detailed
+implementation contract; do not revive an older direct-refund, customer-wallet,
+SMS, OPay, or inventory-write design from another document.
+
 ## Implemented and verified in the current phase
 
 ### Checkout and shipping
@@ -161,15 +169,18 @@ unless the code and tests prove otherwise**.
 
 ### Payments and email
 
-- Stripe is **not** the launch payment provider. OPay will be integrated after
-  the brand paperwork and merchant access are ready.
-- Payment-provider execution, including real electronic refunds, is deliberately
-  on hold. The existing return model records returns but does not send money
-  through a provider.
+- Stripe is **not** the launch payment provider. OPay is the approved launch
+  provider, and launch is blocked until merchant access, API behavior,
+  credentials, webhooks, reconciliation, and refund testing are ready.
+- The approved refund workflow is being designed before provider integration:
+  physical return facts, evidence, approval, customer acknowledgment, and
+  payout state are separate. A pending or unknown payout is never presented as
+  paid; only verified OPay success is completed.
 - Resend with the brand's verified sending domain is a launch requirement. The
   store will not launch without working transactional email.
-- OPay and Resend credential work must remain provider-agnostic until real
-  accounts, documentation, and test credentials exist.
+- OPay and Resend credential work remains blocked until real accounts,
+  documentation, and test credentials exist. The application may prepare typed
+  provider boundaries, but must not claim external success without them.
 - Do not store card credentials or card details in Valkyrie's database. The
   payment provider owns that data; Valkyrie stores only the minimum transaction
   references and statuses needed for orders, reconciliation, and refunds.
@@ -187,9 +198,9 @@ unless the code and tests prove otherwise**.
   enumeration-safe. The requested send budget is approximately 5 messages per
   20 seconds, with both phone and IP protection; reassess the exact production
   limits against provider cost and abuse risk.
-- The SMS/WhatsApp OTP provider is not chosen. WhatsApp verification is an
-  option to evaluate for Egyptian deliverability and policy compliance, not an
-  assumed implementation.
+- WhatsApp is the approved launch channel for return notifications and OTP;
+  SMS is later work because of startup cost. The WhatsApp provider, credentials,
+  templates, and deliverability test remain external blockers.
 
 ### Customer data and staff access
 
@@ -206,10 +217,13 @@ unless the code and tests prove otherwise**.
   without asking for a new OTP on every click. Checkout consent and the privacy
   notice must explain this operational use.
 - Refund authorization follows the hardcoded policy in `docs/REFUNDS.md`.
-  Every outcome requires a ten-second read-and-acknowledge gate; a positive
-  refund also requires the one-minute, five-attempt customer OTP before staff
-  completes the workflow. Provider-side money movement remains deferred until
-  OPay exists.
+  Every outcome requires a server-enforced ten-second read-and-acknowledge gate;
+  a positive refund also requires the one-minute, five-attempt customer OTP
+  before staff completes the workflow. Physical disposition, evidence review,
+  payout, and carrier claims are separate states. OPay refunds only the original
+  payment source; cash/e-wallet fallback is offline, requires a fresh proposal,
+  read gate, and OTP after confirmed provider failure, and is not a website
+  wallet-entry flow.
 - Access events should appear on the staff member's admin profile for owner/admin
   review.
 
@@ -284,17 +298,17 @@ an idea changed later, the **latest** answer is the one marked as current.
 
 ### Launch, payments, shipping, and messaging
 
-| Question                                                                 | Brand-owner answer / decision                                                                                                                                      | State                             |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| Is the published site already operating as a business?                   | No. It is published for walkthrough and preparation, but the brand is not open yet.                                                                                | Context                           |
-| Should the Stripe gaps be treated as launch defects?                     | No. Stripe will not be used; electronic payment work waits for OPay and the brand paperwork.                                                                       | Deferred                          |
-| How should shipping be priced?                                           | Require the customer's address and calculate the fee from the address/governorate using values managed in the admin Shipping tab.                                  | Implemented                       |
-| When should the free-shipping threshold be applied?                      | Use the payable merchandise amount after coupon discounts.                                                                                                         | Implemented                       |
-| Can the store launch before transactional email exists?                  | No. Resend is part of the required launch path, even though the sending email/domain is not ready yet.                                                             | External blocker                  |
-| Can email-dependent flows be prepared before the email account is ready? | Yes, but final integration and delivery verification happen after Resend is provisioned.                                                                           | Approved                          |
-| Should phone be optional?                                                | No. Phone is required because the store needs a reliable way to identify and contact the customer.                                                                 | Approved; verify every entry path |
-| What messaging throttle was requested?                                   | Approximately 5 sent messages per 20 seconds, protected by phone and IP. Exact production limits should still be checked against provider cost and abuse behavior. | Approved target                   |
-| Could WhatsApp be used for verification?                                 | Yes, evaluate it as an option; no provider has been chosen yet.                                                                                                    | Research later                    |
+| Question                                                                 | Brand-owner answer / decision                                                                                                                                                                        | State                             |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Is the published site already operating as a business?                   | No. It is published for walkthrough and preparation, but the brand is not open yet.                                                                                                                  | Context                           |
+| Should the Stripe gaps be treated as launch defects?                     | No. Stripe will not be used; electronic payment work waits for OPay and the brand paperwork.                                                                                                         | Deferred                          |
+| How should shipping be priced?                                           | Require the customer's address and calculate the fee from the address/governorate using values managed in the admin Shipping tab.                                                                    | Implemented                       |
+| When should the free-shipping threshold be applied?                      | Use the payable merchandise amount after coupon discounts.                                                                                                                                           | Implemented                       |
+| Can the store launch before transactional email exists?                  | No. Resend is part of the required launch path, even though the sending email/domain is not ready yet.                                                                                               | External blocker                  |
+| Can email-dependent flows be prepared before the email account is ready? | Yes, but final integration and delivery verification happen after Resend is provisioned.                                                                                                             | Approved                          |
+| Should phone be optional?                                                | No. Phone is required because the store needs a reliable way to identify and contact the customer.                                                                                                   | Approved; verify every entry path |
+| What messaging throttle was requested?                                   | General messaging target is approximately 5 sent messages per 20 seconds with phone/IP protection. For OTP specifically: live 60 seconds, resend only after expiry, and at most five wrong attempts. | Approved target; provider pending |
+| Could WhatsApp be used for verification?                                 | Yes. WhatsApp is the approved launch channel for OTP and return/refund notifications; provider, credentials, templates, and deliverability remain external prerequisites.                            | Approved; externally blocked      |
 
 ### Phone identity and account recovery
 
@@ -324,26 +338,33 @@ an idea changed later, the **latest** answer is the one marked as current.
 
 ### Refunds, inventory, and fulfilment
 
-| Question                                                 | Brand-owner answer / decision                                                                                                                                                                           | State                                       |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| What return windows were approved?                       | 14 days for normal returns and 30 days for defective items.                                                                                                                                             | Approved policy; verify legal copy/workflow |
-| Should a refund require customer confirmation?           | Yes. Use a customer OTP/confirmation gate before staff completes the refund workflow.                                                                                                                   | Approved, unbuilt                           |
-| Should refund rules be editable in Settings?             | No. Refund windows, calculations, delivery treatment, goodwill percentage, OTP/evidence gates, and fee responsibility are hardcoded; changes require code.                                              | Approved policy; unbuilt                    |
-| What is the approved refund calculation?                 | Unworn change-of-mind returns refund 100% of paid item value; worn but resellable change-of-mind returns may receive 70% goodwill; defective/wrong items refund 100% plus applicable original delivery. | Approved policy; unbuilt                    |
-| Who pays delivery on a change-of-mind return?            | The original outbound delivery fee is not refunded; Valkyrie pays one return pickup. Rejected customer-caused returns keep the original fee and the customer pays collection.                           | Approved policy; unbuilt                    |
-| What proof is required for a return?                     | Customer condition/package photos before pickup, then staff unboxing and inspection video before the final refund decision.                                                                             | Approved policy; unbuilt                    |
-| Does the current refund button send money?               | No. It records the return/refund state; actual provider money movement waits for OPay.                                                                                                                  | Known limitation                            |
-| Can a worker directly edit stock?                        | No. Routine inventory follows system events such as sale, cancellation, and approved return.                                                                                                            | Approved                                    |
-| What if a worker finds extra, missing, or damaged stock? | The worker submits an immutable request; an admin/super admin approves, corrects, or rejects it before inventory changes.                                                                               | Implemented 2026-09-17                      |
-| May two workers report the same variant?                 | Yes. Keep both pending reports, group them for investigation, and let the reviewer approve valid findings or reject duplicates.                                                                         | Implemented 2026-09-17                      |
-| How is a stale adjustment request applied?               | Apply its signed difference to current stock under a row lock, never overwrite current stock with the old request-time count.                                                                           | Implemented 2026-09-17                      |
-| When should low-stock inspection begin?                  | Create one inspection per low-stock cycle when recorded stock enters 1-20. Zero stock creates no inspection.                                                                                            | Implemented 2026-09-17                      |
-| What happens while that inspection is pending?           | Protect the final 10 units. At 11 only one is sellable; at 10 the variant is temporarily unavailable.                                                                                                   | Implemented 2026-09-17                      |
-| What happens after an all-fine inspection?               | Record it immediately in green without admin review and allow the verified remainder to sell below 10 down to zero.                                                                                     | Implemented 2026-09-17                      |
-| What happens when a flaw is reported?                    | Damaged/missing quarantines the variant pending review; existing trusted stock stays sellable for an extra-stock report.                                                                                | Implemented 2026-09-17                      |
-| What should customers see during protection/quarantine?  | “Temporarily unavailable - we're confirming availability.” Say “restocking” only when an actual incoming restock exists.                                                                                | Implemented 2026-09-17                      |
-| Where should unresolved work be visible?                 | On the Inventory Requests tab and as a count beside Inventory in the staff sidebar, using the existing in-app notification system.                                                                      | Implemented 2026-09-17                      |
-| What does “tracking information” mean?                   | The shipment carrier, tracking/reference number, delivery status, and relevant fulfilment timestamps shown to staff/customer as appropriate.                                                            | Approved concept, unbuilt                   |
+| Question                                                 | Brand-owner answer / decision                                                                                                                                                                                                                                              | State                                       |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| What return windows were approved?                       | 14 days for normal returns and 30 days for defective items.                                                                                                                                                                                                                | Approved policy; verify legal copy/workflow |
+| Should a refund require customer confirmation?           | Yes. Use a customer OTP/confirmation gate before staff completes the refund workflow.                                                                                                                                                                                      | Approved, unbuilt                           |
+| Should refund rules be editable in Settings?             | No. Refund windows, calculations, delivery treatment, goodwill percentage, OTP/evidence gates, and fee responsibility are hardcoded; changes require code.                                                                                                                 | Approved policy; unbuilt                    |
+| What is the approved refund calculation?                 | Unworn change-of-mind returns refund 100% of paid item value; worn but resellable change-of-mind returns may receive 70% goodwill; defective/wrong items refund 100% plus applicable original delivery.                                                                    | Approved policy; unbuilt                    |
+| Who pays delivery on a change-of-mind return?            | The original outbound delivery fee is not refunded; Valkyrie pays one return pickup. Rejected customer-caused returns keep the original fee and the customer pays collection.                                                                                              | Approved policy; unbuilt                    |
+| What proof is required for a return?                     | Customer condition/package photos before pickup, then staff unboxing and inspection video before the final refund decision.                                                                                                                                                | Approved policy; unbuilt                    |
+| Does the current refund button send money?               | No. It records the return/refund state; actual provider money movement waits for OPay.                                                                                                                                                                                     | Known limitation                            |
+| What are the final refund authorization gates?           | Every outcome requires a server-recorded 10-second read/ack gate. Positive refunds additionally require a verified-phone OTP valid for 60 seconds, resend after expiry, and at most five wrong attempts; a changed proposal invalidates the prior acknowledgement and OTP. | Approved policy; unbuilt                    |
+| What happens if the customer disputes an inspection?     | The customer submits a detailed reason; payout pauses and the item remains quarantined. One admin re-review is allowed, then a super-admin makes the final decision. Any revised positive proposal needs a fresh read/ack and OTP.                                         | Approved policy; unbuilt                    |
+| What happens to a rejected item?                         | No restock. The customer may collect it free in-store, or WhatsApp asks whether they want shipping; if shipped, they pay the actual collection fee. Hold it for 14 days, send a reminder, then leave final disposition to a super-admin.                                   | Approved policy; unbuilt                    |
+| What is the package/evidence rule?                       | Exactly two private customer photos, one continuous courier handoff video, and one continuous receiving/unboxing video, with declared and verified package counts. Corrupt, blurry, or non-continuous media gets a retry/exception path, never automatic rejection.        | Approved policy; unbuilt                    |
+| Who may see evidence and make decisions?                 | Workers record structured facts and videos only. Admins classify and approve/reject. Only super-admins may open private media and decide final appeals, missing-evidence exceptions, or carrier disputes.                                                                  | Approved policy; unbuilt                    |
+| How are missing quantities handled?                      | Refund verified received items first. After three calendar days without an outcome, refund the unresolved remainder; all-missing cases use the same clock. A later carrier result never claws back a completed customer refund.                                            | Approved policy; unbuilt                    |
+| Can a customer enter a wallet destination online?        | No. OPay is the intended source; cash or e-wallet is an offline fallback after confirmed failure, with a fresh proposal/read/ack/OTP. Wallet numbers never enter the website; private transaction proof is required.                                                       | Approved policy; unbuilt                    |
+| Can a worker directly edit stock?                        | No. Routine inventory follows system events such as sale, cancellation, and approved return.                                                                                                                                                                               | Approved                                    |
+| What if a worker finds extra, missing, or damaged stock? | The worker submits an immutable request; an admin/super admin approves, corrects, or rejects it before inventory changes.                                                                                                                                                  | Implemented 2026-09-17                      |
+| May two workers report the same variant?                 | Yes. Keep both pending reports, group them for investigation, and let the reviewer approve valid findings or reject duplicates.                                                                                                                                            | Implemented 2026-09-17                      |
+| How is a stale adjustment request applied?               | Apply its signed difference to current stock under a row lock, never overwrite current stock with the old request-time count.                                                                                                                                              | Implemented 2026-09-17                      |
+| When should low-stock inspection begin?                  | Create one inspection per low-stock cycle when recorded stock enters 1-20. Zero stock creates no inspection.                                                                                                                                                               | Implemented 2026-09-17                      |
+| What happens while that inspection is pending?           | Protect the final 10 units. At 11 only one is sellable; at 10 the variant is temporarily unavailable.                                                                                                                                                                      | Implemented 2026-09-17                      |
+| What happens after an all-fine inspection?               | Record it immediately in green without admin review and allow the verified remainder to sell below 10 down to zero.                                                                                                                                                        | Implemented 2026-09-17                      |
+| What happens when a flaw is reported?                    | Damaged/missing quarantines the variant pending review; existing trusted stock stays sellable for an extra-stock report.                                                                                                                                                   | Implemented 2026-09-17                      |
+| What should customers see during protection/quarantine?  | “Temporarily unavailable - we're confirming availability.” Say “restocking” only when an actual incoming restock exists.                                                                                                                                                   | Implemented 2026-09-17                      |
+| Where should unresolved work be visible?                 | On the Inventory Requests tab and as a count beside Inventory in the staff sidebar, using the existing in-app notification system.                                                                                                                                         | Implemented 2026-09-17                      |
+| What does “tracking information” mean?                   | The shipment carrier, tracking/reference number, delivery status, and relevant fulfilment timestamps shown to staff/customer as appropriate.                                                                                                                               | Approved concept, unbuilt                   |
 
 ### Roles, leads, and external data
 
@@ -385,7 +406,9 @@ an idea changed later, the **latest** answer is the one marked as current.
 ## Deliberately deferred or externally blocked
 
 - OPay merchant onboarding, payment capture, webhook handling, reconciliation,
-  and electronic refunds — blocked on brand paperwork/provider access.
+  and electronic refunds — blocked on brand paperwork/provider access. WhatsApp
+  OTP/notification delivery and Resend production delivery are the other launch
+  messaging prerequisites; SMS is intentionally later.
 - Resend production sending and end-to-end delivery testing — blocked on the
   brand email/domain setup.
 - Phone/WhatsApp OTP delivery — blocked on selecting and provisioning a provider.
@@ -399,9 +422,10 @@ These are known dependencies, not current code defects.
 
 ## Recommended remaining phases
 
-1. **Refund authorization workflow.** Implement the hardcoded policy and
-   evidence/confirmation gates in `docs/REFUNDS.md`, but do not pretend to move
-   money before OTP and OPay behavior are known.
+1. **Refund authorization workflow.** Implement the hardcoded policy, private
+   evidence vault, physical/evidence/payout state machine, and confirmation
+   gates in `docs/REFUNDS.md`; do not pretend to move money before the OTP
+   provider and OPay behavior are known.
 2. **Identity and messaging.** Update the old phone/loyalty designs for one phone
    per account, then implement Resend and the chosen OTP provider when credentials
    exist.
@@ -436,6 +460,8 @@ smoke remains a manual follow-up.
   — approved-but-unbuilt refund policy, confirmation, and inspection-evidence design
 - `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`
   — task-by-task implementation and verification record for that phase
+- `docs/EXTERNAL-INTEGRATIONS-ROADMAP.md` — remaining OPay, WhatsApp, Resend,
+  production, and later marketing-integration roadmap
 - `docs/superpowers/plans/2026-09-14-customer-data-access-and-audit.md` —
   implementation plan and verification record for that phase
 - `docs/ISSUES.md` — defect catalogue and resolved-history details
