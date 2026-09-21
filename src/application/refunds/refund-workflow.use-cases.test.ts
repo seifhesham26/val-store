@@ -212,12 +212,12 @@ describe("refund workflow use cases", () => {
     await expect(
       new RequestReturnOtpUseCase(
         repository,
-        otp as unknown as RefundOtpService
+        otp as unknown as RefundOtpService,
+        { findVerifiedPhone: vi.fn().mockResolvedValue("+201000000000") }
       ).execute({
         userId: "customer-1",
         requestId: "return-1",
         proposalVersion: 1,
-        phone: "+201000000000",
       })
     ).resolves.toEqual({ id: "challenge-1" });
     expect(otp.request).toHaveBeenCalledWith({
@@ -225,6 +225,44 @@ describe("refund workflow use cases", () => {
       proposalVersion: 1,
       phone: "+201000000000",
     });
+  });
+
+  it("uses only the verified account phone for OTP delivery", async () => {
+    const otp = { request: vi.fn() };
+    const repository = {
+      findForCustomer: vi.fn().mockResolvedValue(
+        request({
+          acknowledgedAt: new Date(),
+          proposal: {
+            id: "proposal-1",
+            version: 1,
+            itemRefund: 100,
+            deliveryRefund: 0,
+            collectionDue: 0,
+            totalRefund: 100,
+            payoutDestination: "original_payment",
+            customerCopy: "Approved",
+            calculation: {},
+            createdAt: new Date(),
+          },
+        })
+      ),
+    } as unknown as ReturnRequestRepositoryInterface;
+
+    await expect(
+      new RequestReturnOtpUseCase(
+        repository,
+        otp as unknown as RefundOtpService,
+        {
+          findVerifiedPhone: vi.fn().mockResolvedValue(null),
+        }
+      ).execute({
+        userId: "customer-1",
+        requestId: "return-1",
+        proposalVersion: 1,
+      })
+    ).rejects.toThrow(/verified phone/i);
+    expect(otp.request).not.toHaveBeenCalled();
   });
 
   it("finalizes only after OTP verification for the stored acknowledged proposal", async () => {

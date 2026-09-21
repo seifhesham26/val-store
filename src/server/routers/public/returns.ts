@@ -93,22 +93,12 @@ export const returnsRouter = router({
 
   requestOtp: protectedProcedure
     .input(proposalInput)
-    .mutation(async ({ ctx, input }) => {
-      // Establish ownership before inspecting the authenticated contact data.
-      // Besides avoiding a capability leak, this keeps the route's boundary
-      // explicit even if the OTP use case later gains another transport.
-      const request = await container
-        .getReturnRequestRepository()
-        .findForCustomer(input.requestId, ctx.user.id);
-      if (!request) throw new Error("Return request not found");
-      const phone = ctx.user.phone?.trim();
-      if (!phone) throw new Error("A verified phone number is required");
-      return container.getRequestReturnOtpUseCase().execute({
+    .mutation(({ ctx, input }) =>
+      container.getRequestReturnOtpUseCase().execute({
         ...input,
         userId: ctx.user.id,
-        phone,
-      });
-    }),
+      })
+    ),
 
   confirmOtp: protectedProcedure
     .input(
