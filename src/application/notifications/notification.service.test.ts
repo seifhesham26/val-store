@@ -67,6 +67,31 @@ describe("inventory request notifications", () => {
 });
 
 describe("return request notifications", () => {
+  it("describes the recorded physical return without claiming a pending payout succeeded", async () => {
+    const create = vi.fn();
+    const service = new NotificationService(
+      {} as NotificationsRepositoryInterface,
+      { create } as unknown as UserNotificationsRepositoryInterface,
+      {} as InventoryRepositoryInterface
+    );
+
+    await service.returnRecorded({
+      userId: "customer-1",
+      requestId: "return-1",
+      receivedQuantity: 2,
+      missingQuantity: 1,
+      payoutStatus: "pending",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      userId: "customer-1",
+      notificationType: "return_update",
+      title: "Return recorded",
+      message:
+        "We recorded 2 received units and 1 missing unit. Your payout is pending; no money has been confirmed yet.",
+    });
+  });
+
   it("fans a submitted return out to admins and gives return updates to its customer", async () => {
     const createMany = vi.fn();
     const create = vi.fn();

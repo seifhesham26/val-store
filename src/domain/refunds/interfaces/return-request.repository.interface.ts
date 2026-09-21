@@ -49,6 +49,7 @@ export interface ReturnRequestRepositoryInterface {
     orderId: string,
     customerId: string
   ): Promise<ReturnRequestRecord[]>;
+  listForStaffOrder(orderId: string): Promise<ReturnRequestRecord[]>;
   findForStaff(requestId: string): Promise<ReturnRequestRecord | null>;
   listWork(limit?: number): Promise<ReturnRequestRecord[]>;
   countWork(): Promise<number>;

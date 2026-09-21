@@ -105,6 +105,7 @@ export interface ReturnRequestRecord {
   pickupMethod: "courier" | "in_store" | null;
   physicalStatus: ReturnPhysicalStatus;
   payoutStatus: ReturnPayoutStatus | null;
+  carrierClaimStatus?: "open" | "resolved" | "refunded_after_deadline" | null;
   proposalVersion: number;
   proposalOpenedAt: Date | null;
   acknowledgedAt: Date | null;

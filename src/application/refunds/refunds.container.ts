@@ -2,6 +2,10 @@ import type { OrderRepositoryInterface } from "@/domain/orders/interfaces/reposi
 import { DrizzleReturnRequestRepository } from "@/infrastructure/database/repositories/refunds/return-request.repository";
 import { DrizzleRefundOtpChallengeRepository } from "@/infrastructure/database/repositories/refunds/refund-otp-challenge.repository";
 import { DrizzleVerifiedAccountPhoneRepository } from "@/infrastructure/database/repositories/refunds/verified-account-phone.repository";
+import { DrizzleRefundPayoutRepository } from "@/infrastructure/database/repositories/refunds/refund-payout.repository";
+import { RefundPayoutService } from "./refund-payout.service";
+import { RefundOrderUseCase } from "@/application/orders/use-cases/refund-order.use-case";
+import type { NotificationService } from "@/application/notifications/notification.service";
 import { AcknowledgeReturnProposalUseCase } from "./use-cases/acknowledge-return-proposal.use-case";
 import { AuthorizeReturnPickupUseCase } from "./use-cases/authorize-return-pickup.use-case";
 import { CreateReturnRequestUseCase } from "./use-cases/create-return-request.use-case";
@@ -20,6 +24,7 @@ import {
 
 export function createRefundModule(deps: {
   getOrderRepository: () => OrderRepositoryInterface;
+  getNotificationService: () => NotificationService;
 }) {
   let repository: DrizzleReturnRequestRepository | undefined;
   const getReturnRequestRepository = () =>
@@ -44,9 +49,35 @@ export function createRefundModule(deps: {
       },
       secret: process.env.REFUND_OTP_SECRET ?? "",
     }));
+  let payoutRepository: DrizzleRefundPayoutRepository | undefined;
+  const getRefundPayoutRepository = () =>
+    (payoutRepository ??= new DrizzleRefundPayoutRepository());
+  let payoutService: RefundPayoutService | undefined;
+  const getRefundPayoutService = () =>
+    (payoutService ??= new RefundPayoutService(getRefundPayoutRepository(), {
+      // Merchant endpoints and response-signature rules are intentionally not
+      // guessed. Until the verified OPay transport is configured, an attempt
+      // becomes unknown and remains reconciliation-only.
+      refundOriginalPayment: async () => {
+        throw new Error("OPay refund transport is not configured");
+      },
+      reconcileRefund: async () => {
+        throw new Error("OPay reconciliation transport is not configured");
+      },
+    }));
+  let finalizeReturn: RefundOrderUseCase | undefined;
+  const getFinalizeAuthorizedReturnUseCase = () =>
+    (finalizeReturn ??= new RefundOrderUseCase(
+      getReturnRequestRepository(),
+      getRefundPayoutService(),
+      deps.getNotificationService()
+    ));
 
   return {
     getReturnRequestRepository,
+    getRefundPayoutRepository,
+    getRefundPayoutService,
+    getFinalizeAuthorizedReturnUseCase,
     getCreateReturnRequestUseCase: () =>
       new CreateReturnRequestUseCase(
         deps.getOrderRepository(),
@@ -67,7 +98,8 @@ export function createRefundModule(deps: {
     getConfirmReturnOtpUseCase: () =>
       new ConfirmReturnOtpUseCase(
         getReturnRequestRepository(),
-        getRefundOtpService()
+        getRefundOtpService(),
+        getFinalizeAuthorizedReturnUseCase()
       ),
     getRejectReturnUseCase: () =>
       new RejectReturnUseCase(getReturnRequestRepository()),

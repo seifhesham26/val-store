@@ -352,6 +352,43 @@ export class NotificationService {
     );
   }
 
+  /**
+   * The warehouse decision is durable, but money movement is a separate fact.
+   * Keep the wording explicit so a pending or unknown provider result is never
+   * presented to the customer as a completed refund.
+   */
+  async returnRecorded(input: {
+    userId: string;
+    requestId: string;
+    receivedQuantity: number;
+    missingQuantity: number;
+    payoutStatus: "pending" | "succeeded" | "failed" | "unknown";
+  }): Promise<void> {
+    const received = `${input.receivedQuantity} received unit${
+      input.receivedQuantity === 1 ? "" : "s"
+    }`;
+    const missing = `${input.missingQuantity} missing unit${
+      input.missingQuantity === 1 ? "" : "s"
+    }`;
+    const payoutCopy =
+      input.payoutStatus === "succeeded"
+        ? "Your payout has been verified as completed."
+        : input.payoutStatus === "failed"
+          ? "Your payout failed and needs a new resolution."
+          : input.payoutStatus === "unknown"
+            ? "Your payout is being reconciled; no money has been confirmed yet."
+            : "Your payout is pending; no money has been confirmed yet.";
+
+    await this.safely("returnRecorded", () =>
+      this.userNotifications.create({
+        userId: input.userId,
+        notificationType: "return_update",
+        title: "Return recorded",
+        message: `We recorded ${received} and ${missing}. ${payoutCopy}`,
+      })
+    );
+  }
+
   /** One row per admin or super admin, in a single insert. */
   private async fanOutToAdmins(notification: {
     notificationType:

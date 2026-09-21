@@ -6,6 +6,7 @@ import { DrizzleCustomerDataReadRepository } from "@/infrastructure/database/rep
 import { LookupCustomerSupportUseCase } from "./lookup-customer-support.use-case";
 import { RevealCustomerContactUseCase } from "./reveal-customer-contact.use-case";
 import type { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
+import type { ReturnRequestRepositoryInterface } from "@/domain/refunds/interfaces/return-request.repository.interface";
 import {
   OpenStaffOrderUseCase,
   RevealOrderDeliveryUseCase,
@@ -13,6 +14,7 @@ import {
 
 export function createCustomerAccessModule(deps: {
   getOrderRepository: () => OrderRepositoryInterface;
+  getReturnRequestRepository: () => ReturnRequestRepositoryInterface;
 }) {
   let repository: DrizzleCustomerAccessAuditRepository | undefined;
   let recordAccess: RecordCustomerAccessUseCase | undefined;
@@ -57,7 +59,8 @@ export function createCustomerAccessModule(deps: {
       (openStaffOrder ??= new OpenStaffOrderUseCase(
         deps.getOrderRepository(),
         new StaffOrderAccessService(getCustomerAccessAuditRepository()),
-        new RecordCustomerAccessUseCase(getCustomerAccessAuditRepository())
+        new RecordCustomerAccessUseCase(getCustomerAccessAuditRepository()),
+        deps.getReturnRequestRepository()
       )),
     getRevealOrderDeliveryUseCase: () =>
       (revealOrderDelivery ??= new RevealOrderDeliveryUseCase(

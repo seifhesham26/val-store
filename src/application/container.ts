@@ -51,6 +51,7 @@ function createContainer() {
   });
   const refunds = createRefundModule({
     getOrderRepository: orders.getOrderRepository,
+    getNotificationService: notifications.getNotificationService,
   });
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
@@ -80,6 +81,7 @@ function createContainer() {
   const shipping = createShippingModule();
   const customerAccess = createCustomerAccessModule({
     getOrderRepository: orders.getOrderRepository,
+    getReturnRequestRepository: refunds.getReturnRequestRepository,
   });
 
   return {

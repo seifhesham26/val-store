@@ -3,6 +3,7 @@ import { CustomerAccessDeniedError } from "@/domain/customer-access/customer-acc
 import type { CustomerAccessActor } from "@/domain/customer-access/customer-data-read.repository";
 import { OrderNotFoundException } from "@/domain/orders/exceptions/order-not-found.exception";
 import type { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
+import type { ReturnRequestRepositoryInterface } from "@/domain/refunds/interfaces/return-request.repository.interface";
 import { isActiveFulfillmentStatus } from "@/domain/customer-access/customer-access-policy";
 import type { RecordCustomerAccessUseCase } from "./record-customer-access.use-case";
 import {
@@ -73,7 +74,11 @@ export class OpenStaffOrderUseCase {
   constructor(
     private readonly orders: OrderRepositoryInterface,
     private readonly access: StaffOrderAccessService,
-    private readonly recordAccess: RecordCustomerAccessUseCase
+    private readonly recordAccess: RecordCustomerAccessUseCase,
+    private readonly returns?: Pick<
+      ReturnRequestRepositoryInterface,
+      "listForStaffOrder"
+    >
   ) {}
 
   async execute(input: StaffOrderInput) {
@@ -86,10 +91,32 @@ export class OpenStaffOrderUseCase {
         "order_view"
       )
     );
+    const returns = this.returns
+      ? await this.returns.listForStaffOrder(safe.order.id)
+      : [];
     return maskOrderForStaff(
       mapOrderToOutput(safe.order),
       input.actor.role,
-      safe.hasShippingAddress
+      safe.hasShippingAddress,
+      returns.map((request) => ({
+        id: request.id,
+        physicalStatus: request.physicalStatus,
+        payoutStatus: request.payoutStatus,
+        carrierClaimStatus: request.carrierClaimStatus ?? null,
+        receivedQuantity: request.items.reduce(
+          (sum, line) => sum + line.returnedQuantity,
+          0
+        ),
+        missingQuantity: request.items.reduce(
+          (sum, line) =>
+            sum + Math.max(0, line.requestedQuantity - line.returnedQuantity),
+          0
+        ),
+        itemRefund: request.proposal?.itemRefund ?? 0,
+        deliveryRefund: request.proposal?.deliveryRefund ?? 0,
+        collectionDue: request.proposal?.collectionDue ?? 0,
+        payoutMethod: request.proposal?.payoutDestination ?? "not selected",
+      }))
     );
   }
 }

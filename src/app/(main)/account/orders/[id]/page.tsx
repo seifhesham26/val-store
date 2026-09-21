@@ -154,7 +154,11 @@ export default function OrderDetailPage() {
         discount={order.discount}
         total={order.total}
         refundedAmount={order.refundedAmount}
+        refundedItemAmount={order.refundedItemAmount}
+        refundedDeliveryAmount={order.refundedDeliveryAmount}
+        refundedCollectionFees={order.refundedCollectionFees}
         fullyRefunded={order.fullyRefunded}
+        returns={order.returns}
       />
     </div>
   );

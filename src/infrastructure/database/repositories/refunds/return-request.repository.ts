@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -102,6 +102,7 @@ function mapRequest(row: {
   pickupMethod: ReturnRequestRecord["pickupMethod"];
   physicalStatus: ReturnRequestRecord["physicalStatus"];
   payoutStatus: ReturnRequestRecord["payoutStatus"];
+  carrierClaimStatus: ReturnRequestRecord["carrierClaimStatus"];
   proposalVersion: number;
   proposalOpenedAt: Date | null;
   acknowledgedAt: Date | null;
@@ -125,6 +126,7 @@ function mapRequest(row: {
     pickupMethod: row.pickupMethod,
     physicalStatus: row.physicalStatus,
     payoutStatus: row.payoutStatus,
+    carrierClaimStatus: row.carrierClaimStatus,
     proposalVersion: row.proposalVersion,
     proposalOpenedAt: row.proposalOpenedAt,
     acknowledgedAt: row.acknowledgedAt,
@@ -246,6 +248,15 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
         eq(returnRequests.orderId, orderId),
         eq(returnRequests.customerId, customerId)
       ),
+      with: { items: true, proposals: true },
+      orderBy: [desc(returnRequests.createdAt)],
+    });
+    return rows.map(mapRequest);
+  }
+
+  async listForStaffOrder(orderId: string) {
+    const rows = await db.query.returnRequests.findMany({
+      where: eq(returnRequests.orderId, orderId),
       with: { items: true, proposals: true },
       orderBy: [desc(returnRequests.createdAt)],
     });
@@ -659,6 +670,12 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
       if (!request || request.customerId !== input.customerId) {
         throw new Error("Return request not found");
       }
+      if (
+        request.status === "recorded" &&
+        request.proposalVersion === input.proposalVersion
+      ) {
+        return;
+      }
       assertReturnActionAllowed(request.status, "finalize");
       if (request.proposalVersion !== input.proposalVersion) {
         throw conflict("the confirmed proposal is stale");
@@ -681,13 +698,8 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
         .where(eq(orders.id, request.orderId))
         .for("update");
       if (!order) throw new Error("Order not found");
-      const shippingRefund = money(proposal.deliveryRefund);
-      const shippingRemaining = Math.max(
-        0,
-        money(order.shippingAmount) - money(order.refundedShippingAmount)
-      );
-      if (shippingRefund > shippingRemaining + 0.001) {
-        throw conflict("delivery money has already been refunded");
+      if (order.status === "cancelled") {
+        throw conflict("a cancelled order cannot be finalized as a return");
       }
 
       const requestLines = await tx
@@ -707,6 +719,21 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
         .orderBy(asc(orderItems.id))
         .for("update");
 
+      const storedItemRefund = requestLines.reduce(
+        (sum, line) => sum + money(line.itemRefund),
+        0
+      );
+      const storedTotal =
+        storedItemRefund +
+        money(proposal.deliveryRefund) -
+        money(proposal.collectionDue);
+      if (
+        Math.abs(storedItemRefund - money(proposal.itemRefund)) > 0.001 ||
+        Math.abs(storedTotal - money(proposal.totalRefund)) > 0.001
+      ) {
+        throw conflict("inspection facts changed after this proposal");
+      }
+
       const now = new Date();
       for (const line of requestLines) {
         const orderLine = lockedOrderLines.find(
@@ -718,27 +745,36 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
           line.restockedQuantity < 0 ||
           line.restockedQuantity > line.receivedQuantity ||
           line.approvedQuantity > line.requestedQuantity ||
-          orderLine.refundedQuantity + line.approvedQuantity >
-            orderLine.quantity
+          line.receivedQuantity > line.requestedQuantity
         ) {
           throw conflict("approved quantities no longer fit the order");
         }
 
-        const [bumped] = await tx
-          .update(orderItems)
+        await tx
+          .update(returnRequestItems)
           .set({
-            refundedQuantity: sql`${orderItems.refundedQuantity} + ${line.approvedQuantity}`,
+            returnedQuantity: line.receivedQuantity,
+            updatedAt: now,
           })
-          .where(
-            and(
-              eq(orderItems.id, line.orderItemId),
-              sql`${orderItems.refundedQuantity} + ${line.approvedQuantity} <= ${orderItems.quantity}`
-            )
-          )
-          .returning({ id: orderItems.id });
-        if (!bumped) throw conflict("an order line was finalized concurrently");
+          .where(eq(returnRequestItems.id, line.id));
+      }
 
-        if (line.restockedQuantity > 0 && orderLine.variantId) {
+      const restocks = requestLines
+        .map((line) => ({
+          line,
+          orderLine: lockedOrderLines.find(
+            (candidate) => candidate.id === line.orderItemId
+          ),
+        }))
+        .filter(
+          (entry) =>
+            entry.line.restockedQuantity > 0 && entry.orderLine?.variantId
+        )
+        .sort((a, b) =>
+          a.orderLine!.variantId!.localeCompare(b.orderLine!.variantId!)
+        );
+      for (const { line, orderLine } of restocks) {
+        if (orderLine?.variantId) {
           const variant = await lockVariantStockState(tx, orderLine.variantId);
           if (!variant) throw conflict("the returned variant no longer exists");
           const newQuantity = variant.stockQuantity + line.restockedQuantity;
@@ -761,27 +797,33 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
             stockQuantity: newQuantity,
           });
         }
-
-        await tx
-          .update(returnRequestItems)
-          .set({
-            returnedQuantity: line.receivedQuantity,
-            refundedQuantity: line.approvedQuantity,
-            updatedAt: now,
-          })
-          .where(eq(returnRequestItems.id, line.id));
       }
 
-      await tx
-        .update(orders)
-        .set({
-          refundedShippingAmount: sql`${orders.refundedShippingAmount} + ${shippingRefund.toFixed(2)}`,
-          updatedAt: now,
-        })
-        .where(eq(orders.id, order.id));
+      const physicalStatuses = new Set(
+        requestLines.map((line) =>
+          line.receivedQuantity < line.requestedQuantity
+            ? "missing"
+            : line.restockedQuantity === line.receivedQuantity
+              ? "resellable"
+              : "quarantined"
+        )
+      );
+      const physicalStatus =
+        physicalStatuses.size === 1
+          ? ([...physicalStatuses][0] as
+              | "missing"
+              | "resellable"
+              | "quarantined")
+          : "mixed";
       const [recorded] = await tx
         .update(returnRequests)
-        .set({ status: "recorded", recordedAt: now, updatedAt: now })
+        .set({
+          status: "recorded",
+          physicalStatus,
+          payoutStatus: "pending",
+          recordedAt: now,
+          updatedAt: now,
+        })
         .where(
           and(
             eq(returnRequests.id, request.id),

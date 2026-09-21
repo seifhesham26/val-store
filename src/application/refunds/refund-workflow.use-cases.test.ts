@@ -314,4 +314,50 @@ describe("refund workflow use cases", () => {
       proposalVersion: 1,
     });
   });
+
+  it("resumes finalization after OTP was consumed and the first finalization timed out", async () => {
+    const otp = { verify: vi.fn() };
+    const confirmed = request({
+      status: "confirmed",
+      acknowledgedAt: new Date(),
+      confirmedAt: new Date(),
+      proposal: {
+        id: "proposal-1",
+        version: 1,
+        itemRefund: 100,
+        deliveryRefund: 0,
+        collectionDue: 0,
+        totalRefund: 100,
+        payoutDestination: "original_payment",
+        customerCopy: "Approved",
+        calculation: {},
+        createdAt: new Date(),
+      },
+    });
+    const finalized = request({ status: "recorded", recordedAt: new Date() });
+    const repository = {
+      findForCustomer: vi.fn().mockResolvedValue(confirmed),
+    } as unknown as ReturnRequestRepositoryInterface;
+    const finalizer = { execute: vi.fn().mockResolvedValue(finalized) };
+
+    await expect(
+      new ConfirmReturnOtpUseCase(
+        repository,
+        otp as unknown as RefundOtpService,
+        finalizer
+      ).execute({
+        userId: "customer-1",
+        requestId: "return-1",
+        proposalVersion: 1,
+        challengeId: "already-consumed",
+        code: "123456",
+      })
+    ).resolves.toBe(finalized);
+    expect(otp.verify).not.toHaveBeenCalled();
+    expect(finalizer.execute).toHaveBeenCalledWith({
+      requestId: "return-1",
+      customerId: "customer-1",
+      proposalVersion: 1,
+    });
+  });
 });

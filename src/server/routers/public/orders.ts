@@ -111,6 +111,27 @@ export const ordersRouter = router({
         });
       }
 
+      const returnRequests = await container
+        .getReturnRequestRepository()
+        .listForOrder(order.id, ctx.user.id);
+      const completedReturns = returnRequests.filter(
+        (request) => request.payoutStatus === "succeeded" && request.proposal
+      );
+      const refundedItemAmount = completedReturns.reduce(
+        (sum, request) => sum + (request.proposal?.itemRefund ?? 0),
+        0
+      );
+      const refundedDeliveryAmount = completedReturns.reduce(
+        (sum, request) => sum + (request.proposal?.deliveryRefund ?? 0),
+        0
+      );
+      const refundedCollectionFees = completedReturns.reduce(
+        (sum, request) => sum + (request.proposal?.collectionDue ?? 0),
+        0
+      );
+      const refundedAmount =
+        refundedItemAmount + refundedDeliveryAmount - refundedCollectionFees;
+
       // Mirrors what `getMyOrders` already returns. This projection was a
       // hand-written subset that predated the order-number, partial-return and
       // payment-window work, so the one screen a customer opens to check an
@@ -133,9 +154,31 @@ export const ordersRouter = router({
         deliveredAt: order.deliveredAt,
         awaitingPayment: order.isAwaitingPayment(),
         paymentDeadline: order.paymentDeadline(),
-        refundedAmount: order.refundedAmount(),
+        refundedAmount,
+        refundedItemAmount,
+        refundedDeliveryAmount,
+        refundedCollectionFees,
         refundedItems: order.getRefundedItems(),
         fullyRefunded: order.isFullyRefunded(),
+        returns: returnRequests.map((request) => ({
+          id: request.id,
+          physicalStatus: request.physicalStatus,
+          payoutStatus: request.payoutStatus,
+          carrierClaimStatus: request.carrierClaimStatus ?? null,
+          receivedQuantity: request.items.reduce(
+            (sum, line) => sum + line.returnedQuantity,
+            0
+          ),
+          missingQuantity: request.items.reduce(
+            (sum, line) =>
+              sum + Math.max(0, line.requestedQuantity - line.returnedQuantity),
+            0
+          ),
+          itemRefund: request.proposal?.itemRefund ?? 0,
+          deliveryRefund: request.proposal?.deliveryRefund ?? 0,
+          collectionDue: request.proposal?.collectionDue ?? 0,
+          payoutMethod: request.proposal?.payoutDestination ?? "not selected",
+        })),
       };
     }),
 
