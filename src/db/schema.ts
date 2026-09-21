@@ -827,6 +827,35 @@ export const returnEvidence = pgTable(
   })
 );
 
+/** Immutable audit trail for private evidence URLs issued to super admins. */
+export const returnEvidenceAccessAudits = pgTable(
+  "return_evidence_access_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    evidenceId: uuid("evidence_id")
+      .notNull()
+      .references(() => returnEvidence.id, { onDelete: "cascade" }),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    actorRole: userRoleEnum("actor_role").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_evidence_access_request_id").on(
+      table.requestId,
+      table.createdAt
+    ),
+    evidenceIdIdx: index("idx_return_evidence_access_evidence_id").on(
+      table.evidenceId,
+      table.createdAt
+    ),
+  })
+);
+
 export const returnPackageEvents = pgTable(
   "return_package_events",
   {

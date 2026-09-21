@@ -17,6 +17,12 @@ export type ReturnEvidenceKind =
   | "payout_proof"
   | "cash_receipt";
 
+export interface ReturnEvidenceRecord {
+  id: string;
+  requestId: string;
+  storageKey: string;
+}
+
 export type ReturnPackageEventKind =
   | "customer_declaration"
   | "courier_handoff"
@@ -61,6 +67,20 @@ export interface ReturnRequestRepositoryInterface {
     sizeBytes: number;
     contentHash?: string;
     originalMetadata?: unknown;
+  }): Promise<void>;
+  countEvidence(input: {
+    requestId: string;
+    kind: ReturnEvidenceKind;
+  }): Promise<number>;
+  findEvidence(input: {
+    requestId: string;
+    storageKey: string;
+  }): Promise<ReturnEvidenceRecord | null>;
+  recordEvidenceAccess(input: {
+    actorId: string;
+    actorRole: "super_admin";
+    requestId: string;
+    evidenceId: string;
   }): Promise<void>;
   recordPackageEvent(input: {
     requestId: string;

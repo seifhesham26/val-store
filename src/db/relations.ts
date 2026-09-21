@@ -31,6 +31,7 @@ import {
   returnRequestItems,
   returnProposals,
   returnEvidence,
+  returnEvidenceAccessAudits,
   returnPackageEvents,
   returnPayouts,
   returnCarrierClaims,
@@ -238,6 +239,24 @@ export const returnEvidenceRelations = relations(returnEvidence, ({ one }) => ({
     relationName: "returnEvidenceValidator",
   }),
 }));
+
+export const returnEvidenceAccessAuditRelations = relations(
+  returnEvidenceAccessAudits,
+  ({ one }) => ({
+    request: one(returnRequests, {
+      fields: [returnEvidenceAccessAudits.requestId],
+      references: [returnRequests.id],
+    }),
+    evidence: one(returnEvidence, {
+      fields: [returnEvidenceAccessAudits.evidenceId],
+      references: [returnEvidence.id],
+    }),
+    actor: one(user, {
+      fields: [returnEvidenceAccessAudits.actorId],
+      references: [user.id],
+    }),
+  })
+);
 
 export const returnPackageEventsRelations = relations(
   returnPackageEvents,

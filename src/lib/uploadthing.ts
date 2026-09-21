@@ -9,9 +9,16 @@
 
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
+import { z } from "zod";
+import { container } from "@/application/container";
+import { ReturnEvidenceUploadService } from "@/infrastructure/services/uploadthing-evidence-storage.service";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { getUserRole, isAdminRole } from "@/server/utils/auth-helpers";
+import {
+  getUserRole,
+  isAdminAreaRole,
+  isAdminRole,
+} from "@/server/utils/auth-helpers";
 
 const f = createUploadthing();
 
@@ -50,6 +57,19 @@ async function requireAdminUploader() {
   }
 
   return { userId: user.id };
+}
+
+async function requireEvidenceUploader() {
+  const user = await currentUser();
+  if (!user) throw new UploadThingError("Unauthorized");
+
+  return { id: user.id, role: await getUserRole(user.id) };
+}
+
+function evidenceUploads() {
+  return new ReturnEvidenceUploadService(
+    container.getReturnRequestRepository()
+  );
 }
 
 /**
@@ -100,6 +120,96 @@ export const uploadRouter = {
     })
     .onUploadComplete(async ({ file }) => {
       return { url: file.ufsUrl };
+    }),
+
+  /**
+   * The two pre-pickup photos are independently identified, so each kind can
+   * be uploaded exactly once and cannot be substituted for the other.
+   */
+  returnCustomerEvidence: f({
+    image: { maxFileSize: "4MB", maxFileCount: 1 },
+  })
+    .input(
+      z.object({
+        requestId: z.string().uuid(),
+        kind: z.enum(["customer_product_photo", "customer_package_photo"]),
+      })
+    )
+    .middleware(async ({ input }) => {
+      const actor = await requireEvidenceUploader();
+      try {
+        const authorization = await evidenceUploads().authorizeCustomerUpload({
+          actor,
+          ...input,
+        });
+        return { authorization };
+      } catch (error) {
+        throw new UploadThingError(
+          error instanceof Error
+            ? error.message
+            : "Return evidence is unavailable"
+        );
+      }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      try {
+        await evidenceUploads().recordUpload({
+          authorization: metadata.authorization,
+          file,
+        });
+        return { key: file.key };
+      } catch (error) {
+        throw new UploadThingError(
+          error instanceof Error
+            ? error.message
+            : "Return evidence could not be recorded"
+        );
+      }
+    }),
+
+  /** One private, continuous receiving/unboxing video per return request. */
+  returnReceivingEvidence: f({
+    video: { maxFileSize: "256MB", maxFileCount: 1 },
+  })
+    .input(
+      z.object({
+        requestId: z.string().uuid(),
+        kind: z.literal("receiving_inspection_video"),
+      })
+    )
+    .middleware(async ({ input }) => {
+      const actor = await requireEvidenceUploader();
+      if (!isAdminAreaRole(actor.role)) {
+        throw new UploadThingError("Staff access required");
+      }
+      try {
+        const authorization = await evidenceUploads().authorizeReceivingUpload({
+          actor,
+          ...input,
+        });
+        return { authorization };
+      } catch (error) {
+        throw new UploadThingError(
+          error instanceof Error
+            ? error.message
+            : "Receiving evidence is unavailable"
+        );
+      }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      try {
+        await evidenceUploads().recordUpload({
+          authorization: metadata.authorization,
+          file,
+        });
+        return { key: file.key };
+      } catch (error) {
+        throw new UploadThingError(
+          error instanceof Error
+            ? error.message
+            : "Receiving evidence could not be recorded"
+        );
+      }
     }),
 } satisfies FileRouter;
 

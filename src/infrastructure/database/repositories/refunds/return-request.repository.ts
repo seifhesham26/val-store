@@ -8,6 +8,7 @@ import {
   productVariants,
   returnCarrierClaims,
   returnEvidence,
+  returnEvidenceAccessAudits,
   returnPackageEvents,
   returnProposals,
   returnRequestItems,
@@ -43,6 +44,12 @@ const unresolvedStatuses: ReturnRequestStatus[] = [
   "confirmed",
   "evidence_exception",
 ];
+
+const singleFileEvidenceKinds = new Set([
+  "customer_product_photo",
+  "customer_package_photo",
+  "receiving_inspection_video",
+]);
 
 function money(value: string | number): number {
   return typeof value === "number" ? value : Number.parseFloat(value);
@@ -290,35 +297,111 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
   async attachEvidence(
     input: Parameters<ReturnRequestRepositoryInterface["attachEvidence"]>[0]
   ) {
-    const request = await loadRequest(input.requestId);
-    if (!request) throw new Error("Return request not found");
-    const customerEvidence = input.kind.startsWith("customer_");
-    assertReturnActionAllowed(
-      request.status,
-      customerEvidence ? "attach_customer_evidence" : "attach_staff_evidence"
-    );
-    if (customerEvidence) {
-      if (
-        input.uploaderRole !== "customer" ||
-        input.uploaderId !== request.customerId
-      ) {
-        throw new Error("Customer evidence belongs to the request owner only");
-      }
-    } else if (input.uploaderRole === "customer") {
-      throw new Error("Staff evidence cannot be uploaded by a customer");
-    }
+    await db.transaction(async (tx) => {
+      // The request row serializes concurrent completion callbacks. Without
+      // this lock, two valid UploadThing tokens could both observe zero rows
+      // and record a second required photo/video.
+      const [request] = await tx
+        .select({
+          status: returnRequests.status,
+          customerId: returnRequests.customerId,
+        })
+        .from(returnRequests)
+        .where(eq(returnRequests.id, input.requestId))
+        .for("update")
+        .limit(1);
+      if (!request) throw new Error("Return request not found");
 
-    await db.insert(returnEvidence).values({
-      requestId: input.requestId,
-      uploaderId: input.uploaderId,
-      uploaderRole: input.uploaderRole,
-      kind: input.kind,
-      storageKey: input.storageKey,
-      mimeType: input.mimeType,
-      sizeBytes: input.sizeBytes,
-      contentHash: input.contentHash,
-      originalMetadata: input.originalMetadata,
+      const customerEvidence = input.kind.startsWith("customer_");
+      assertReturnActionAllowed(
+        request.status,
+        customerEvidence ? "attach_customer_evidence" : "attach_staff_evidence"
+      );
+      if (customerEvidence) {
+        if (
+          input.uploaderRole !== "customer" ||
+          input.uploaderId !== request.customerId
+        ) {
+          throw new Error(
+            "Customer evidence belongs to the request owner only"
+          );
+        }
+      } else if (input.uploaderRole === "customer") {
+        throw new Error("Staff evidence cannot be uploaded by a customer");
+      }
+
+      if (singleFileEvidenceKinds.has(input.kind)) {
+        const [{ value }] = await tx
+          .select({ value: count() })
+          .from(returnEvidence)
+          .where(
+            and(
+              eq(returnEvidence.requestId, input.requestId),
+              eq(returnEvidence.kind, input.kind)
+            )
+          );
+        if (value > 0) {
+          throw new Error(
+            `${input.kind} is already uploaded for this return request`
+          );
+        }
+      }
+
+      await tx.insert(returnEvidence).values({
+        requestId: input.requestId,
+        uploaderId: input.uploaderId,
+        uploaderRole: input.uploaderRole,
+        kind: input.kind,
+        storageKey: input.storageKey,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        contentHash: input.contentHash,
+        originalMetadata: input.originalMetadata,
+      });
     });
+  }
+
+  async countEvidence(
+    input: Parameters<ReturnRequestRepositoryInterface["countEvidence"]>[0]
+  ): Promise<number> {
+    const [{ value }] = await db
+      .select({ value: count() })
+      .from(returnEvidence)
+      .where(
+        and(
+          eq(returnEvidence.requestId, input.requestId),
+          eq(returnEvidence.kind, input.kind)
+        )
+      );
+    return value;
+  }
+
+  async findEvidence(
+    input: Parameters<ReturnRequestRepositoryInterface["findEvidence"]>[0]
+  ) {
+    const [evidence] = await db
+      .select({
+        id: returnEvidence.id,
+        requestId: returnEvidence.requestId,
+        storageKey: returnEvidence.storageKey,
+      })
+      .from(returnEvidence)
+      .where(
+        and(
+          eq(returnEvidence.requestId, input.requestId),
+          eq(returnEvidence.storageKey, input.storageKey)
+        )
+      )
+      .limit(1);
+    return evidence ?? null;
+  }
+
+  async recordEvidenceAccess(
+    input: Parameters<
+      ReturnRequestRepositoryInterface["recordEvidenceAccess"]
+    >[0]
+  ): Promise<void> {
+    await db.insert(returnEvidenceAccessAudits).values(input);
   }
 
   async recordPackageEvent(
