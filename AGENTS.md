@@ -8,7 +8,7 @@ Valkyrie ("val-store") — a premium streetwear e-commerce store, targeted at Eg
 
 Package manager is **pnpm** (v10, Node 22+). `pnpm-workspace.yaml` exists only to pin security overrides — this is not a monorepo.
 
-Baseline as of last check (2026-09-17, after the inventory adjustment request/review phase): `type-check` clean from a fresh `.next`, `lint` **0 problems**, **831** unit tests passing across 80 files, `build` succeeds, and `pnpm test:integration`, which needs a database, is **94/94** across eight files.
+Last clean baseline remains 2026-09-17 after the inventory adjustment phase: `type-check` clean from a fresh `.next`, `lint` **0 problems**, **831** unit tests across 80 files, `build` succeeds, and database integration is **94/94** across eight files. The refund branch's 2026-09-21 verification is not yet a replacement baseline: focused tests are **59/59** across six files, lint and type-check pass, but the full unit suite is **904/905** across 90 files, build lacks `STRIPE_SECRET_KEY` in the worktree, and the configured integration run stalled without results.
 
 Two things this file previously claimed that were not true, corrected here because they cost time to re-derive: lint reports **no warnings at all** — the three `@next/next/no-location-assign-relative-destination` warnings described in earlier versions do not fire — and the test count was 270 before the audit added 60.
 
@@ -157,7 +157,7 @@ Order numbers are `VLK-YYYYMMDD-XXXXXX`, generated in `DrizzleOrderRepository.cr
 
 Some of `OrderEntity` is resolved by the repository rather than carried on the row: `orderNumber` (assigned at insert, null on the entity being written), `shippingAddress`/`billingAddress` (joined `OrderAddress` values alongside the raw ids), and `customer` (there is no `orders → user` relation, so `loadCustomers()` does one batched `inArray` query per call — never one per row). All are null on write and populated on read.
 
-Returns are **partial and derived**: `order_items.refundedQuantity` is the only stored fact, and `refundedAmount()` / `getRefundedItems()` compute from it, scaled by `paidFraction()` so a coupon order refunds what the customer actually paid. Nothing caches a refund total that could drift.
+Returns now use requests, inspection facts, immutable proposal versions, evidence/package records, customer acknowledgment/OTP, separate physical disposition, and a payout state machine. `order_items.refundedQuantity` and `orders.refundedShippingAmount` remain the completed financial facts and advance only on a verified `succeeded` payout; accepted physical stock may be restocked while payout is pending. The direct admin-order refund mutation is gone. WhatsApp OTP and OPay transports are deliberately unavailable until real providers are configured. **Launch blocker:** the current admin inspection input still supplies paid line amounts, delivery, collection, captured-payment, and payout destination to `RecordReturnInspectionUseCase`; resolve those from locked durable records before treating proposals as authoritative.
 
 Status changes go through the `OrderStatus` value object's transition table — the repository rejects invalid transitions, so a new status must be added to the DB enum, the entity's `OrderStatus` union, the value object's `transitions` map, and the admin dropdown together.
 
@@ -274,7 +274,7 @@ These are working. They are listed because each is easy to break again — the f
 
 `docs/GO-LIVE.md` is the domain cutover: everything that has to change **outside the repo** now that the site serves from `https://www.valkyrie-eg.com` — the three URL env vars, Google/Facebook OAuth redirect URIs, Stripe live keys and webhook, Resend domain verification, DNS and Search Console. It is the companion to `POST-LAUNCH.md`, which owns the application-side cutover checks; neither duplicates the other.
 
-`docs/REFUNDS.md`, `docs/LOYALTY-POINTS.md` and `docs/PHONE-VERIFICATION.md` are **planned work, not defects**. Refunds record a return correctly but move no money — deliberate, pending the payment gateway decision, with the interim exposure stated (the admin button says "Refund", so refunds must be issued by hand in the provider's dashboard until then). Loyalty and phone verification are designed and agreed but entirely unbuilt: no table, no column, no code.
+`docs/REFUNDS.md` records the implemented-but-not-yet-verification-clean refund workflow and its provider/security blockers. `docs/LOYALTY-POINTS.md` and `docs/PHONE-VERIFICATION.md` remain planned work, not defects; both are designed and agreed but unbuilt.
 
 `docs/PRELAUNCH-HANDOFF.md` is the continuity source for approved product decisions and the ordered remaining roadmap. The customer-access design and implementation plan are retained under `docs/superpowers/` as the record of the completed phase. Fifteen older files were deleted on 2026-09-03 because they described intent or finished work rather than current state; `git log --diff-filter=D -- docs/` recovers any of them.
 

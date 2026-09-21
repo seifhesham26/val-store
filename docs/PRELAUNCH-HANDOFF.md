@@ -1,10 +1,11 @@
 # Pre-launch handoff
 
-**Updated:** 2026-09-17
-**Branch:** `codex/prelaunch-readiness`  
+**Updated:** 2026-09-21
+**Branch:** `codex/refund-authorization-evidence`
 **Customer-access implementation commit:** `3f1e1ae`
 **Inventory implementation commits:** `714f276` through `5c72ac1`
 **Development seed reset commit:** `d75e894`
+**Refund implementation commits:** `675824e` through `ce2facc`
 **Documentation checkpoint:** the commit containing this handoff (inspect `HEAD`)
 
 This is the short continuity document for starting a fresh Codex task. It records
@@ -23,20 +24,32 @@ not here.
 
 ## Current checkpoint
 
-The customer-data access and audit foundation and the inventory adjustment
-request/review phase are implemented. Automated verification completed
-successfully on this branch:
+The customer-data access/audit foundation and inventory adjustment phase remain
+implemented. The refund authorization/evidence phase is implemented through
+`ce2facc`, but its 2026-09-21 verification is not clean:
 
-- `pnpm type-check`
-- `pnpm lint` — 0 problems
-- `pnpm test` — 831/831 unit tests across 80 files
-- `pnpm test:integration` — 94/94 tests across 8 files
-- `pnpm build` — successful; 72 pages generated with the current development data
-- `pnpm type-check` — clean after removing `.next`
+- focused refund/admin-gating suite — 59/59 tests across 6 files
+- `pnpm lint` — exit 0
+- `pnpm type-check` — exit 0 after confirming `.next` was absent
+- `pnpm test` — 904/905 tests across 90 files; the remaining source-scan test
+  expects a second admin-order catalogue invalidation from the refund mutation
+  that this phase intentionally removed
+- `pnpm build` — compiled and type-checked, then failed collecting the Stripe
+  webhook because this worktree has no `STRIPE_SECRET_KEY`
+- `pnpm test:integration` — started against the configured development database
+  but emitted no results for more than two minutes and was stopped
 
 Authenticated browser smoke of worker, admin, and super-admin flows remains
 outstanding because this checkout has no signed-in staff session. Do not treat
 that manual check as complete based on the automated results.
+
+The Task 10 policy/security review confirmed that refund policy constants are
+code-only, return decisions use the admin-write tier, signed evidence access is
+super-admin-only and audited, OTP challenges persist only HMAC hashes, and UI
+completed-payout copy is conditional on `succeeded`. It also found a blocking
+defect: inspection/proposal routes accept money inputs from the admin client and
+the use case persists calculations based on them. Resolve amounts from locked
+order/payment/return facts before launch.
 
 Run fresh verification before claiming a later change is complete. Clear `.next`
 before trusting `pnpm type-check`, as required by `AGENTS.md`.
@@ -156,6 +169,10 @@ try to replay the baseline instead of applying the unjournalled files.
 - `0004`–`0008` are applied to the development database but not journalled.
 - `0008_customer_data_access_audit.sql` creates the additive audit table and
   its four indexes. It was applied directly and verified; do not replay it.
+- On 2026-09-21, `pnpm db:push` applied only the remaining refund additions it
+  proposed: `notification_type.return_request` and the evidence-access audit
+  table with three foreign keys and two indexes. The other refund tables were
+  already present. No migration command was run.
 - Production will use a separate database. Design and verify its bootstrap at
   cutover; do not copy a migration command from an old note without checking
   the new database's actual state.
@@ -422,10 +439,11 @@ These are known dependencies, not current code defects.
 
 ## Recommended remaining phases
 
-1. **Refund authorization workflow.** Implement the hardcoded policy, private
-   evidence vault, physical/evidence/payout state machine, and confirmation
-   gates in `docs/REFUNDS.md`; do not pretend to move money before the OTP
-   provider and OPay behavior are known.
+1. **Close refund verification defects.** Remove client-trusted proposal money,
+   update the stale cache-invalidation assertion, complete the super-admin media
+   opening flow, and obtain clean unit/build/integration and authenticated smoke
+   results. Do not pretend to move money before the OTP provider and OPay
+   behavior are known.
 2. **Identity and messaging.** Update the old phone/loyalty designs for one phone
    per account, then implement Resend and the chosen OTP provider when credentials
    exist.
@@ -442,11 +460,10 @@ approve it, implement it, verify it, and update this handoff.
 
 ## Immediate next task
 
-The immediate next task is the refund authorization workflow described by
-`docs/superpowers/specs/2026-09-15-refund-authorization-evidence-design.md`.
-Implement the hardcoded return/refund policy and evidence/confirmation gates,
-but keep actual provider money movement blocked until OTP and OPay behavior are
-known. The inventory phase is implemented; its authenticated staff browser
+The immediate next task is to close the refund phase's documented verification
+and trust-boundary defects without broadening into provider integration. Keep
+actual money movement blocked until WhatsApp OTP and verified OPay behavior are
+known. Inventory remains a separate completed phase; authenticated staff browser
 smoke remains a manual follow-up.
 
 ## Source-of-truth documents
@@ -457,7 +474,8 @@ smoke remains a manual follow-up.
 - `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`
   — approved design record for the implemented inventory-operations phase
 - `docs/superpowers/specs/2026-09-15-refund-authorization-evidence-design.md`
-  — approved-but-unbuilt refund policy, confirmation, and inspection-evidence design
+  — implemented refund design; verification blockers are recorded here and in
+  `docs/REFUNDS.md`
 - `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`
   — task-by-task implementation and verification record for that phase
 - `docs/EXTERNAL-INTEGRATIONS-ROADMAP.md` — remaining OPay, WhatsApp, Resend,
@@ -478,7 +496,8 @@ smoke remains a manual follow-up.
 
 ## Copy-paste prompt for the next task
 
-> Continue the Valkyrie pre-launch work in `C:\dev\val-store`. Read `AGENTS.md`
+> Continue the Valkyrie pre-launch work from the refund implementation branch.
+> Read `AGENTS.md`
 > and `docs/PRELAUNCH-HANDOFF.md` completely before acting, then verify the branch
 > and working tree. Treat the handoff Q&A ledger as my latest approved product
 > decisions. The customer-data access and audit foundation is complete; do not
@@ -487,8 +506,10 @@ smoke remains a manual follow-up.
 > `docs/superpowers/specs/2026-09-15-inventory-adjustment-request-review-design.md`
 > and
 > `docs/superpowers/plans/2026-09-15-inventory-adjustment-request-review.md`.
-> Continue with the next approved phase, preserving the request, inspection,
-> quarantine, availability, concurrency, and customer-copy decisions already
-> implemented. Clearly separate implemented, approved-but-unbuilt, and
-> externally blocked work. Do not run
+> The refund workflow is implemented through `ce2facc` but is not verification-
+> clean: remove client-trusted inspection money inputs, update the stale cache
+> invalidation test, finish the signed-media viewer, and rerun unit/build/
+> integration plus authenticated smoke checks. Keep OPay and WhatsApp fail-closed.
+> Clearly separate implemented, approved-but-unbuilt, and externally blocked
+> work. Do not run
 > `pnpm db:migrate` on the current development database.
