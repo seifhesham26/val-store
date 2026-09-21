@@ -115,6 +115,17 @@ export interface ReturnRequestRepositoryInterface {
     reviewerId: string;
     reason: string;
   }): Promise<ReturnRequestRecord>;
+  submitDispute(input: {
+    requestId: string;
+    customerId: string;
+    proposalVersion: number;
+    reason: string;
+  }): Promise<ReturnRequestRecord>;
+  reviewDispute(input: {
+    requestId: string;
+    reviewerId: string;
+    expectedLevel: number;
+  }): Promise<ReturnRequestRecord>;
   finalize(input: {
     requestId: string;
     customerId: string;

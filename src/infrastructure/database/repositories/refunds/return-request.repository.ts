@@ -513,6 +513,57 @@ export class DrizzleReturnRequestRepository implements ReturnRequestRepositoryIn
     return (await loadRequest(input.requestId))!;
   }
 
+  async submitDispute(
+    input: Parameters<ReturnRequestRepositoryInterface["submitDispute"]>[0]
+  ) {
+    if (!input.reason.trim()) throw new Error("A dispute reason is required");
+    const now = new Date();
+    const [updated] = await db
+      .update(returnRequests)
+      .set({
+        status: "disputed",
+        disputeReason: input.reason.trim(),
+        disputedAt: now,
+        disputeLevel: 1,
+        payoutStatus: "pending",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(returnRequests.id, input.requestId),
+          eq(returnRequests.customerId, input.customerId),
+          eq(returnRequests.proposalVersion, input.proposalVersion),
+          eq(returnRequests.status, "awaiting_customer_confirmation")
+        )
+      )
+      .returning({ id: returnRequests.id });
+    if (!updated) throw conflict("the proposal is no longer current");
+    return (await loadRequest(updated.id))!;
+  }
+
+  async reviewDispute(
+    input: Parameters<ReturnRequestRepositoryInterface["reviewDispute"]>[0]
+  ) {
+    const [updated] = await db
+      .update(returnRequests)
+      .set({
+        reviewerId: input.reviewerId,
+        disputeLevel: input.expectedLevel + 1,
+        status: "inspection_pending",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(returnRequests.id, input.requestId),
+          eq(returnRequests.status, "disputed"),
+          eq(returnRequests.disputeLevel, input.expectedLevel)
+        )
+      )
+      .returning({ id: returnRequests.id });
+    if (!updated) throw conflict("the dispute was already reviewed");
+    return (await loadRequest(updated.id))!;
+  }
+
   async finalize(
     input: Parameters<ReturnRequestRepositoryInterface["finalize"]>[0]
   ) {

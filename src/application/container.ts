@@ -21,6 +21,7 @@ import { createNotificationModule } from "./notifications";
 import { createLegalModule } from "./legal";
 import { createShippingModule } from "./shipping";
 import { createCustomerAccessModule } from "./customer-access";
+import { createRefundModule } from "./refunds";
 import { NextTaskScheduler } from "@/infrastructure/services/next-task-scheduler.service";
 
 function createContainer() {
@@ -47,6 +48,9 @@ function createContainer() {
   const orders = createOrderModule({
     getNotificationService: notifications.getNotificationService,
     getEmailService: () => services.getEmailService(),
+  });
+  const refunds = createRefundModule({
+    getOrderRepository: orders.getOrderRepository,
   });
   const categories = createCategoryModule();
   const dashboard = createDashboardModule();
@@ -83,6 +87,7 @@ function createContainer() {
     ...products,
     // Orders
     ...orders,
+    ...refunds,
     // Categories
     ...categories,
     // Dashboard
