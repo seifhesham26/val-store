@@ -78,6 +78,7 @@ async function resolveUser(reqHeaders: Headers): Promise<AuthUser | null> {
       id: session.user.id,
       email: session.user.email,
       name: session.user.name,
+      phone: session.user.phone ?? null,
       role,
     };
   } catch {
