@@ -99,6 +99,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "failed_payment",
   "new_customer",
   "inventory_request",
+  "return_request",
 ]);
 
 // User notification type enum

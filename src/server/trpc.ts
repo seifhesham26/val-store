@@ -248,6 +248,14 @@ export const workerProcedure = adminProcedure.use(({ ctx, next }) => {
 });
 
 /**
+ * Return-evidence intake is deliberately available to every staff role.
+ * It records observed package facts only; it cannot classify a return, create
+ * a proposal, or move money. Keeping the capability named prevents it being
+ * mistaken for a worker refund-decision permission.
+ */
+export const staffEvidenceProcedure = adminProcedure;
+
+/**
  * Browsable customer data â€” admin and super_admin only.
  *
  * This deliberately has its own name even though it currently shares the

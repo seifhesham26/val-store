@@ -318,6 +318,40 @@ export class NotificationService {
     );
   }
 
+  /** A customer submitted a return that now needs operational review. */
+  async returnRequested(input: {
+    requestId: string;
+    orderNumber: string | null;
+    itemCount: number;
+  }): Promise<void> {
+    const label =
+      input.orderNumber ?? input.requestId.slice(0, 8).toUpperCase();
+    await this.safely("returnRequested", () =>
+      this.fanOutToAdmins({
+        notificationType: "return_request",
+        title: "Return request awaiting review",
+        message: `${label} — ${input.itemCount} item${input.itemCount === 1 ? "" : "s"} requested.`,
+        relatedEntityId: input.requestId,
+      })
+    );
+  }
+
+  /** Customer-facing state changes in the return workflow are courtesy-only. */
+  async returnUpdated(input: {
+    userId: string;
+    requestId: string;
+    status: string;
+  }): Promise<void> {
+    await this.safely("returnUpdated", () =>
+      this.userNotifications.create({
+        userId: input.userId,
+        notificationType: "return_update",
+        title: "Return request updated",
+        message: `Your return request is now ${input.status.replaceAll("_", " ")}.`,
+      })
+    );
+  }
+
   /** One row per admin or super admin, in a single insert. */
   private async fanOutToAdmins(notification: {
     notificationType:
@@ -326,7 +360,8 @@ export class NotificationService {
       | "new_review"
       | "failed_payment"
       | "new_customer"
-      | "inventory_request";
+      | "inventory_request"
+      | "return_request";
     title: string;
     message: string;
     relatedEntityId?: string;

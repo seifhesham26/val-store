@@ -37,12 +37,18 @@ export const returnsRouter = router({
         })
         .strict()
     )
-    .mutation(({ ctx, input }) =>
-      container.getCreateReturnRequestUseCase().execute({
+    .mutation(async ({ ctx, input }) => {
+      const request = await container.getCreateReturnRequestUseCase().execute({
         ...input,
         userId: ctx.user.id,
-      })
-    ),
+      });
+      await container.getNotificationService().returnRequested({
+        requestId: request.id,
+        orderNumber: null,
+        itemCount: request.items.length,
+      });
+      return request;
+    }),
 
   getById: protectedProcedure
     .input(z.object({ requestId: id }).strict())

@@ -14,6 +14,7 @@ import { categoriesRouter } from "./categories";
 import { legalRouter } from "./legal";
 import { shippingRouter } from "./shipping";
 import { accessAuditRouter } from "./access-audit";
+import { adminReturnsRouter } from "./returns";
 
 export const adminRouter = router({
   products: productsRouter,
@@ -31,4 +32,5 @@ export const adminRouter = router({
   legal: legalRouter,
   shipping: shippingRouter,
   accessAudit: accessAuditRouter,
+  returns: adminReturnsRouter,
 });

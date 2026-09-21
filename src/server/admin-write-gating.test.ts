@@ -63,6 +63,25 @@ const WORKER_ONLY_MUTATIONS = new Set([
   "inventory.ts::completeInspection",
 ]);
 
+/** Return evidence intake records a staff observation, not a refund decision. */
+const STAFF_EVIDENCE_MUTATIONS = new Set(["returns.ts::recordEvidenceIntake"]);
+
+/** The return queue is operational work, so workers must be able to read it. */
+const WORKER_RETURN_QUERIES = new Set([
+  "returns.ts::list",
+  "returns.ts::getById",
+  "returns.ts::pendingCount",
+]);
+
+/** Decisions in the return workflow must never be writable by a worker. */
+const RETURN_DECISION_MUTATIONS = new Set([
+  "returns.ts::authorizePickup",
+  "returns.ts::recordInspection",
+  "returns.ts::approveProposal",
+  "returns.ts::reject",
+  "returns.ts::mediaException",
+]);
+
 /** Customer-directory reads are intentionally narrower than the worker tier. */
 const CUSTOMER_DIRECTORY_QUERIES = new Set([
   "customers.ts::list",
@@ -89,7 +108,7 @@ function collectProcedures(): Procedure[] {
 
       // `  name: someProcedure` … up to the next property at the same indent.
       const re =
-        /\n {2}(\w+): ((?:admin\w*|customerDirectory|worker)Procedure)((?:(?!\n {2}\w+: )[\s\S])*)/g;
+        /\n {2}(\w+): ((?:admin\w*|customerDirectory|worker|staffEvidence)Procedure)((?:(?!\n {2}\w+: )[\s\S])*)/g;
       let m: RegExpExecArray | null;
       while ((m = re.exec(src)) !== null) {
         found.push({
@@ -123,6 +142,7 @@ describe("admin write gating", () => {
       .filter((p) => !SUPER_ADMIN_EXCEPTIONS.has(`${p.file}::${p.name}`))
       .filter((p) => !AUDITED_ACCESS_MUTATIONS.has(`${p.file}::${p.name}`))
       .filter((p) => !WORKER_ONLY_MUTATIONS.has(`${p.file}::${p.name}`))
+      .filter((p) => !STAFF_EVIDENCE_MUTATIONS.has(`${p.file}::${p.name}`))
       .filter((p) => p.procedure !== "adminWriteProcedure")
       .map((p) => `${p.file} :: ${p.name} uses ${p.procedure}`);
 
@@ -134,9 +154,13 @@ describe("admin write gating", () => {
       .filter((p) => !p.isMutation)
       .filter((p) => {
         const key = `${p.file}::${p.name}`;
-        return CUSTOMER_DIRECTORY_QUERIES.has(key)
-          ? p.procedure !== "customerDirectoryProcedure"
-          : p.procedure !== "adminProcedure";
+        if (CUSTOMER_DIRECTORY_QUERIES.has(key)) {
+          return p.procedure !== "customerDirectoryProcedure";
+        }
+        if (WORKER_RETURN_QUERIES.has(key)) {
+          return p.procedure !== "adminProcedure";
+        }
+        return p.procedure !== "adminProcedure";
       })
       .map((p) => `${p.file} :: ${p.name} uses ${p.procedure}`);
 
@@ -180,6 +204,33 @@ describe("admin write gating", () => {
       expect(proc, `${key} no longer exists`).toBeDefined();
       expect(proc!.isMutation).toBe(true);
       expect(proc!.procedure).toBe("workerProcedure");
+    }
+  });
+
+  it("keeps return queue reads and evidence intake available to staff", () => {
+    for (const key of WORKER_RETURN_QUERIES) {
+      const [file, name] = key.split("::");
+      const proc = procedures.find((p) => p.file === file && p.name === name);
+      expect(proc, `${key} no longer exists`).toBeDefined();
+      expect(proc!.isMutation).toBe(false);
+      expect(proc!.procedure).toBe("adminProcedure");
+    }
+    for (const key of STAFF_EVIDENCE_MUTATIONS) {
+      const [file, name] = key.split("::");
+      const proc = procedures.find((p) => p.file === file && p.name === name);
+      expect(proc, `${key} no longer exists`).toBeDefined();
+      expect(proc!.isMutation).toBe(true);
+      expect(proc!.procedure).toBe("staffEvidenceProcedure");
+    }
+  });
+
+  it("keeps every return decision on the admin write tier", () => {
+    for (const key of RETURN_DECISION_MUTATIONS) {
+      const [file, name] = key.split("::");
+      const proc = procedures.find((p) => p.file === file && p.name === name);
+      expect(proc, `${key} no longer exists`).toBeDefined();
+      expect(proc!.isMutation).toBe(true);
+      expect(proc!.procedure).toBe("adminWriteProcedure");
     }
   });
 });
