@@ -45,6 +45,10 @@ export interface GetOrderOutput {
   awaitingPayment: boolean;
   /** Money already returned to the customer across all returns. */
   refundedAmount: number;
+  /** Completed item payouts only; authorized/pending money is excluded. */
+  refundedItemAmount: number;
+  /** Completed delivery payouts only. */
+  refundedDeliveryAmount: number;
   /** Some units returned, but not all. */
   partiallyRefunded: boolean;
   fullyRefunded: boolean;
@@ -98,6 +102,8 @@ export function mapOrderToOutput(order: OrderEntity): GetOrderOutput {
     canRefund: order.canRefund(),
     awaitingPayment: order.isAwaitingPayment(),
     refundedAmount: order.refundedAmount(),
+    refundedItemAmount: order.refundedAmount() - order.refundedShippingAmount,
+    refundedDeliveryAmount: order.refundedShippingAmount,
     partiallyRefunded: order.isPartiallyRefunded(),
     fullyRefunded: order.isFullyRefunded(),
     paymentDeadline: order.paymentDeadline(),

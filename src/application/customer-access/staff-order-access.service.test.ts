@@ -155,6 +155,8 @@ const orderDetail: GetOrderOutput = {
   canRefund: false,
   awaitingPayment: false,
   refundedAmount: 0,
+  refundedItemAmount: 0,
+  refundedDeliveryAmount: 0,
   partiallyRefunded: false,
   fullyRefunded: false,
   paymentDeadline: null,

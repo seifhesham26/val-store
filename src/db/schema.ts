@@ -99,6 +99,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "failed_payment",
   "new_customer",
   "inventory_request",
+  "return_request",
 ]);
 
 // User notification type enum
@@ -112,6 +113,110 @@ export const userNotificationTypeEnum = pgEnum("user_notification_type", [
   "order_delivered",
   "order_cancelled",
   "refund_processed",
+  "return_update",
+]);
+
+export const returnRequestStatusEnum = pgEnum("return_request_status", [
+  "requested",
+  "awaiting_customer_evidence",
+  "pickup_authorized",
+  "pickup_pending",
+  "in_transit",
+  "received",
+  "count_disputed",
+  "inspection_pending",
+  "awaiting_customer_confirmation",
+  "disputed",
+  "customer_action_required",
+  "confirmed",
+  "recorded",
+  "rejected",
+  "evidence_exception",
+]);
+
+export const returnReasonEnum = pgEnum("return_reason", [
+  "change_of_mind",
+  "defective",
+  "wrong_item",
+  "not_as_described",
+  "late_delivery",
+]);
+
+export const returnInspectionOutcomeEnum = pgEnum("return_inspection_outcome", [
+  "unworn",
+  "worn_resellable",
+  "defective",
+  "customer_damage",
+  "damaged_quarantine",
+  "missing_not_received",
+]);
+
+export const returnPhysicalStatusEnum = pgEnum("return_physical_status", [
+  "pending",
+  "in_transit",
+  "received",
+  "resellable",
+  "quarantined",
+  "missing",
+  "mixed",
+]);
+
+export const returnPayoutStatusEnum = pgEnum("return_payout_status", [
+  "pending",
+  "succeeded",
+  "failed",
+  "unknown",
+]);
+
+export const returnEvidenceStatusEnum = pgEnum("return_evidence_status", [
+  "pending",
+  "complete",
+  "exception",
+]);
+
+export const returnEvidenceKindEnum = pgEnum("return_evidence_kind", [
+  "customer_product_photo",
+  "customer_package_photo",
+  "courier_handoff_video",
+  "receiving_inspection_video",
+  "payout_proof",
+  "cash_receipt",
+]);
+
+export const returnEvidenceValidationEnum = pgEnum(
+  "return_evidence_validation",
+  ["pending", "valid", "invalid", "missing", "corrupt", "exception"]
+);
+
+export const returnPackageEventKindEnum = pgEnum("return_package_event_kind", [
+  "customer_declaration",
+  "courier_handoff",
+  "receiving_count",
+  "second_count",
+  "correction",
+]);
+
+export const returnFaultEnum = pgEnum("return_fault", [
+  "customer",
+  "carrier",
+  "valkyrie",
+  "unresolved",
+]);
+
+export const returnCarrierClaimStatusEnum = pgEnum(
+  "return_carrier_claim_status",
+  ["open", "resolved", "refunded_after_deadline"]
+);
+
+export const returnPayoutProviderEnum = pgEnum("return_payout_provider", [
+  "opay",
+  "cash",
+  "e_wallet",
+]);
+
+export const returnPickupMethodEnum = pgEnum("return_pickup_method", [
+  "courier",
+  "in_store",
 ]);
 
 // ============================================
@@ -429,6 +534,12 @@ export const orders = pgTable(
     discountAmount: decimal("discount_amount", { precision: 10, scale: 2 })
       .default("0")
       .notNull(),
+    refundedShippingAmount: decimal("refunded_shipping_amount", {
+      precision: 10,
+      scale: 2,
+    })
+      .default("0")
+      .notNull(),
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
     // EGP, not USD. A literal rather than STORE_CURRENCY because a column
     // default has to be stable across environments — if it read the env var,
@@ -539,6 +650,338 @@ export const orderItems = pgTable(
     orderIdIdx: index("idx_order_items_order_id").on(table.orderId),
     productIdIdx: index("idx_order_items_product_id").on(table.productId),
     variantIdIdx: index("idx_order_items_variant_id").on(table.variantId),
+  })
+);
+
+// ============================================
+// RETURNS, EVIDENCE, AND PAYOUTS
+// ============================================
+
+export const returnRequests = pgTable(
+  "return_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "restrict" }),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    reviewerId: text("reviewer_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    status: returnRequestStatusEnum("status").default("requested").notNull(),
+    reason: returnReasonEnum("reason").notNull(),
+    customerNote: text("customer_note"),
+    reviewNote: text("review_note"),
+    pickupMethod: returnPickupMethodEnum("pickup_method"),
+    physicalStatus: returnPhysicalStatusEnum("physical_status")
+      .default("pending")
+      .notNull(),
+    evidenceStatus: returnEvidenceStatusEnum("evidence_status")
+      .default("pending")
+      .notNull(),
+    payoutStatus: returnPayoutStatusEnum("payout_status"),
+    carrierClaimStatus: returnCarrierClaimStatusEnum("carrier_claim_status"),
+    proposalVersion: integer("proposal_version").default(0).notNull(),
+    packageCount: integer("package_count"),
+    packageSealed: boolean("package_sealed"),
+    evidenceDueAt: timestamp("evidence_due_at"),
+    handoffDueAt: timestamp("handoff_due_at"),
+    pickupAuthorizedAt: timestamp("pickup_authorized_at"),
+    proposalOpenedAt: timestamp("proposal_opened_at"),
+    acknowledgedAt: timestamp("acknowledged_at"),
+    confirmedAt: timestamp("confirmed_at"),
+    recordedAt: timestamp("recorded_at"),
+    rejectedAt: timestamp("rejected_at"),
+    disputedAt: timestamp("disputed_at"),
+    disputeReason: text("dispute_reason"),
+    disputeLevel: integer("dispute_level").default(0).notNull(),
+    customerActionRequiredAt: timestamp("customer_action_required_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    orderIdIdx: index("idx_return_requests_order_id").on(table.orderId),
+    customerIdIdx: index("idx_return_requests_customer_id").on(
+      table.customerId
+    ),
+    reviewerIdIdx: index("idx_return_requests_reviewer_id").on(
+      table.reviewerId
+    ),
+    statusCreatedIdx: index("idx_return_requests_status_created").on(
+      table.status,
+      table.createdAt
+    ),
+  })
+);
+
+export const returnRequestItems = pgTable(
+  "return_request_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    orderItemId: uuid("order_item_id")
+      .notNull()
+      .references(() => orderItems.id, { onDelete: "restrict" }),
+    requestedQuantity: integer("requested_quantity").notNull(),
+    receivedQuantity: integer("received_quantity").default(0).notNull(),
+    inspectedQuantity: integer("inspected_quantity").default(0).notNull(),
+    approvedQuantity: integer("approved_quantity").default(0).notNull(),
+    returnedQuantity: integer("returned_quantity").default(0).notNull(),
+    restockedQuantity: integer("restocked_quantity").default(0).notNull(),
+    refundedQuantity: integer("refunded_quantity").default(0).notNull(),
+    outcome: returnInspectionOutcomeEnum("outcome"),
+    fault: returnFaultEnum("fault"),
+    itemRefund: decimal("item_refund", { precision: 10, scale: 2 })
+      .default("0")
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_request_items_request_id").on(
+      table.requestId
+    ),
+    orderItemIdIdx: index("idx_return_request_items_order_item_id").on(
+      table.orderItemId
+    ),
+    requestOrderItemUnique: uniqueIndex(
+      "uq_return_request_items_request_order_item"
+    ).on(table.requestId, table.orderItemId),
+  })
+);
+
+export const returnProposals = pgTable(
+  "return_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    itemRefund: decimal("item_refund", { precision: 10, scale: 2 }).notNull(),
+    deliveryRefund: decimal("delivery_refund", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    collectionDue: decimal("collection_due", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    totalRefund: decimal("total_refund", { precision: 10, scale: 2 }).notNull(),
+    payoutDestination: varchar("payout_destination", { length: 64 }),
+    customerCopy: text("customer_copy").notNull(),
+    calculation: jsonb("calculation").notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_proposals_request_id").on(table.requestId),
+    createdByIdx: index("idx_return_proposals_created_by").on(table.createdBy),
+    requestVersionUnique: uniqueIndex("uq_return_proposals_request_version").on(
+      table.requestId,
+      table.version
+    ),
+  })
+);
+
+export const returnEvidence = pgTable(
+  "return_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    kind: returnEvidenceKindEnum("kind").notNull(),
+    storageKey: varchar("storage_key", { length: 500 }).notNull().unique(),
+    mimeType: varchar("mime_type", { length: 255 }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    contentHash: varchar("content_hash", { length: 128 }),
+    originalMetadata: jsonb("original_metadata"),
+    uploaderId: text("uploader_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    uploaderRole: userRoleEnum("uploader_role").notNull(),
+    validationState: returnEvidenceValidationEnum("validation_state")
+      .default("pending")
+      .notNull(),
+    validationNote: text("validation_note"),
+    validatedBy: text("validated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    validatedAt: timestamp("validated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_evidence_request_id").on(table.requestId),
+    uploaderIdIdx: index("idx_return_evidence_uploader_id").on(
+      table.uploaderId
+    ),
+    validatedByIdx: index("idx_return_evidence_validated_by").on(
+      table.validatedBy
+    ),
+  })
+);
+
+/** Immutable audit trail for private evidence URLs issued to super admins. */
+export const returnEvidenceAccessAudits = pgTable(
+  "return_evidence_access_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    evidenceId: uuid("evidence_id")
+      .notNull()
+      .references(() => returnEvidence.id, { onDelete: "cascade" }),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    actorRole: userRoleEnum("actor_role").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_evidence_access_request_id").on(
+      table.requestId,
+      table.createdAt
+    ),
+    evidenceIdIdx: index("idx_return_evidence_access_evidence_id").on(
+      table.evidenceId,
+      table.createdAt
+    ),
+  })
+);
+
+export const returnPackageEvents = pgTable(
+  "return_package_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    kind: returnPackageEventKindEnum("kind").notNull(),
+    packageCount: integer("package_count").notNull(),
+    itemCount: integer("item_count"),
+    sealIntact: boolean("seal_intact"),
+    note: text("note"),
+    recordedBy: text("recorded_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    correctionOfId: uuid("correction_of_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_package_events_request_id").on(
+      table.requestId
+    ),
+    recordedByIdx: index("idx_return_package_events_recorded_by").on(
+      table.recordedBy
+    ),
+    correctionOfIdx: index("idx_return_package_events_correction_of").on(
+      table.correctionOfId
+    ),
+    correctionOfFk: foreignKey({
+      columns: [table.correctionOfId],
+      foreignColumns: [table.id],
+      name: "return_package_events_correction_of_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+export const returnPayouts = pgTable(
+  "return_payouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "restrict" }),
+    proposalId: uuid("proposal_id")
+      .notNull()
+      .references(() => returnProposals.id, { onDelete: "restrict" }),
+    provider: returnPayoutProviderEnum("provider").notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 })
+      .notNull()
+      .unique(),
+    originalPaymentReference: varchar("original_payment_reference", {
+      length: 255,
+    }),
+    providerReference: varchar("provider_reference", { length: 255 }),
+    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+    status: returnPayoutStatusEnum("status").default("pending").notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    fallbackMethod: returnPayoutProviderEnum("fallback_method"),
+    proofStorageKey: varchar("proof_storage_key", { length: 500 }),
+    lastAttemptAt: timestamp("last_attempt_at"),
+    succeededAt: timestamp("succeeded_at"),
+    failedAt: timestamp("failed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_payouts_request_id").on(table.requestId),
+    proposalIdIdx: index("idx_return_payouts_proposal_id").on(table.proposalId),
+    statusIdx: index("idx_return_payouts_status").on(table.status),
+  })
+);
+
+export const returnCarrierClaims = pgTable(
+  "return_carrier_claims",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .unique()
+      .references(() => returnRequests.id, { onDelete: "restrict" }),
+    status: returnCarrierClaimStatusEnum("status").default("open").notNull(),
+    fault: returnFaultEnum("fault").default("unresolved").notNull(),
+    missingQuantity: integer("missing_quantity").notNull(),
+    openedAt: timestamp("opened_at").defaultNow().notNull(),
+    deadlineAt: timestamp("deadline_at").notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    refundedAt: timestamp("refunded_at"),
+    outcomeNote: text("outcome_note"),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_carrier_claims_request_id").on(
+      table.requestId
+    ),
+    createdByIdx: index("idx_return_carrier_claims_created_by").on(
+      table.createdBy
+    ),
+  })
+);
+
+export const returnOtpChallenges = pgTable(
+  "return_otp_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => returnRequests.id, { onDelete: "cascade" }),
+    proposalVersion: integer("proposal_version").notNull(),
+    codeHash: varchar("code_hash", { length: 128 }).notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    invalidatedAt: timestamp("invalidated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdIdx: index("idx_return_otp_challenges_request_id").on(
+      table.requestId
+    ),
+    activeChallengeIdx: index("idx_return_otp_challenges_active").on(
+      table.requestId,
+      table.expiresAt
+    ),
   })
 );
 

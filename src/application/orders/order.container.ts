@@ -9,7 +9,6 @@ import { ListOrdersUseCase } from "./use-cases/list-orders.use-case";
 import { GetOrderUseCase } from "./use-cases/get-order.use-case";
 import { UpdateOrderStatusUseCase } from "./use-cases/update-order-status.use-case";
 import { CancelExpiredCheckoutsUseCase } from "./use-cases/cancel-expired-checkouts.use-case";
-import { RefundOrderUseCase } from "./use-cases/refund-order.use-case";
 import { SendOrderConfirmationUseCase } from "./use-cases/send-order-confirmation.use-case";
 import { NotificationService } from "@/application/notifications/notification.service";
 import { EmailServiceInterface } from "@/application/interfaces/email.interface";
@@ -25,7 +24,6 @@ export function createOrderModule(deps: {
   let getOrder: GetOrderUseCase | undefined;
   let updateOrderStatus: UpdateOrderStatusUseCase | undefined;
   let cancelExpiredCheckouts: CancelExpiredCheckoutsUseCase | undefined;
-  let refundOrder: RefundOrderUseCase | undefined;
   let sendOrderConfirmation: SendOrderConfirmationUseCase | undefined;
 
   return {
@@ -36,11 +34,6 @@ export function createOrderModule(deps: {
       (getOrder ??= new GetOrderUseCase(getOrderRepository())),
     getUpdateOrderStatusUseCase: () =>
       (updateOrderStatus ??= new UpdateOrderStatusUseCase(
-        getOrderRepository(),
-        deps.getNotificationService()
-      )),
-    getRefundOrderUseCase: () =>
-      (refundOrder ??= new RefundOrderUseCase(
         getOrderRepository(),
         deps.getNotificationService()
       )),

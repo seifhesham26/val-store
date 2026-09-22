@@ -17,6 +17,7 @@ import { OrderDetailHeader } from "@/components/account/order-detail/OrderDetail
 import { OrderTimeline } from "@/components/account/order-detail/OrderTimeline";
 import { OrderItems } from "@/components/account/order-detail/OrderItems";
 import { OrderSummaryCard } from "@/components/account/order-detail/OrderSummaryCard";
+import { ReturnRequestCard } from "@/components/account/order-detail/ReturnRequestCard";
 import type { AppRouter } from "@/server";
 import type { inferRouterOutputs } from "@trpc/server";
 
@@ -138,6 +139,12 @@ export default function OrderDetailPage() {
 
       <OrderItems items={order.items} />
 
+      <ReturnRequestCard
+        orderId={order.id}
+        deliveredAt={order.deliveredAt}
+        items={order.items}
+      />
+
       <ShippingAddressCard address={order.shippingAddress} />
 
       <OrderSummaryCard
@@ -147,7 +154,11 @@ export default function OrderDetailPage() {
         discount={order.discount}
         total={order.total}
         refundedAmount={order.refundedAmount}
+        refundedItemAmount={order.refundedItemAmount}
+        refundedDeliveryAmount={order.refundedDeliveryAmount}
+        refundedCollectionFees={order.refundedCollectionFees}
         fullyRefunded={order.fullyRefunded}
+        returns={order.returns}
       />
     </div>
   );

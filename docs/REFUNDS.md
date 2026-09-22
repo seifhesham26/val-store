@@ -1,7 +1,8 @@
 # Refund authorization, evidence, and payout
 
-**Status:** Approved product design, implementation pending. This supersedes
-the earlier “recorded now, paid later” note. **Decided:** 2026-09-17.
+**Status:** Implemented on `codex/refund-authorization-evidence`, but not yet
+verification-clean or launch-ready. This supersedes the earlier “recorded now,
+paid later” note. **Decided:** 2026-09-17. **Verified:** 2026-09-21.
 
 The inventory adjustment phase is separate and already implemented. This phase
 adds a customer return request, staff inspection, admin approval/rejection,
@@ -9,11 +10,38 @@ customer read-and-OTP authorization, private evidence, and verified payout.
 
 ## What is implemented today
 
-The existing order model can record partial, per-line returns. It scales refund
-amounts by the amount actually paid after proportional coupon allocation, guards
-quantities inside a transaction, and keeps restocking separate from the refund.
-Those facts are useful foundations, but the current direct admin refund path is
-not the approved launch workflow and must be replaced before launch.
+Commits `675824e` through `ce2facc` add the hardcoded policy, return requests,
+inspection/proposal records, separate physical and payout state, private evidence
+metadata and audited signed-link service, customer acknowledgment/OTP gates,
+staff/admin routes and UI, carrier claims, and idempotent payout/reconciliation
+boundaries. The old direct `admin.orders.refund` mutation is removed. Financial
+line quantities and shipping refund totals are recorded only after a payout is
+reported as verified and succeeded; physical restocking remains separate.
+
+This is not a claim that money can move in production. The wired WhatsApp OTP
+provider and OPay transport deliberately fail closed until real provider
+credentials, authenticated responses/webhooks, and reconciliation behavior are
+available and tested.
+
+The 2026-09-21 Task 10 verification is not clean:
+
+- Focused refund/admin-gating suite: 59/59 tests across 6 files.
+- Lint and a fresh `.next` type-check exited successfully.
+- Full unit suite: 904/905 tests across 90 files. The remaining failure is the
+  stale catalogue-invalidation source assertion, which still expects the removed
+  direct admin refund path to contribute a second call.
+- Production build compiled and completed TypeScript, then failed while
+  collecting `/api/webhook/stripe` because this worktree has no
+  `STRIPE_SECRET_KEY`.
+- The configured integration suite started against the development database but
+  produced no test result before it was stopped after more than two minutes.
+
+The security review also found one launch-blocking trust-boundary defect:
+`admin.returns.recordInspection` / `approveProposal` currently accept paid line
+amounts, delivery, collection, captured-payment, and payout-destination values
+from the admin client, and `RecordReturnInspectionUseCase` uses them to persist
+the proposal. Those values must be resolved from locked order/payment/return
+records before this workflow is launchable.
 
 ## Approved hardcoded policy
 
@@ -132,6 +160,13 @@ requires live, tested WhatsApp notifications/OTP and OPay payment/refund
 execution with reconciliation. Resend’s verified sending domain is also a launch
 requirement. SMS is later work. No provider is allowed to be represented as
 successful from a timeout, client claim, or database status alone.
+
+Before provider work, fix the client-trusted inspection amounts, update the stale
+catalogue-invalidation test for the removed refund bypass, obtain a successful
+full integration result, and repeat the build in an intentionally configured
+environment. Authenticated customer/admin/super-admin browser smoke remains
+outstanding. The signed evidence service is super-admin-only and audited, but the
+current admin viewer is explanatory UI rather than a complete media-opening flow.
 
 Do not run `pnpm db:migrate` on the current development database. Additive schema
 work, if approved for implementation, uses `pnpm db:push`.

@@ -10,65 +10,49 @@
  * returnable.
  */
 
-import { OrderRepositoryInterface } from "@/domain/orders/interfaces/repositories/order.repository.interface";
-import type { RefundLine } from "@/domain/orders/entities/order.entity";
+import type { RefundPayoutService } from "@/application/refunds/refund-payout.service";
 import { NotificationService } from "@/application/notifications/notification.service";
+import type { ReturnRequestRepositoryInterface } from "@/domain/refunds/interfaces/return-request.repository.interface";
+import type { ReturnRequestRecord } from "@/domain/refunds/return-request";
 
 export interface RefundOrderInput {
-  id: string;
-  lines: RefundLine[];
-  reason?: string;
-}
-
-export interface RefundOrderOutput {
-  id: string;
-  status: string;
-  /** Money returned by this return alone. */
-  amount: number;
-  /** Money returned across every return on this order. */
-  refundedTotal: number;
-  fullyRefunded: boolean;
-  message: string;
+  requestId: string;
+  customerId: string;
+  proposalVersion: number;
 }
 
 export class RefundOrderUseCase {
   constructor(
-    private readonly orderRepository: OrderRepositoryInterface,
+    private readonly returns: ReturnRequestRepositoryInterface,
+    private readonly payouts: RefundPayoutService,
     private readonly notifications: NotificationService
   ) {}
 
-  async execute(input: RefundOrderInput): Promise<RefundOrderOutput> {
-    const before = await this.orderRepository.findById(input.id);
-    const amountBefore = before?.refundedAmount() ?? 0;
-
-    const order = await this.orderRepository.refund(input.id, {
-      lines: input.lines,
-      reason: input.reason,
+  async execute(input: RefundOrderInput): Promise<ReturnRequestRecord> {
+    const recorded = await this.returns.finalize({
+      requestId: input.requestId,
+      customerId: input.customerId,
+      proposalVersion: input.proposalVersion,
     });
 
-    const refundedTotal = order.refundedAmount();
-    const fullyRefunded = order.isFullyRefunded();
-    const amount = refundedTotal - amountBefore;
+    const payout = await this.payouts.execute(recorded.id);
+    const receivedQuantity = recorded.items.reduce(
+      (sum, line) => sum + line.returnedQuantity,
+      0
+    );
+    const missingQuantity = recorded.items.reduce(
+      (sum, line) =>
+        sum + Math.max(0, line.requestedQuantity - line.returnedQuantity),
+      0
+    );
 
-    // After the refund is durable, never before: the service swallows its own
-    // failures, so a notification problem cannot undo money already returned.
-    await this.notifications.orderRefunded({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      userId: order.userId,
-      amount,
-      fullyRefunded,
+    await this.notifications.returnRecorded({
+      userId: recorded.customerId,
+      requestId: recorded.id,
+      receivedQuantity,
+      missingQuantity,
+      payoutStatus: payout?.status ?? recorded.payoutStatus ?? "pending",
     });
-
-    return {
-      id: order.id,
-      status: order.status,
-      amount,
-      refundedTotal,
-      fullyRefunded,
-      message: fullyRefunded
-        ? "Order fully refunded"
-        : "Partial return recorded",
-    };
+    return recorded;
   }
 }

@@ -4,7 +4,7 @@ import type { NotificationsRepositoryInterface } from "@/domain/notifications/in
 import type { UserNotificationsRepositoryInterface } from "@/domain/notifications/interfaces/repositories/user-notifications.repository.interface";
 import type { InventoryRepositoryInterface } from "@/domain/inventory/interfaces/repositories/inventory.repository.interface";
 import { notificationIcon } from "@/components/notifications/notification-visuals";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, RotateCcw } from "lucide-react";
 
 function setup(ids = ["admin", "super_admin"]) {
   const createMany = vi.fn();
@@ -64,4 +64,71 @@ describe("inventory request notifications", () => {
       log.mockRestore();
     }
   );
+});
+
+describe("return request notifications", () => {
+  it("describes the recorded physical return without claiming a pending payout succeeded", async () => {
+    const create = vi.fn();
+    const service = new NotificationService(
+      {} as NotificationsRepositoryInterface,
+      { create } as unknown as UserNotificationsRepositoryInterface,
+      {} as InventoryRepositoryInterface
+    );
+
+    await service.returnRecorded({
+      userId: "customer-1",
+      requestId: "return-1",
+      receivedQuantity: 2,
+      missingQuantity: 1,
+      payoutStatus: "pending",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      userId: "customer-1",
+      notificationType: "return_update",
+      title: "Return recorded",
+      message:
+        "We recorded 2 received units and 1 missing unit. Your payout is pending; no money has been confirmed yet.",
+    });
+  });
+
+  it("fans a submitted return out to admins and gives return updates to its customer", async () => {
+    const createMany = vi.fn();
+    const create = vi.fn();
+    const service = new NotificationService(
+      {
+        createMany,
+        findAdminUserIds: vi.fn().mockResolvedValue(["admin-1"]),
+      } as unknown as NotificationsRepositoryInterface,
+      { create } as unknown as UserNotificationsRepositoryInterface,
+      {} as InventoryRepositoryInterface
+    );
+
+    await service.returnRequested({
+      requestId: "return-1",
+      orderNumber: "VLK-20260921-000001",
+      itemCount: 2,
+    });
+    await service.returnUpdated({
+      userId: "customer-1",
+      requestId: "return-1",
+      status: "pickup_authorized",
+    });
+
+    expect(createMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        adminUserId: "admin-1",
+        notificationType: "return_request",
+        relatedEntityId: "return-1",
+      }),
+    ]);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "customer-1",
+        notificationType: "return_update",
+      })
+    );
+    expect(notificationIcon("return_request")).toBe(ClipboardCheck);
+    expect(notificationIcon("return_update")).toBe(RotateCcw);
+  });
 });

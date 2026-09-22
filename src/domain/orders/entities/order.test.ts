@@ -27,6 +27,7 @@ const createTestOrder = (
     shippedAt: Date | null;
     deliveredAt: Date | null;
     discount: number;
+    refundedShippingAmount: number;
     createdAt: Date;
   }> = {}
 ) => {
@@ -60,6 +61,7 @@ const createTestOrder = (
     createdAt: new Date(),
     updatedAt: new Date(),
     discount: 0,
+    refundedShippingAmount: 0,
   };
 
   const config = { ...defaults, ...overrides };
@@ -81,7 +83,14 @@ const createTestOrder = (
     config.deliveredAt,
     config.createdAt,
     config.updatedAt,
-    config.discount
+    config.discount,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    config.refundedShippingAmount
   );
 };
 
@@ -355,6 +364,26 @@ describe("OrderEntity", () => {
     it("reports money already returned at what was paid", () => {
       const order = twoLineOrder([1, 0], { subtotal: 75, discount: 15 });
       expect(order.refundedAmount()).toBe(16);
+    });
+
+    it("includes recorded delivery refunds in the derived total", () => {
+      const order = createTestOrder({
+        items: [
+          {
+            id: "item-a",
+            productId: "p1",
+            variantId: "v1",
+            productName: "Tee",
+            variantDetails: "Black / M",
+            quantity: 2,
+            price: 50,
+            refundedQuantity: 1,
+          },
+        ],
+        refundedShippingAmount: 5,
+      });
+
+      expect(order.refundedAmount()).toBe(55);
     });
 
     it("refunds at list price when there is no discount", () => {

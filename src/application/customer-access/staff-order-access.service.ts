@@ -64,12 +64,25 @@ export type StaffOrderDetail = Omit<
     name: string;
     email: string | null;
   };
+  returns: Array<{
+    id: string;
+    physicalStatus: string;
+    payoutStatus: string | null;
+    carrierClaimStatus: string | null;
+    receivedQuantity: number;
+    missingQuantity: number;
+    itemRefund: number;
+    deliveryRefund: number;
+    collectionDue: number;
+    payoutMethod: string;
+  }>;
 };
 
 export function maskOrderForStaff(
   order: GetOrderOutput,
   role: UserRole,
-  hasShippingAddress = order.shippingAddress !== null
+  hasShippingAddress = order.shippingAddress !== null,
+  returns: StaffOrderDetail["returns"] = []
 ): StaffOrderDetail {
   const customer = order.customer;
   const safeOrder: Partial<GetOrderOutput> = { ...order };
@@ -82,6 +95,7 @@ export function maskOrderForStaff(
   return {
     ...safeOrder,
     hasShippingAddress,
+    returns,
     customer:
       customer && role === "worker" ? { ...customer, email: null } : customer,
   } as StaffOrderDetail;

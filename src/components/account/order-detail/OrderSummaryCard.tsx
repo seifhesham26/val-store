@@ -15,6 +15,21 @@ interface OrderSummaryCardProps {
    */
   refundedAmount?: number;
   fullyRefunded?: boolean;
+  refundedItemAmount?: number;
+  refundedDeliveryAmount?: number;
+  refundedCollectionFees?: number;
+  returns?: Array<{
+    id: string;
+    physicalStatus: string;
+    payoutStatus: string | null;
+    carrierClaimStatus: string | null;
+    receivedQuantity: number;
+    missingQuantity: number;
+    itemRefund: number;
+    deliveryRefund: number;
+    collectionDue: number;
+    payoutMethod: string;
+  }>;
 }
 
 export function OrderSummaryCard({
@@ -25,6 +40,10 @@ export function OrderSummaryCard({
   total,
   refundedAmount = 0,
   fullyRefunded = false,
+  refundedItemAmount = 0,
+  refundedDeliveryAmount = 0,
+  refundedCollectionFees = 0,
+  returns = [],
 }: OrderSummaryCardProps) {
   return (
     <div className="bg-zinc-900 border border-white/10 rounded-lg">
@@ -58,7 +77,27 @@ export function OrderSummaryCard({
         {refundedAmount > 0 && (
           <>
             <div className="flex justify-between text-sm pt-1">
-              <span className="text-gray-500">Refunded</span>
+              <span className="text-gray-500">Completed item payout</span>
+              <span className="text-amber-400">
+                -{formatCurrency(refundedItemAmount)}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm pt-1">
+              <span className="text-gray-500">Completed delivery payout</span>
+              <span className="text-amber-400">
+                -{formatCurrency(refundedDeliveryAmount)}
+              </span>
+            </div>
+            {refundedCollectionFees > 0 && (
+              <div className="flex justify-between text-sm pt-1">
+                <span className="text-gray-500">Collection fee</span>
+                <span className="text-gray-300">
+                  +{formatCurrency(refundedCollectionFees)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm pt-1">
+              <span className="text-gray-500">Total payout completed</span>
               <span className="text-amber-400">
                 -{formatCurrency(refundedAmount)}
               </span>
@@ -73,6 +112,36 @@ export function OrderSummaryCard({
             </div>
           </>
         )}
+        {returns.map((returnRequest) => (
+          <div
+            key={returnRequest.id}
+            className="mt-4 space-y-1 border-t border-white/10 pt-4 text-sm"
+          >
+            <p className="font-medium text-white">Return status</p>
+            <p className="text-gray-400">
+              Physical: {returnRequest.physicalStatus.replaceAll("_", " ")} ·{" "}
+              {returnRequest.receivedQuantity} received ·{" "}
+              {returnRequest.missingQuantity} missing
+            </p>
+            <p className="text-gray-400">
+              Authorized: {formatCurrency(returnRequest.itemRefund)} items +{" "}
+              {formatCurrency(returnRequest.deliveryRefund)} delivery -{" "}
+              {formatCurrency(returnRequest.collectionDue)} collection fee
+            </p>
+            <p className="text-gray-400">
+              Payout: {returnRequest.payoutMethod.replaceAll("_", " ")} ·{" "}
+              {returnRequest.payoutStatus ?? "not started"}
+            </p>
+            {returnRequest.payoutStatus !== "succeeded" && (
+              <p className="text-amber-400">
+                Money has not been confirmed as credited yet.
+              </p>
+            )}
+            <p className="text-gray-400">
+              Carrier claim: {returnRequest.carrierClaimStatus ?? "none"}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );

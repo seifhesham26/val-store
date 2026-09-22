@@ -141,7 +141,9 @@ export class OrderEntity {
      */
     public readonly orderNumber: string | null = null,
     /** Resolved customer, populated by the repository when it joins them. */
-    public readonly customer: OrderCustomer | null = null
+    public readonly customer: OrderCustomer | null = null,
+    /** Delivery money already returned through an authorized return. */
+    public readonly refundedShippingAmount: number = 0
   ) {}
 
   /**
@@ -308,7 +310,16 @@ export class OrderEntity {
       (sum, item) => sum + item.refundedQuantity * item.price,
       0
     );
-    return roundMoney(listValue * this.paidFraction());
+    return roundMoney(
+      listValue * this.paidFraction() + this.refundedShippingAmount
+    );
+  }
+
+  /** Delivery money still available for a later authorized return. */
+  refundableShippingAmount(): number {
+    return roundMoney(
+      Math.max(0, this.shippingCost - this.refundedShippingAmount)
+    );
   }
 
   /** Has every unit on the order been returned? */

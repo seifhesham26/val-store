@@ -12,6 +12,23 @@ import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/currency";
 
 export function PaymentCard({ order }: { order: OrderData }) {
+  const completed = order.returns.filter(
+    (returnRequest) => returnRequest.payoutStatus === "succeeded"
+  );
+  const completedItemAmount = completed.reduce(
+    (sum, returnRequest) => sum + returnRequest.itemRefund,
+    0
+  );
+  const completedDeliveryAmount = completed.reduce(
+    (sum, returnRequest) => sum + returnRequest.deliveryRefund,
+    0
+  );
+  const completedCollectionFees = completed.reduce(
+    (sum, returnRequest) => sum + returnRequest.collectionDue,
+    0
+  );
+  const completedPayout =
+    completedItemAmount + completedDeliveryAmount - completedCollectionFees;
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-3">
@@ -79,16 +96,30 @@ export function PaymentCard({ order }: { order: OrderData }) {
           </div>
           {/* Returns can be partial, so what has actually gone back to the
               customer is worth stating separately from the order total. */}
-          {order.refundedAmount > 0 && (
+          {completedPayout > 0 && (
             <>
               <div className="flex justify-between text-sm text-amber-600 dark:text-amber-400">
-                <span>Refunded</span>
-                <span>-{formatCurrency(order.refundedAmount)}</span>
+                <span>Completed item payout</span>
+                <span>-{formatCurrency(completedItemAmount)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-amber-600 dark:text-amber-400">
+                <span>Completed delivery payout</span>
+                <span>-{formatCurrency(completedDeliveryAmount)}</span>
+              </div>
+              {completedCollectionFees > 0 && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>Collection fee</span>
+                  <span>+{formatCurrency(completedCollectionFees)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm text-amber-600 dark:text-amber-400">
+                <span>Total payout completed</span>
+                <span>-{formatCurrency(completedPayout)}</span>
               </div>
               <div className="flex justify-between text-sm font-medium">
                 <span>Net</span>
                 <span>
-                  {formatCurrency(order.totalAmount - order.refundedAmount)}
+                  {formatCurrency(order.totalAmount - completedPayout)}
                 </span>
               </div>
               {order.partiallyRefunded && (
@@ -98,6 +129,23 @@ export function PaymentCard({ order }: { order: OrderData }) {
               )}
             </>
           )}
+          {order.returns.map((returnRequest) => (
+            <div
+              key={returnRequest.id}
+              className="space-y-1 border-t pt-3 text-xs text-muted-foreground"
+            >
+              <p>
+                Physical: {returnRequest.physicalStatus.replaceAll("_", " ")} ·{" "}
+                {returnRequest.receivedQuantity} received ·{" "}
+                {returnRequest.missingQuantity} missing
+              </p>
+              <p>
+                Payout: {returnRequest.payoutMethod.replaceAll("_", " ")} ·{" "}
+                {returnRequest.payoutStatus ?? "not started"}
+              </p>
+              <p>Carrier claim: {returnRequest.carrierClaimStatus ?? "none"}</p>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

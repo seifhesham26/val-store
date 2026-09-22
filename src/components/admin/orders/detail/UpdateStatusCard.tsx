@@ -111,21 +111,6 @@ export function UpdateStatusCard({
               Cancel Order
             </Button>
           )}
-          {/* Gated on refundability, not on a status transition: a partial
-              return does not move the order's status at all, so gating it on
-              `→ refunded` would make one impossible from, say, `shipped`. */}
-          {order.canRefund && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onStatusChange("refunded")}
-              disabled={isPending}
-            >
-              {order.partiallyRefunded
-                ? "Record another return"
-                : "Record a return"}
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>

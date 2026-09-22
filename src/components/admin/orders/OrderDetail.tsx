@@ -22,7 +22,6 @@ import { AddressesCard } from "./detail/AddressesCard";
 import { UpdateStatusCard } from "./detail/UpdateStatusCard";
 import { CloseOrderDialog, type CloseAction } from "./detail/CloseOrderDialog";
 import { ORDER_STATUSES } from "@/domain/orders/value-objects/order-status.value-object";
-import { formatCurrency } from "@/lib/currency";
 import type { OrderAddress } from "@/domain/orders/entities/order.entity";
 
 interface OrderDetailProps {
@@ -32,8 +31,7 @@ interface OrderDetailProps {
 
 export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
   const utils = trpc.useUtils();
-  // Cancelling and refunding both close the order and move stock, so they go
-  // through a confirmation that captures the reason and the restock split.
+  // Cancellation remains separate from the evidence-backed return workflow.
   const [closeAction, setCloseAction] = useState<CloseAction | null>(null);
   const [shippingBlockMessage, setShippingBlockMessage] = useState<
     string | null
@@ -73,28 +71,10 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
     },
   });
 
-  const refundMutation = trpc.admin.orders.refund.useMutation({
-    onSuccess: (result) => {
-      toast.success(
-        result.fullyRefunded
-          ? `Order fully refunded (${formatCurrency(result.refundedTotal)})`
-          : `Refunded ${formatCurrency(result.amount)} — order stays open`
-      );
-      setCloseAction(null);
-      utils.admin.orders.getById.invalidate({ id: orderId, supportAccessId });
-      utils.admin.orders.list.invalidate();
-      utils.admin.inventory.invalidate();
-      utils.public.products.getStock.invalidate();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to record the return");
-    },
-  });
-
   const handleStatusChange = (newStatus: string) => {
     if (newStatus !== "shipped") setShippingBlockMessage(null);
     // Closing an order needs the reason/restock dialog first.
-    if (newStatus === "cancelled" || newStatus === "refunded") {
+    if (newStatus === "cancelled") {
       setCloseAction(newStatus);
       return;
     }
@@ -172,20 +152,9 @@ export function OrderDetail({ orderId, supportAccessId }: OrderDetailProps) {
       <CloseOrderDialog
         order={order}
         action={closeAction}
-        isPending={updateStatusMutation.isPending || refundMutation.isPending}
+        isPending={updateStatusMutation.isPending}
         onOpenChange={(open) => !open && setCloseAction(null)}
         onConfirm={(input) => {
-          // A return is recorded per line rather than as a status change: it may
-          // only cover part of the order, in which case the order stays open.
-          if (input.action === "refunded") {
-            refundMutation.mutate({
-              id: orderId,
-              reason: input.reason,
-              lines: input.lines,
-            });
-            return;
-          }
-
           updateStatusMutation.mutate({
             id: orderId,
             status: "cancelled",

@@ -78,6 +78,7 @@ async function resolveUser(reqHeaders: Headers): Promise<AuthUser | null> {
       id: session.user.id,
       email: session.user.email,
       name: session.user.name,
+      phone: session.user.phone ?? null,
       role,
     };
   } catch {
@@ -245,6 +246,14 @@ export const workerProcedure = adminProcedure.use(({ ctx, next }) => {
 
   return next({ ctx });
 });
+
+/**
+ * Return-evidence intake is deliberately available to every staff role.
+ * It records observed package facts only; it cannot classify a return, create
+ * a proposal, or move money. Keeping the capability named prevents it being
+ * mistaken for a worker refund-decision permission.
+ */
+export const staffEvidenceProcedure = adminProcedure;
 
 /**
  * Browsable customer data â€” admin and super_admin only.

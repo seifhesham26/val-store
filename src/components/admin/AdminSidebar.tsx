@@ -17,6 +17,7 @@ import {
   Scale,
   ExternalLink,
   History,
+  RotateCcw,
 } from "lucide-react";
 import { useAdminWriteAccess } from "@/hooks/use-admin-write-access";
 import { trpc } from "@/lib/trpc";
@@ -59,6 +60,11 @@ const navItems = [
     icon: Warehouse,
   },
   {
+    title: "Returns",
+    href: "/admin/returns",
+    icon: RotateCcw,
+  },
+  {
     title: "Settings",
     href: "/admin/settings",
     icon: Settings,
@@ -90,6 +96,11 @@ export function AdminSidebar() {
   const { role } = useAdminWriteAccess();
   const { data: pendingInventoryWork = 0 } =
     trpc.admin.inventory.pendingCount.useQuery(undefined, {
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
+    });
+  const { data: pendingReturnWork = 0 } =
+    trpc.admin.returns.pendingCount.useQuery(undefined, {
       refetchInterval: 30_000,
       refetchOnWindowFocus: true,
     });
@@ -138,6 +149,14 @@ export function AdminSidebar() {
                   className="ml-auto min-w-5 justify-center px-1.5 py-0 text-[11px]"
                 >
                   {pendingInventoryWork}
+                </Badge>
+              )}
+              {item.href === "/admin/returns" && pendingReturnWork > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="ml-auto min-w-5 justify-center px-1.5 py-0 text-[11px]"
+                >
+                  {pendingReturnWork}
                 </Badge>
               )}
             </Link>

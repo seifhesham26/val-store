@@ -18,10 +18,13 @@ import {
   RefreshCw,
   ShoppingBag,
   ClipboardCheck,
+  RotateCcw,
 } from "lucide-react";
 
 export const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
   inventory_request: ClipboardCheck,
+  return_request: ClipboardCheck,
+  return_update: RotateCcw,
   wishlist_sale: Tag,
   item_available: Package,
   order_update: Clock,
@@ -35,6 +38,8 @@ export const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
 
 export const NOTIFICATION_COLORS: Record<string, string> = {
   inventory_request: "text-amber-500 bg-amber-500/10",
+  return_request: "text-amber-500 bg-amber-500/10",
+  return_update: "text-cyan-400 bg-cyan-500/10",
   wishlist_sale: "text-green-400 bg-green-500/10",
   item_available: "text-blue-400 bg-blue-500/10",
   order_update: "text-orange-400 bg-orange-500/10",
